@@ -1,0 +1,2 @@
+Bind buttons
+bind x pack (fast access to your back pack)

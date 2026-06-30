@@ -1,0 +1,601 @@
+
+#include <sourcemod>
+#include <sdktools>
+#include <sdkhooks>
+#include <left4dhooks>
+
+#pragma semicolon 1
+#pragma newdecls required
+
+
+// ======== Cvars ========
+ConVar gCvarEnable;
+ConVar gCvarRadius;
+ConVar gCvarDPS;
+ConVar gCvarTick;
+ConVar gCvarPushForce;
+ConVar gCvarIgniteTime;
+ConVar gCvarDuration;
+ConVar gCvarCooldown;
+ConVar gCvarOnlyHuman;
+
+// Escudo burbuja
+ConVar gCvarBubbleEnable;
+ConVar gCvarBubbleDuration;
+ConVar gCvarBubbleCooldown;
+ConVar gCvarBubbleReflectForce;
+ConVar gCvarBubbleHealFactor;
+ConVar gCvarBubbleAbsorb;
+
+Handle g_hThinkTimer = INVALID_HANDLE;
+bool g_bMapActive = false;
+
+// ======== Estados por jugador ========
+bool g_bShieldActive[MAXPLAYERS + 1];
+float g_fShieldEndTime[MAXPLAYERS + 1];
+float g_fShieldNextTick[MAXPLAYERS + 1];
+float g_fShieldNextUse[MAXPLAYERS + 1];
+
+bool g_bBubbleActive[MAXPLAYERS + 1];
+float g_fBubbleEndTime[MAXPLAYERS + 1];
+float g_fBubbleNextUse[MAXPLAYERS + 1];
+
+// ======== Funciones base ========
+void ResetShieldState(int client, bool fullCooldown = false)
+{
+    if (client < 1 || client > MaxClients) return;
+
+    if (g_bShieldActive[client])
+        EffectStop(client);
+
+    g_bShieldActive[client]   = false;
+    g_bBubbleActive[client]   = false;
+    g_fShieldEndTime[client]  = 0.0;
+    g_fShieldNextTick[client] = 0.0;
+    g_fBubbleEndTime[client]  = 0.0;
+
+    g_fShieldNextUse[client]  = fullCooldown ? (GetEngineTime() + gCvarCooldown.FloatValue) : 0.0;
+    g_fBubbleNextUse[client]  = fullCooldown ? (GetEngineTime() + gCvarBubbleCooldown.FloatValue) : 0.0;
+}
+
+void ResetAllShields(bool fullCooldown = false)
+{
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (!IsClientInGame(i))
+            continue;
+
+        ResetShieldState(i, fullCooldown);
+
+        // Volver a aplicar hook de daño si es necesario
+        SDKUnhook(i, SDKHook_OnTakeDamage, OnTakeDamage);
+        SDKHook(i, SDKHook_OnTakeDamage, OnTakeDamage);
+    }
+
+    // Cancelar el timer de control si existía
+    if (g_hThinkTimer != INVALID_HANDLE)
+    {
+        CloseHandle(g_hThinkTimer);
+        g_hThinkTimer = INVALID_HANDLE;
+    }
+
+    // Reiniciar el timer principal
+    g_hThinkTimer = CreateTimer(0.05, T_ShieldThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+}
+
+
+// ======== Inicio plugin ========
+public void OnPluginStart()
+{
+    // Escudo fuego
+    gCvarEnable     = CreateConVar("sm_fireshield_enable", "1", "Habilita el escudo de fuego.", FCVAR_NOTIFY);
+    gCvarRadius     = CreateConVar("sm_fireshield_radius", "400.0", "Radio del escudo (unidades).", FCVAR_NOTIFY);
+    gCvarDPS        = CreateConVar("sm_fireshield_dps", "55.0", "Daño por segundo.", FCVAR_NOTIFY);
+    gCvarTick       = CreateConVar("sm_fireshield_tick", "0.2", "Intervalo de aplicación (s).", FCVAR_NOTIFY);
+    gCvarPushForce  = CreateConVar("sm_fireshield_push", "450.0", "Fuerza de empuje.", FCVAR_NOTIFY);
+    gCvarIgniteTime = CreateConVar("sm_fireshield_ignite", "1.0", "Tiempo de quemado (s).", FCVAR_NOTIFY);
+    gCvarDuration   = CreateConVar("sm_fireshield_duration", "20.0", "Duración del escudo (s).", FCVAR_NOTIFY);
+    gCvarCooldown   = CreateConVar("sm_fireshield_cooldown", "35.0", "Enfriamiento (s).", FCVAR_NOTIFY);
+    gCvarOnlyHuman  = CreateConVar("sm_fireshield_onlyhuman", "1", "Solo jugadores humanos pueden usarlo.", FCVAR_NOTIFY);
+
+    // Escudo burbuja
+    gCvarBubbleEnable       = CreateConVar("sm_bubbleshield_enable", "1", "Habilita el escudo burbuja.", FCVAR_NOTIFY);
+    gCvarBubbleDuration     = CreateConVar("sm_bubbleshield_duration", "10.0", "Duración del escudo burbuja (s).", FCVAR_NOTIFY);
+    gCvarBubbleCooldown     = CreateConVar("sm_bubbleshield_cooldown", "20.0", "Enfriamiento (s).", FCVAR_NOTIFY);
+    gCvarBubbleReflectForce = CreateConVar("sm_bubbleshield_reflect", "400.0", "Fuerza del rebote al atacante.", FCVAR_NOTIFY);
+    gCvarBubbleHealFactor   = CreateConVar("sm_bubbleshield_healfactor", "1.0", "Proporción del daño convertido en curación (1.0 = 100%)", FCVAR_NOTIFY);
+    gCvarBubbleAbsorb       = CreateConVar("sm_bubbleshield_absorb", "1", "1 = Absorbe todo el daño, 0 = Parcial.", FCVAR_NOTIFY);
+
+    AddCommandListener(ChatCommandListener, "say");
+    AddCommandListener(ChatCommandListener, "say_team");
+	// === NUEVOS COMANDOS DE CONSOLA ===
+    RegConsoleCmd("sm_shieldfire", Cmd_ToggleShield, "Activa o desactiva el Escudo de Fuego.");
+    RegConsoleCmd("sm_shieldbubble", Cmd_ToggleBubble, "Activa o desactiva el Escudo Burbuja.");
+
+    HookEvent("player_death", E_PlayerReset, EventHookMode_Post);
+    HookEvent("player_disconnect", E_PlayerReset, EventHookMode_Post);
+
+    CreateTimer(0.05, T_ShieldThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+	AutoExecConfig(true, "escudo_Elementales_Sally");
+	ResetAllShields(true);
+}
+
+// ======== Chat comandos ========
+public Action ChatCommandListener(int client, const char[] command, int argc)
+{
+    if (client <= 0 || !IsClientInGame(client)) return Plugin_Continue;
+
+    char msg[192];
+    GetCmdArgString(msg, sizeof(msg));
+    StripQuotes(msg);
+    for (int i = 0; msg[i] != '\0'; i++)
+        msg[i] = CharToLower(msg[i]);
+
+    if (StrEqual(msg, "!fire", false) || StrEqual(msg, "/fire", false))
+    {
+        Cmd_ToggleShield(client, 0);
+        return Plugin_Handled;
+    }
+
+    if (StrEqual(msg, "!bubble", false) || StrEqual(msg, "/bubble", false))
+    {
+        Cmd_ToggleBubble(client, 0);
+        return Plugin_Handled;
+    }
+
+    return Plugin_Continue;
+}
+
+// ======== Escudo de fuego ========
+public Action Cmd_ToggleShield(int client, int args)
+{
+    if (!gCvarEnable.BoolValue || !IsValidSurvivor(client))
+        return Plugin_Handled;
+
+    if (gCvarOnlyHuman.BoolValue && IsFakeClient(client))
+    {
+        PrintToChat(client, "[Escudo] Solo jugadores humanos.");
+        return Plugin_Handled;
+    }
+
+    float now = GetEngineTime();
+
+    if (g_bShieldActive[client])
+    {
+        g_bShieldActive[client] = false;
+        EffectStop(client);
+        PrintToChat(client, "[Escudo] Desactivado.");
+        return Plugin_Handled;
+    }
+
+    if (now < g_fShieldNextUse[client])
+    {
+        float wait = g_fShieldNextUse[client] - now;
+        PrintToChat(client, "[Escudo] Enfriamiento: %.1f s", wait);
+        return Plugin_Handled;
+    }
+
+    g_bShieldActive[client] = true;
+    g_fShieldEndTime[client] = now + gCvarDuration.FloatValue;
+    g_fShieldNextTick[client] = 0.0;
+    g_fShieldNextUse[client] = now + gCvarCooldown.FloatValue + gCvarDuration.FloatValue;
+
+    EffectStart(client);
+    PrintToChat(client, "[Escudo] Activado por %.1f s. Radio %.0f.", gCvarDuration.FloatValue, gCvarRadius.FloatValue);
+    return Plugin_Handled;
+}
+
+public Action T_ShieldThink(Handle timer)
+{
+    if (!g_bMapActive || (!gCvarEnable.BoolValue && !gCvarBubbleEnable.BoolValue))
+        return Plugin_Continue;
+
+    float now = GetEngineTime();
+
+    // ======== Escudo de fuego ========
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (!g_bShieldActive[i]) continue;
+
+        if (!IsClientInGame(i) || !IsPlayerAlive(i) || GetClientTeam(i) != 2)
+        {
+            StopShield(i);
+            continue;
+        }
+
+        if (now >= g_fShieldEndTime[i])
+        {
+            StopShield(i);
+            continue;
+        }
+
+        if (now < g_fShieldNextTick[i]) continue;
+        g_fShieldNextTick[i] = now + gCvarTick.FloatValue;
+        ApplyShieldPulse(i);
+    }
+
+    // ======== Flotación del escudo burbuja ========
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (!g_bBubbleActive[i]) continue;
+        if (!IsClientInGame(i) || !IsPlayerAlive(i) || GetClientTeam(i) != 2) continue;
+
+        int waterLevel = GetEntProp(i, Prop_Send, "m_nWaterLevel");
+        if (waterLevel < 3) continue; // solo si está completamente sumergido
+
+        int buttons = GetClientButtons(i);
+        if (!(buttons & IN_JUMP)) continue;
+
+        float vel[3];
+        GetEntPropVector(i, Prop_Data, "m_vecVelocity", vel);
+
+        if (vel[2] < 200.0)
+        {
+            vel[2] += 40.0; // fuerza de flotación por tick
+            TeleportEntity(i, NULL_VECTOR, NULL_VECTOR, vel);
+        }
+    }
+
+    return Plugin_Continue;
+}
+
+
+void StopShield(int client)
+{
+    if (!g_bShieldActive[client]) return;
+    g_bShieldActive[client] = false;
+    g_fShieldNextUse[client] = GetEngineTime() + gCvarCooldown.FloatValue;
+    EffectStop(client);
+    if (IsClientInGame(client)) PrintToChat(client, "[Escudo] Finalizado. Enfriamiento %.1f s.", gCvarCooldown.FloatValue);
+}
+
+void ApplyShieldPulse(int owner)
+{
+    float origin[3];
+    GetClientAbsOrigin(owner, origin);
+
+    float radius = gCvarRadius.FloatValue;
+    float dps = gCvarDPS.FloatValue;
+    float tick = gCvarTick.FloatValue;
+    float damage = dps * tick;
+    float push = gCvarPushForce.FloatValue;
+    float ignite = gCvarIgniteTime.FloatValue;
+
+    int entity = -1;
+    while ((entity = FindEntityByClassname(entity, "infected")) != -1)
+        ProcessEntity(owner, entity, origin, radius, damage, push, ignite);
+
+    entity = -1;
+    while ((entity = FindEntityByClassname(entity, "player")) != -1)
+    {
+        if (!IsClientInGame(entity) || !IsPlayerAlive(entity)) continue;
+        if (GetClientTeam(entity) != 3) continue;
+        ProcessEntity(owner, entity, origin, radius, damage, push, ignite);
+    }
+
+    TE_SetupBeamRingPoint(origin, 10.0, radius, PrecacheModel("materials/sprites/laserbeam.vmt"), 0, 0, 0, 0.2, 4.0, 2.0, {255, 120, 20, 100}, 0, 0);
+    TE_SendToAll();
+}
+
+void ProcessEntity(int owner, int ent, const float origin[3], float radius, float damage, float push, float ignite)
+{
+    float pos[3];
+    GetEntPropVector(ent, Prop_Send, "m_vecOrigin", pos);
+
+    float dist = GetVectorDistance(origin, pos, true);
+    float r2 = radius * radius;
+    if (dist > r2) return;
+
+    float dir[3];
+    MakeVectorFromPoints(origin, pos, dir);
+    NormalizeVector(dir, dir);
+
+    float vel[3];
+    vel[0] = dir[0];
+    vel[1] = dir[1];
+    vel[2] = dir[2];
+    ScaleVector(vel, push);
+    ForcePushEntity(ent, origin, push);
+
+    SDKHooks_TakeDamage(ent, owner, owner, damage, DMG_BURN | DMG_PREVENT_PHYSICS_FORCE);
+    IgniteEntity(ent, ignite);
+
+    if (IsClient(ent) && GetClientTeam(ent) == 3)
+        L4D_StaggerPlayer(ent, owner, origin);
+}
+
+
+void ForcePushEntity(int ent, const float origin[3], float push)
+{
+    if (!IsValidEntity(ent)) return;
+
+    float pos[3], dir[3];
+    GetEntPropVector(ent, Prop_Send, "m_vecOrigin", pos);
+
+    MakeVectorFromPoints(origin, pos, dir);
+    NormalizeVector(dir, dir);
+
+    // --- 1️⃣ Impulso vertical inmediato para despegar del suelo ---
+    float lift[3];
+    lift[0] = pos[0];
+    lift[1] = pos[1];
+    lift[2] = pos[2] + 10.0; // Más alto para garantizar separación del suelo
+
+    TeleportEntity(ent, lift, NULL_VECTOR, NULL_VECTOR);
+
+    // --- 2️⃣ Esperamos un tick (0.01s) y aplicamos el empuje ---
+    DataPack pack;
+    CreateDataTimer(0.01, Timer_ApplyRepel, pack);
+    pack.WriteCell(EntIndexToEntRef(ent));
+    pack.WriteFloatArray(origin, 3);
+    pack.WriteFloat(push);
+}
+
+public Action Timer_ApplyRepel(Handle timer, DataPack pack)
+{
+    pack.Reset();
+    int ref = pack.ReadCell();
+    int ent = EntRefToEntIndex(ref);
+    if (ent <= 0 || !IsValidEntity(ent))
+        return Plugin_Stop;
+
+    float origin[3];
+    pack.ReadFloatArray(origin, 3);
+    float push = pack.ReadFloat();
+
+    float pos[3], dir[3], vel[3];
+    GetEntPropVector(ent, Prop_Send, "m_vecOrigin", pos);
+    MakeVectorFromPoints(origin, pos, dir);
+    NormalizeVector(dir, dir);
+
+    // --- 2️⃣ Repel horizontal ---
+    dir[2] += 0.25; // Pequeño componente vertical
+    ScaleVector(dir, push);
+    vel[0] = dir[0];
+    vel[1] = dir[1];
+    vel[2] = dir[2];
+
+    TeleportEntity(ent, NULL_VECTOR, NULL_VECTOR, vel);
+    SetEntPropVector(ent, Prop_Data, "m_vecVelocity", vel);
+
+    // --- Stagger para especiales ---
+    if (IsClient(ent) && GetClientTeam(ent) == 3)
+    {
+        L4D_StaggerPlayer(ent, ent, origin);
+    }
+
+    // --- 3️⃣ Refuerzo opcional ---
+    CreateTimer(0.01, Timer_RePush, EntIndexToEntRef(ent));
+
+    return Plugin_Stop;
+}
+
+
+
+public Action Timer_RePush(Handle timer, int ref)
+{
+    int ent = EntRefToEntIndex(ref);
+    if (ent <= 0 || !IsValidEntity(ent))
+        return Plugin_Stop;
+
+    float vel[3];
+    GetEntPropVector(ent, Prop_Data, "m_vecVelocity", vel);
+    vel[2] += 2.0; // impulso vertical final
+    SetEntPropVector(ent, Prop_Data, "m_vecVelocity", vel);
+
+    return Plugin_Stop;
+}
+
+
+
+// ======== Escudo burbuja ========
+public Action Cmd_ToggleBubble(int client, int args)
+{
+    if (!gCvarBubbleEnable.BoolValue || !IsValidSurvivor(client))
+        return Plugin_Handled;
+
+    float now = GetEngineTime();
+
+    if (g_bBubbleActive[client])
+    {
+        g_bBubbleActive[client] = false;
+        EffectBubbleStop(client);
+        PrintToChat(client, "[Burbuja] Escudo burbuja desactivado.");
+        return Plugin_Handled;
+    }
+
+    if (now < g_fBubbleNextUse[client])
+    {
+        float wait = g_fBubbleNextUse[client] - now;
+        PrintToChat(client, "[Burbuja] Espera %.1f s antes de volver a usar.", wait);
+        return Plugin_Handled;
+    }
+
+    g_bBubbleActive[client] = true;
+    g_fBubbleEndTime[client] = now + gCvarBubbleDuration.FloatValue;
+    g_fBubbleNextUse[client] = now + gCvarBubbleDuration.FloatValue + gCvarBubbleCooldown.FloatValue;
+
+    EffectBubbleStart(client);
+    PrintToChat(client, "[Burbuja] Escudo burbuja activo por %.1f s.", gCvarBubbleDuration.FloatValue);
+    CreateTimer(gCvarBubbleDuration.FloatValue, Timer_StopBubble, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+
+    return Plugin_Handled;
+}
+
+public Action Timer_StopBubble(Handle timer, any userid)
+{
+    int client = GetClientOfUserId(userid);
+    if (client && g_bBubbleActive[client])
+    {
+        g_bBubbleActive[client] = false;
+        EffectBubbleStop(client);
+        PrintToChat(client, "[Burbuja] Escudo finalizado.");
+    }
+    return Plugin_Stop;
+}
+
+// ======== Hook de daño ========
+public Action OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
+{
+    if (!IsClientInGame(victim) || !IsPlayerAlive(victim)) return Plugin_Continue;
+    if (!g_bBubbleActive[victim]) return Plugin_Continue;
+
+    if (gCvarBubbleAbsorb.BoolValue)
+    {
+        float heal = damage * gCvarBubbleHealFactor.FloatValue;
+        int hp = GetClientHealth(victim);
+        SetEntityHealth(victim, hp + RoundToNearest(heal));
+        damage = 0.0;
+    }
+
+if (IsClientInGame(attacker) && attacker != victim)
+{
+    float vPos[3];
+    GetClientAbsOrigin(victim, vPos);
+    ForcePushEntity(attacker, vPos, gCvarBubbleReflectForce.FloatValue);
+	EmitSoundToAll("mobius/sfx/shield_element/Sally_Acorn_water_shield_rebote.mp3", victim);
+}
+
+
+    return Plugin_Changed;
+}
+
+// ======================================================
+// 🧩 Función personalizada: detener un sonido globalmente
+// ======================================================
+void StopSoundToAll(int channel, const char[] sound)
+{
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (IsClientInGame(i) && !IsFakeClient(i))
+        {
+            StopSound(i, channel, sound);
+        }
+    }
+}
+
+
+
+
+// ======== Efectos globales (audibles para todos) ========
+void EffectStart(int client)
+{
+    EmitSoundToAll("mobius/sfx/shield_element/Sally_Acorn_fire_shield.mp3", client);
+}
+
+void EffectStop(int client)
+{
+    StopSoundToAll(SNDCHAN_AUTO, "mobius/sfx/shield_element/Sally_Acorn_fire_shield.mp3");
+    EmitSoundToAll("mobius/sfx/shield_element/Fire_shield_stop.mp3", client);
+}
+
+void EffectBubbleStart(int client)
+{
+    EmitSoundToAll("mobius/sfx/shield_element/Sally_Acorn_water_shield.mp3", client);
+    PrintCenterText(client, "🛡 ¡Escudo burbuja activado!");
+}
+
+void EffectBubbleStop(int client)
+{
+    StopSoundToAll(SNDCHAN_AUTO, "mobius/sfx/shield_element/Sally_Acorn_water_shield.mp3");
+    EmitSoundToAll("mobius/sfx/shield_element/Sally_Acorn_water_shield_over.mp3", client);
+    PrintCenterText(client, "💥 Escudo burbuja disipado.");
+}
+
+
+
+// ======== Utilidades ========
+bool IsValidSurvivor(int client) { return (1 <= client <= MaxClients) && IsClientInGame(client) && IsPlayerAlive(client) && GetClientTeam(client) == 2; }
+bool IsClient(int ent) { return (1 <= ent <= MaxClients); }
+
+public void E_PlayerReset(Event event, const char[] name, bool dontBroadcast)
+{
+    int userid = event.GetInt("userid");
+    int client = GetClientOfUserId(userid);
+    if (client > 0 && client <= MaxClients)
+        ResetShieldState(client, true);
+}
+
+public void OnClientPutInServer(int client)
+{
+    SDKHook(client, SDKHook_OnTakeDamage, OnTakeDamage);
+    ResetShieldState(client, false);
+}
+
+public void OnClientDisconnect(int client)
+{
+    ResetShieldState(client, true);
+}
+
+public void OnMapStart()
+{
+    g_bMapActive = false;
+
+    PrecacheModel("materials/sprites/laserbeam.vmt", true);
+    PrecacheSound("mobius/sfx/shield_element/Sally_Acorn_fire_shield.mp3", true);
+    PrecacheSound("mobius/sfx/shield_element/Fire_shield_stop.mp3", true);
+    PrecacheSound("mobius/sfx/shield_element/Sally_Acorn_water_shield.mp3", true);
+    PrecacheSound("mobius/sfx/shield_element/Sally_Acorn_water_shield_over.mp3", true);
+    PrecacheSound("mobius/sfx/shield_element/Sally_Acorn_water_shield_rebote.mp3", true);
+	
+    ResetAllShields(true);
+
+    for (int i = 1; i <= MaxClients; i++)
+        ResetShieldState(i, false);
+
+    if (g_hThinkTimer != INVALID_HANDLE)
+    {
+        CloseHandle(g_hThinkTimer);
+        g_hThinkTimer = INVALID_HANDLE;
+    }
+    g_hThinkTimer = CreateTimer(0.05, T_ShieldThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+    g_bMapActive = true;
+}
+
+public void OnMapEnd()
+{
+    g_bMapActive = false;
+
+    // Detener efectos visuales/sonoros y limpiar flags
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (g_bShieldActive[i])
+            EffectStop(i);
+        if (g_bBubbleActive[i])
+            EffectBubbleStop(i);
+
+        g_bShieldActive[i] = false;
+        g_bBubbleActive[i] = false;
+    }
+
+    if (g_hThinkTimer != INVALID_HANDLE)
+    {
+        CloseHandle(g_hThinkTimer);
+        g_hThinkTimer = INVALID_HANDLE;
+    }
+}
+
+
+// ======== Bloqueo de tambaleos del Tank cuando el escudo burbuja está activo ========
+public Action L4D_OnKnockedDown(int client, int reason)
+{
+    // reason 2 = golpe de Tank
+    if (g_bBubbleActive[client])
+    {
+        // Bloquea el tambaleo
+        return Plugin_Handled;
+    }
+
+    return Plugin_Continue;
+}
+
+public Action L4D_TankClaw_OnPlayerHit_Pre(int tank, int claw, int player)
+{
+    if (g_bBubbleActive[player])
+    {
+        // Evita que el golpe del Tank cause tambaleo o empuje
+        return Plugin_Handled;
+    }
+
+    return Plugin_Continue;
+}

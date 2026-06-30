@@ -1,0 +1,1088 @@
+#include <sourcemod>
+#include <sdktools>
+#include <sdkhooks>
+#include <clientprefs>
+#include <left4dhooks>
+#include <sdktools_trace>
+
+#define PLUGIN_NAME "SonicJumpSurvivors"
+#define PLUGIN_VERSION "1.4.2"
+
+#define MAX_SOUNDS 4
+#define INVALID_SOUND_INDEX -1
+
+#define MAX_CHARS 8
+#define INVALID_CHAR_INDEX -1
+#define SONIC_INDEX      0
+#define TAILS_INDEX      1
+#define KNUCKLES_INDEX   2
+#define AMY_INDEX        3
+#define SALLY_INDEX      4
+#define SHADOW_INDEX     5
+#define ROUGE_INDEX      6
+#define CREAM_INDEX      7
+
+#include <sonic>
+#include <Amy>
+#include <Sally>
+#include <Speed_sonic>
+
+
+
+// Sonidos
+static const char g_SoundPaths[MAX_SOUNDS][] = {
+    "mobius/sfx/saltos/jumpSonic1.mp3",
+    "mobius/sfx/saltos/jumpSonic2.mp3",
+    "mobius/sfx/saltos/jumpSonicCD.mp3",
+    "mobius/sfx/saltos/jumpSonicSRB2.mp3"
+};
+static const char g_SoundNames[MAX_SOUNDS][] = { "Sonic 1", "Sonic 2", "Sonic CD", "Sonic SRB2" };
+
+// Personajes
+public char g_CharNames[MAX_CHARS][] = {
+    "Sonic", "Tails", "Knuckles", "Amy", "Sally", "Shadow", "Rouge", "Cream"
+};
+
+// Cvars plugin
+ConVar gCvarVolume;
+ConVar gCvarSonicBoost, gCvarVelZMin;
+
+// Estados por jugador
+float g_flNextAllowed[MAXPLAYERS + 1];
+int g_iPlayerSoundIdx[MAXPLAYERS + 1];
+
+
+// Cookies
+Handle g_hSoundCookie, g_hCharCookie;
+
+// Ocupación actual (quién usa el personaje en esta sesión; 0 si libre)
+int g_iCharTakenBy[MAX_CHARS];
+
+// Persistencia de dueños por SteamID64 en archivo
+StringMap g_mCharOwner;
+char g_sOwnersFile[PLATFORM_MAX_PATH];
+
+// Helpers compactos
+#define IsValidClient(%1) (%1 > 0 && %1 <= MaxClients && IsClientInGame(%1) && !IsFakeClient(%1))
+#define IsSurvivor(%1) (GetClientTeam(%1) == 2)
+
+/* ========================= NUEVO SISTEMA: Double Jump (Paegus) SOLO AMY ========================= */
+// ConVars Double Jump
+Handle g_cvJumpBoost = INVALID_HANDLE;
+Handle g_cvJumpEnable = INVALID_HANDLE;
+Handle g_cvJumpMax = INVALID_HANDLE;
+
+float g_flBoost = 250.0;
+bool g_bDoubleJump = true;
+int g_fLastButtons[MAXPLAYERS + 1];
+int g_fLastFlags[MAXPLAYERS + 1];
+int g_iJumps[MAXPLAYERS + 1];
+int g_iJumpMax;
+
+/* ========================= Ciclo de vida ========================= */
+
+
+// NATIVE: Obtener índice del personaje del cliente
+public int Native_GetPlayerCharIndex(Handle plugin, int numParams)
+{
+    int client = GetNativeCell(1);
+    if (!IsValidClient(client))
+        return -1;
+
+    return g_iPlayerCharIdx[client]; // -1 si no tiene personaje
+}
+
+public void OnPluginStart()
+{
+    // Cvars principales
+    gCvarEnable   = CreateConVar("sj_enable", "1", "Habilita el plugin (1=on, 0=off)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+    gCvarVolume   = CreateConVar("sj_volume", "1.0", "Volumen (0.0-1.0)", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+    gCvarCooldown = CreateConVar("sj_cooldown", "0.15", "Cooldown por jugador en segundos.", FCVAR_NOTIFY, true, 0.0, true, 5.0);
+
+
+    // Cvars Double Jump (Paegus)
+    CreateConVar("sm_doublejump_version", "1.0.1", "Double Jump Version", FCVAR_PLUGIN | FCVAR_NOTIFY);
+    g_cvJumpEnable = CreateConVar("sm_doublejump_enabled", "1", "Enables double-jumping.", FCVAR_PLUGIN | FCVAR_NOTIFY);
+    g_cvJumpBoost  = CreateConVar("sm_doublejump_boost", "250.0", "The amount of vertical boost to apply to double jumps.", FCVAR_PLUGIN | FCVAR_NOTIFY);
+    g_cvJumpMax    = CreateConVar("sm_doublejump_max", "1", "The maximum number of re-jumps allowed while already jumping.", FCVAR_PLUGIN | FCVAR_NOTIFY);
+
+    HookConVarChange(g_cvJumpBoost, convar_ChangeBoost);
+    HookConVarChange(g_cvJumpEnable, convar_ChangeEnable);
+    HookConVarChange(g_cvJumpMax, convar_ChangeMax);
+
+    g_bDoubleJump = GetConVarBool(g_cvJumpEnable);
+    g_flBoost     = GetConVarFloat(g_cvJumpBoost);
+    g_iJumpMax    = GetConVarInt(g_cvJumpMax);
+
+    // Eventos / comandos
+    HookEvent("player_jump", Event_PlayerJump, EventHookMode_Post);
+	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Pre);
+	HookEvent("round_start", OnRoundStart);
+    RegConsoleCmd("+jump", Cmd_Jump);
+    RegConsoleCmd("js", Cmd_OpenSoundMenu);
+    RegConsoleCmd("sc", Cmd_OpenCharMenu);
+    RegConsoleCmd("cinfo", Cmd_ShowCharInfo);
+	RegConsoleCmd("superjump", Command_SuperJump, "Salta alto como Sonic!");
+	RegConsoleCmd("sm_forceragdoll", Cmd_CreateRagdoll);
+	RegConsoleCmd("sm_checkpoint", Cmd_SonicCheckpoint);
+	RegConsoleCmd("hammer_attack", Command_AmyAttack);
+
+
+    RegAdminCmd("sm_setsound", Cmd_OpenSoundMenu, ADMFLAG_GENERIC, "Abre el menú de selección de sonido de salto.");
+    RegAdminCmd("freechars", Cmd_FreeAllChars, ADMFLAG_GENERIC, "Libera todos los personajes bloqueados.");
+
+    // Cookies
+    g_hSoundCookie = RegClientCookie("sj_sound_choice", "Sonic Jump sound selection", CookieAccess_Public);
+    g_hCharCookie  = RegClientCookie("sj_char_choice", "Sonic character selection", CookieAccess_Public);
+
+    // Estado inicial ocupación
+    for (int i = 0; i < MAX_CHARS; i++) g_iCharTakenBy[i] = 0;
+
+    // Dueños persistentes
+    g_mCharOwner = new StringMap();
+    BuildPath(Path_SM, g_sOwnersFile, sizeof(g_sOwnersFile), "data/sonic_jump_survivors_owners.cfg");
+    LoadOwnersFromFile();
+	Speed_OnPluginStart;
+    AutoExecConfig(true, "sonic_jump_survivors");
+
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (IsClientInGame(i))
+        {
+            if (AreClientCookiesCached(i))
+            {
+                LoadPlayerSoundChoice(i);
+                LoadPlayerCharChoice(i);
+                MaybePromptMenus(i);
+            }
+        }
+    }
+}
+
+public void OnPlayerSelectCharacter(int client)
+{
+    if (!IsClientInGame(client)) return;
+
+    int charIdx = g_iPlayerCharIdx[client];
+    if (charIdx < 0 || charIdx >= MAX_CHARS)
+    {
+        PrintToChat(client, "[SonicJump] ❌ No tienes un personaje seleccionado.");
+        return;
+    }
+
+    // Limpia binds anteriores (por si hay conflictos)
+    ClientCommand(client, "unbind z");
+    ClientCommand(client, "unbind x");
+    ClientCommand(client, "unbind q");
+
+    switch (charIdx)
+    {
+        case 0: // SONIC
+        {
+            ClientCommand(client, "bind c superjump");
+            ClientCommand(client, "bind q sm_checkpoint");
+            PrintToChat(client, "[Sonic] 🔹 Teclas asignadas:");
+            PrintToChat(client, "  C = Salto especial");
+            PrintToChat(client, "  Q = Checkpoint");
+            return; // Salir de la función después de procesar este caso
+        }
+
+        case 1: // TAILS
+        {
+            ClientCommand(client, "bind z tails_fly");
+            ClientCommand(client, "bind q sm_checkpoint");
+            PrintToChat(client, "[Tails] 🔹 Teclas asignadas:");
+            PrintToChat(client, "  Z = Vuelo");
+            PrintToChat(client, "  Q = Checkpoint");
+            return;
+        }
+
+        case 2: // KNUCKLES
+        {
+            ClientCommand(client, "bind z knuckles_punch");
+            ClientCommand(client, "bind q sm_checkpoint");
+            PrintToChat(client, "[Knuckles] 🔹 Teclas asignadas:");
+            PrintToChat(client, "  Z = Puñetazo");
+            PrintToChat(client, "  Q = Checkpoint");
+            return;
+        }
+
+        case 3: // AMY
+        {
+            ClientCommand(client, "bind z sm_shieldfire");
+            ClientCommand(client, "bind x sm_shieldbubble");
+            ClientCommand(client, "bind q sm_checkpoint");
+			ClientCommand(client, "bind c hammer_attack");
+            PrintToChat(client, "[Amy] 🔹 Teclas asignadas:");
+            PrintToChat(client, "  Z = Escudo de fuego");
+            PrintToChat(client, "  X = Escudo burbuja");
+            PrintToChat(client, "  Q = Checkpoint");
+			PrintToChat(client, "  C = Hammer attack");
+            return;
+        }
+
+        case 4: // SALLY
+        {
+            ClientCommand(client, "bind z sm_shieldfire");
+            ClientCommand(client, "bind x sm_shieldbubble");
+            ClientCommand(client, "bind q sm_checkpoint");
+            PrintToChat(client, "[Sally] 🔹 Teclas asignadas:");
+            PrintToChat(client, "  Z = Escudo de fuego");
+            PrintToChat(client, "  X = Escudo burbuja");
+            PrintToChat(client, "  Q = Checkpoint");
+            return;
+        }
+
+        case 5: // SHADOW
+        {
+            ClientCommand(client, "bind z shadow_dash");
+            ClientCommand(client, "bind q sm_checkpoint");
+            PrintToChat(client, "[Shadow] 🔹 Teclas asignadas:");
+            PrintToChat(client, "  Z = Chaos Dash");
+            PrintToChat(client, "  Q = Checkpoint");
+            return;
+        }
+
+        case 6: // ROUGE
+        {
+            ClientCommand(client, "bind z rouge_kick");
+            ClientCommand(client, "bind q sm_checkpoint");
+            PrintToChat(client, "[Rouge] 🔹 Teclas asignadas:");
+            PrintToChat(client, "  Z = Patada acrobática");
+            PrintToChat(client, "  Q = Checkpoint");
+            return;
+        }
+
+        case 7: // CREAM
+        {
+            ClientCommand(client, "bind z cream_chao");
+            ClientCommand(client, "bind q sm_checkpoint");
+            PrintToChat(client, "[Cream] 🔹 Teclas asignadas:");
+            PrintToChat(client, "  Z = Ataque de Chao");
+            PrintToChat(client, "  Q = Checkpoint");
+            return;
+        }
+
+        default:
+        {
+            ClientCommand(client, "bind q sm_checkpoint");
+            PrintToChat(client, "[%s] 🔹 Solo tienes Checkpoint asignado (Q).", g_CharNames[charIdx]);
+            return;
+        }
+    }
+}
+
+
+
+
+// Función que se ejecuta cuando el comando es llamado
+public Action Command_AmyAttack(int client, int args)
+{
+    // Verificar que el jugador que ejecuta el comando sea Amy
+    if (GetClientTeam(client) != AMY_INDEX)
+    {
+        return Action_Stop;
+    }
+
+    // Llamar a la función que ejecuta la habilidad de Amy
+    LaunchPowerfulMelee(client);
+
+    return Action_Handled;
+}
+
+
+
+public Action Cmd_SonicCheckpoint(int client, int args)
+{
+    if (!IsClientInGame(client) || !IsPlayerAlive(client))
+        return Plugin_Handled;
+
+    // ⚠️ Solo permitir si tiene personaje asignado
+    if (g_iPlayerCharIdx[client] < 0)
+    {
+        PrintToChat(client, "[Checkpoint] ❌ No puedes usar el checkpoint sin un personaje seleccionado.");
+        return Plugin_Handled;
+    }
+
+    Sonic_ActivateCheckpoint(client);
+    return Plugin_Handled;
+}
+
+
+public Action Cmd_CreateRagdoll(int client, int args)
+{
+    CreateSonicRagdoll (client);
+    return Plugin_Handled;
+}
+
+public Action Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
+{
+    int victim = GetClientOfUserId(event.GetInt("userid"));
+    int attacker = GetClientOfUserId(event.GetInt("attacker"));
+    int inflictor = 0;
+	Speed_Event_PlayerDeath(event, name, dontBroadcast);
+
+    if (!IsValidClient(victim)) return Plugin_Continue;
+
+    float damage = 9999.0;
+    int dmgType = 0;
+    return Sonic_OnPlayerDeath(victim, attacker, inflictor, damage, dmgType);
+    
+}
+
+
+public Action Command_SuperJump(int client, int args)
+{
+    if (!IsClientInGame(client) || !IsPlayerAlive(client))
+    {
+        PrintToChat(client, "[SonicJump] No puedes usar esto ahora!");
+        return Plugin_Handled;
+    }
+
+    // Solo Sonic puede usar el super salto
+    if (g_iPlayerCharIdx[client] != SONIC_INDEX)
+    {
+        PrintToChat(client, "[SonicJump] Solo Sonic puede usar el Super Jump!");
+        return Plugin_Handled;
+    }
+
+    HabilidadSonicSuperJump(client);
+    return Plugin_Handled;
+}
+
+
+
+public void OnMapStart()
+{
+	Speed_OnMapStart();
+    PrecacheAndAddToDownloads();
+    LoadOwnersFromFile();
+    RebuildCharOccupancyFromPlayers();
+	Sonic_OnMapStart();
+}
+
+public void OnRoundStart(Event event, const char[] name, bool dontBroadcast)
+{
+    Sonic_OnRoundStart();
+}
+
+public void OnClientPutInServer(int client)
+{
+    g_flNextAllowed[client] = 0.0;
+    g_iPlayerSoundIdx[client] = INVALID_SOUND_INDEX;
+    g_iPlayerCharIdx[client] = INVALID_CHAR_INDEX;
+	Sonic_OnClientPutInServer(client);
+
+
+    if (AreClientCookiesCached(client))
+    {
+        LoadPlayerSoundChoice(client);
+        LoadPlayerCharChoice(client);
+        MaybePromptMenus(client);
+    }
+
+    // Reset estados doublejump
+    g_fLastButtons[client] = 0;
+    g_fLastFlags[client] = 0;
+    g_iJumps[client] = 0;
+}
+
+public void OnClientCookiesCached(int client)
+{
+    LoadPlayerSoundChoice(client);
+    LoadPlayerCharChoice(client);
+    RebuildCharOccupancyFromPlayers();
+    MaybePromptMenus(client);
+    Speed_OnClientCookiesCached(client);
+}
+
+public void OnClientDisconnect(int client)
+{
+    int cur = g_iPlayerCharIdx[client];
+    if (cur >= 0 && cur < MAX_CHARS && g_iCharTakenBy[cur] == client)
+        g_iCharTakenBy[cur] = 0;
+
+    g_iPlayerCharIdx[client] = INVALID_CHAR_INDEX;
+
+    // Reset doublejump data
+    g_fLastButtons[client] = 0;
+    g_fLastFlags[client] = 0;
+    g_iJumps[client] = 0;
+}
+
+/* ========================= ConVars Double Jump (callbacks) ========================= */
+
+public void convar_ChangeBoost(Handle convar, const char[] oldVal, const char[] newVal)
+{
+    g_flBoost = StringToFloat(newVal);
+}
+
+public void convar_ChangeEnable(Handle convar, const char[] oldVal, const char[] newVal)
+{
+    g_bDoubleJump = (StringToInt(newVal) >= 1);
+}
+
+public void convar_ChangeMax(Handle convar, const char[] oldVal, const char[] newVal)
+{
+    g_iJumpMax = StringToInt(newVal);
+}
+
+/* ========================= Recursos ========================= */
+
+void PrecacheAndAddToDownloads()
+{
+    char fullPath[PLATFORM_MAX_PATH];
+    for (int i = 0; i < MAX_SOUNDS; i++)
+    {
+        Format(fullPath, sizeof(fullPath), "sound/%s", g_SoundPaths[i]);
+        if (FileExists(fullPath, true))
+            AddFileToDownloadsTable(fullPath);
+        PrecacheSound(g_SoundPaths[i], true);
+    }
+}
+
+/* ========================= Eventos y sonidos ========================= */
+
+public Action Event_PlayerJump(Event event, const char[] name, bool dontBroadcast)
+{
+    if (!gCvarEnable.BoolValue || event == null) return Plugin_Continue;
+
+    int client = GetClientOfUserId(event.GetInt("userid", 0));
+    if (!IsValidClient(client) || !IsSurvivor(client)) return Plugin_Continue;
+
+    PlayJumpSound(client);
+    TryApplySonicBoostOnJump(client);
+    return Plugin_Continue;
+}
+
+public Action Cmd_Jump(int client, int args)
+{
+    if (!gCvarEnable.BoolValue || !IsValidClient(client) || !IsSurvivor(client)) return Plugin_Continue;
+    PlayJumpSound(client);
+    TryApplySonicBoostOnJump(client);
+    return Plugin_Continue;
+}
+
+void PlayJumpSound(int client)
+{
+    int idx = g_iPlayerSoundIdx[client];
+    if (!(0 <= idx < MAX_SOUNDS)) return;
+
+    float now = GetEngineTime();
+    if (now < g_flNextAllowed[client]) return;
+
+    g_flNextAllowed[client] = now + gCvarCooldown.FloatValue;
+    EmitSoundToAll(g_SoundPaths[idx], client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, _, gCvarVolume.FloatValue);
+}
+
+void TryApplySonicBoostOnJump(int client)
+{
+    // Sonic index 0
+    if (g_iPlayerCharIdx[client] != 0) return;
+    if (!IsClientInGame(client) || IsFakeClient(client) || !IsPlayerAlive(client)) return;
+
+    float vel[3];
+    bool gotVel = false;
+    PropType propType = Prop_Send;
+
+    if (HasEntProp(client, Prop_Send, "m_vecVelocity"))
+    {
+        GetEntPropVector(client, Prop_Send, "m_vecVelocity", vel);
+        gotVel = true;
+        propType = Prop_Send;
+    }
+    else if (HasEntProp(client, Prop_Data, "m_vecVelocity"))
+    {
+        GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
+        gotVel = true;
+        propType = Prop_Data;
+    }
+
+    if (!gotVel) return;
+
+    float minZ = gCvarVelZMin.FloatValue;
+    if (vel[2] >= minZ)
+    {
+        float mult = gCvarSonicBoost.FloatValue;
+        vel[2] *= mult;
+        SetEntPropVector(client, propType, "m_vecVelocity", vel);
+    }
+}
+
+/* ========================= Persistencia de dueños (archivo) ========================= */
+
+bool GetClientSteamID(int client, char steam[64])
+{
+    if (!IsClientAuthorized(client)) return false;
+    return GetClientAuthId(client, AuthId_Steam2, steam, sizeof(steam), true);
+}
+
+void CharIdxToKey(int idx, char key[8])
+{
+    IntToString(idx, key, sizeof(key));
+}
+
+bool GetCharOwnerSteam(int idx, char steam[32])
+{
+    char key[8];
+    CharIdxToKey(idx, key);
+    return g_mCharOwner.GetString(key, steam, sizeof(steam));
+}
+
+void SetCharOwnerSteam(int idx, int client)
+{
+    char steam[32];
+    if (!GetClientSteamID(client, steam)) return;
+    char key[8];
+    CharIdxToKey(idx, key);
+    g_mCharOwner.SetString(key, steam);
+}
+
+void RemoveCharOwner(int idx)
+{
+    char key[8];
+    CharIdxToKey(idx, key);
+    g_mCharOwner.Remove(key);
+}
+
+void ClearAllCharOwners()
+{
+    delete g_mCharOwner;
+    g_mCharOwner = new StringMap();
+}
+
+bool IsCharAvailableForClient(int idx, int client)
+{
+    if (g_iCharTakenBy[idx] != 0 && g_iCharTakenBy[idx] != client) return false;
+
+    char ownerSteam[32], clientSteam[32];
+    if (GetCharOwnerSteam(idx, ownerSteam))
+    {
+        if (!GetClientSteamID(client, clientSteam)) return false;
+        if (!StrEqual(ownerSteam, clientSteam)) return false;
+    }
+    return true;
+}
+
+/* ----- Archivo KeyValues para dueños ----- */
+
+void LoadOwnersFromFile()
+{
+    KeyValues kv = new KeyValues("SonicJumpOwners");
+    if (!kv.ImportFromFile(g_sOwnersFile))
+    {
+        delete kv;
+        return;
+    }
+    ClearAllCharOwners();
+
+    if (kv.GotoFirstSubKey(false))
+    {
+        do {
+            char key[8];
+            kv.GetSectionName(key, sizeof(key));
+            char steam[32];
+            kv.GetString("steam64", steam, sizeof(steam), "");
+            if (steam[0]) g_mCharOwner.SetString(key, steam);
+        } while (kv.GotoNextKey(false));
+    }
+    delete kv;
+}
+
+void SaveOwnersToFile()
+{
+    KeyValues kv = new KeyValues("SonicJumpOwners");
+    for (int i = 0; i < MAX_CHARS; i++)
+    {
+        char key[8], steam[32];
+        CharIdxToKey(i, key);
+        if (g_mCharOwner.GetString(key, steam, sizeof(steam)))
+        {
+            kv.JumpToKey(key, true);
+            kv.SetString("steam64", steam);
+            kv.GoBack();
+        }
+    }
+    kv.ExportToFile(g_sOwnersFile);
+    delete kv;
+}
+
+/* ========================= Ocupación (sesión) ========================= */
+
+bool IsClientAmyAllowed(int client)
+{
+    return CheckCommandAccess(client, "sj_amy", ADMFLAG_GENERIC, true);
+}
+
+void AssignCharacterToClient(int charIdx, int client)
+{
+    if (!(0 <= charIdx < MAX_CHARS)) return;
+    g_iCharTakenBy[charIdx] = client;
+}
+
+void RebuildCharOccupancyFromPlayers()
+{
+    for (int i = 0; i < MAX_CHARS; i++) g_iCharTakenBy[i] = 0;
+
+    for (int client = 1; client <= MaxClients; client++)
+    {
+        if (!IsValidClient(client)) continue;
+
+        int idx = g_iPlayerCharIdx[client];
+
+        if (!(0 <= idx < MAX_CHARS) && AreClientCookiesCached(client))
+        {
+            LoadPlayerCharChoice(client);
+            idx = g_iPlayerCharIdx[client];
+        }
+        if (!(0 <= idx < MAX_CHARS)) continue;
+
+        if (idx == AMY_INDEX && !IsClientAmyAllowed(client))
+        {
+            g_iPlayerCharIdx[client] = INVALID_CHAR_INDEX;
+            continue;
+        }
+        if (IsCharAvailableForClient(idx, client))
+        {
+            AssignCharacterToClient(idx, client);
+            SetCharOwnerSteam(idx, client);
+        }
+        else
+        {
+            g_iPlayerCharIdx[client] = INVALID_CHAR_INDEX;
+        }
+    }
+    SaveOwnersToFile();
+}
+
+/* ========================= Menú de Sonidos ========================= */
+
+public Action Cmd_OpenSoundMenu(int client, int args)
+{
+    if (!IsValidClient(client)) return Plugin_Handled;
+    ShowJumpSoundMenu(client);
+    return Plugin_Handled;
+}
+
+void ShowJumpSoundMenu(int client)
+{
+    Menu menu = new Menu(MenuHandler_JumpSound);
+    menu.SetTitle("Selecciona sonido de salto");
+
+    char info[8], display[64];
+    for (int i = 0; i < MAX_SOUNDS; i++)
+    {
+        IntToString(i, info, sizeof(info));
+        Format(display, sizeof(display), "%s%s", g_SoundNames[i], (g_iPlayerSoundIdx[client] == i) ? " [Actual]" : "");
+        menu.AddItem(info, display);
+    }
+    menu.AddItem("nosound", "Sin sonido");
+    menu.ExitButton = true;
+    menu.Display(client, 15);
+}
+
+public int MenuHandler_JumpSound(Menu menu, MenuAction action, int client, int item)
+{
+    if (action == MenuAction_End)
+    {
+        delete menu;
+    }
+    else if (action == MenuAction_Select)
+    {
+        char info[16];
+        menu.GetItem(item, info, sizeof(info));
+
+        if (StrEqual(info, "nosound"))
+        {
+            g_iPlayerSoundIdx[client] = INVALID_SOUND_INDEX;
+            SetClientCookie(client, g_hSoundCookie, "");
+            PrintToChat(client, "[SonicJump] Sonido desactivado.");
+            ShowJumpSoundMenu(client);
+            return 0;
+        }
+
+        int idx = StringToInt(info);
+        if (!(0 <= idx < MAX_SOUNDS))
+        {
+            PrintToChat(client, "[SonicJump] Selección inválida.");
+            return 0;
+        }
+
+        g_iPlayerSoundIdx[client] = idx;
+        SetClientCookie(client, g_hSoundCookie, info);
+        PrintToChat(client, "[SonicJump] Sonido: %s", g_SoundNames[idx]);
+
+        if (g_iPlayerCharIdx[client] == INVALID_CHAR_INDEX) ShowCharMenu(client);
+        else ShowJumpSoundMenu(client);
+    }
+    return 0;
+}
+
+/* ========================= Menú de Personajes ========================= */
+
+public Action Cmd_OpenCharMenu(int client, int args)
+{
+    if (!IsValidClient(client)) return Plugin_Handled;
+    ShowCharMenu(client);
+    return Plugin_Handled;
+}
+
+void ShowCharMenu(int client)
+{
+    Menu menu = new Menu(MenuHandler_Char);
+    menu.SetTitle("Selecciona tu personaje");
+
+    char info[8], display[96];
+    char ownerSteam[32], clientSteam[32];
+    GetClientSteamID(client, clientSteam);
+
+    for (int i = 0; i < MAX_CHARS; i++)
+    {
+        IntToString(i, info, sizeof(info));
+
+        bool amy = (i == AMY_INDEX), allowedAmy = IsClientAmyAllowed(client);
+        bool takenByOther = (g_iCharTakenBy[i] != 0 && g_iCharTakenBy[i] != client);
+        bool ownedByOther = false;
+
+        if (GetCharOwnerSteam(i, ownerSteam))
+        {
+            if (!clientSteam[0] || !StrEqual(ownerSteam, clientSteam)) ownedByOther = true;
+        }
+
+        bool disabled = takenByOther || ownedByOther || (amy && !allowedAmy);
+
+        char status[48] = "";
+        if (disabled) strcopy(status, sizeof(status), " (No disponible)");
+        else if (g_iPlayerCharIdx[client] == i) strcopy(status, sizeof(status), " [Actual]");
+
+        Format(display, sizeof(display), "%s%s", g_CharNames[i], status);
+        menu.AddItem(info, display, disabled ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+    }
+
+    menu.AddItem("nochar", "Sin personaje");
+    menu.ExitButton = true;
+    menu.Display(client, 20);
+}
+
+public int MenuHandler_Char(Menu menu, MenuAction action, int client, int item)
+{
+    if (action == MenuAction_End)
+    {
+        delete menu;
+    }
+    else if (action == MenuAction_Select)
+    {
+        char info[16];
+        menu.GetItem(item, info, sizeof(info));
+
+        if (StrEqual(info, "nochar"))
+        {
+            int prev = g_iPlayerCharIdx[client];
+            if (0 <= prev < MAX_CHARS)
+            {
+                if (g_iCharTakenBy[prev] == client) g_iCharTakenBy[prev] = 0;
+
+                char ownerSteam[32], clientSteam[32];
+                if (GetCharOwnerSteam(prev, ownerSteam) && GetClientSteamID(client, clientSteam) && StrEqual(ownerSteam, clientSteam))
+                {
+                    RemoveCharOwner(prev);
+                    SaveOwnersToFile();
+                }
+            }
+            g_iPlayerCharIdx[client] = INVALID_CHAR_INDEX;
+            SetClientCookie(client, g_hCharCookie, "");
+            PrintToChat(client, "[SonicJump] Personaje desactivado.");
+
+            if (g_iPlayerSoundIdx[client] == INVALID_SOUND_INDEX) ShowJumpSoundMenu(client);
+            else ShowCharMenu(client);
+            return 0;
+        }
+
+        int idx = StringToInt(info);
+        if (!(0 <= idx < MAX_CHARS))
+        {
+            PrintToChat(client, "[SonicJump] Selección inválida.");
+            return 0;
+        }
+
+        if (idx == AMY_INDEX && !IsClientAmyAllowed(client))
+        {
+            PrintToChat(client, "[SonicJump] Amy es exclusiva para administradores.");
+            ShowCharMenu(client);
+            return 0;
+        }
+
+        if (!IsCharAvailableForClient(idx, client))
+        {
+            PrintToChat(client, "[SonicJump] %s no está disponible.", g_CharNames[idx]);
+            ShowCharMenu(client);
+            return 0;
+        }
+
+        int prev = g_iPlayerCharIdx[client];
+        if (0 <= prev < MAX_CHARS && g_iCharTakenBy[prev] == client) g_iCharTakenBy[prev] = 0;
+
+        AssignCharacterToClient(idx, client);
+        g_iPlayerCharIdx[client] = idx;
+
+        char cookie[8];
+        IntToString(idx, cookie, sizeof(cookie));
+        SetClientCookie(client, g_hCharCookie, cookie);
+        SetCharOwnerSteam(idx, client);
+        SaveOwnersToFile();
+
+        PrintToChat(client, "[SonicJump] Personaje: %s", g_CharNames[idx]);
+
+        // ✅ Aquí agregamos la asignación automática de teclas
+        OnPlayerSelectCharacter(client);
+
+        if (g_iPlayerSoundIdx[client] == INVALID_SOUND_INDEX) ShowJumpSoundMenu(client);
+        else ShowCharMenu(client);
+    }
+    return 0;
+}
+
+
+/* ========================= Admin: liberar todos ========================= */
+
+public Action Cmd_FreeAllChars(int client, int args)
+{
+    ClearAllCharOwners();
+    SaveOwnersToFile();
+    for (int i = 0; i < MAX_CHARS; i++) g_iCharTakenBy[i] = 0;
+
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (!IsClientInGame(i) || IsFakeClient(i)) continue;
+        g_iPlayerCharIdx[i] = INVALID_CHAR_INDEX;
+    }
+    PrintToChatAll("[SonicJump] Un administrador ha liberado todos los personajes.");
+    return Plugin_Handled;
+}
+
+/* ========================= NUEVO LOOP DOUBLE JUMP =========================
+   Basado en Paegus. Solo se aplica si:
+   - Plugin habilitado
+   - Cliente válido, vivo, superviviente
+   - Personaje actual es Amy
+   - sm_doublejump_enabled = 1
+   ======================================================================= */
+
+public void OnGameFrame()
+{
+    if (!gCvarEnable.BoolValue) return;
+    if (!g_bDoubleJump) return;
+	//Sonic_OnGameFrame();
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (!IsValidClient(i)) continue;
+        if (!IsPlayerAlive(i)) continue;
+        if (!IsSurvivor(i)) continue;
+
+        // Solo Amy
+        if (g_iPlayerCharIdx[i] != AMY_INDEX) continue;
+
+        DoubleJump_Check(i);
+    }
+}
+
+stock void DoubleJump_Check(int client)
+{
+    int fCurFlags = GetEntityFlags(client);
+    int fCurButtons = GetClientButtons(client);
+
+    if (g_fLastFlags[client] & FL_ONGROUND)
+    {
+        // estaba en suelo el frame pasado
+        if (!(fCurFlags & FL_ONGROUND) && !(g_fLastButtons[client] & IN_JUMP) && (fCurButtons & IN_JUMP))
+        {
+            OriginalJump(client);
+        }
+    }
+    else if (fCurFlags & FL_ONGROUND)
+    {
+        // aterrizó
+        Landed(client);
+    }
+    else if (!(g_fLastButtons[client] & IN_JUMP) && (fCurButtons & IN_JUMP))
+    {
+        ReJump(client);
+    }
+
+    g_fLastFlags[client] = fCurFlags;
+    g_fLastButtons[client] = fCurButtons;
+}
+
+stock void OriginalJump(int client)
+{
+    g_iJumps[client]++;
+}
+
+stock void Landed(int client)
+{
+    g_iJumps[client] = 0;
+}
+
+stock void ReJump(int client)
+{
+    if (g_iJumps[client] >= 1 && g_iJumps[client] <= g_iJumpMax)
+    {
+        g_iJumps[client]++;
+
+        float vVel[3];
+        GetEntPropVector(client, Prop_Data, "m_vecVelocity", vVel);
+        vVel[2] = g_flBoost;
+
+        TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vVel);
+
+        // Opcional: reproducir sonido de salto si está configurado
+        PlayJumpSound(client);
+    }
+}
+
+/* ========================= Utilidades extra ========================= */
+
+void LoadPlayerSoundChoice(int client)
+{
+    if (!IsValidClient(client)) return;
+    char buf[8];
+    GetClientCookie(client, g_hSoundCookie, buf, sizeof(buf));
+    if (!buf[0]) return;
+    int idx = StringToInt(buf);
+    g_iPlayerSoundIdx[client] = (0 <= idx < MAX_SOUNDS) ? idx : INVALID_SOUND_INDEX;
+}
+
+void LoadPlayerCharChoice(int client)
+{
+    if (!IsValidClient(client)) return;
+    char buf[8];
+    GetClientCookie(client, g_hCharCookie, buf, sizeof(buf));
+    if (!buf[0]) return;
+
+    int idx = StringToInt(buf);
+    if (!(0 <= idx < MAX_CHARS))
+    {
+        g_iPlayerCharIdx[client] = INVALID_CHAR_INDEX;
+        return;
+    }
+
+    if (idx == AMY_INDEX && !IsClientAmyAllowed(client))
+    {
+        g_iPlayerCharIdx[client] = INVALID_CHAR_INDEX;
+        SetClientCookie(client, g_hCharCookie, "");
+        PrintToChat(client, "[SonicJump] Amy es exclusiva para administradores.");
+        return;
+    }
+
+    if (!IsCharAvailableForClient(idx, client))
+    {
+        g_iPlayerCharIdx[client] = INVALID_CHAR_INDEX;
+        PrintToChat(client, "[SonicJump] Tu personaje guardado (%s) no está disponible.", g_CharNames[idx]);
+        return;
+    }
+
+    AssignCharacterToClient(idx, client);
+    g_iPlayerCharIdx[client] = idx;
+    SetCharOwnerSteam(idx, client);
+    SaveOwnersToFile();
+}
+
+void MaybePromptMenus(int client)
+{
+    if (!IsValidClient(client)) return;
+    if (g_iPlayerCharIdx[client] == INVALID_CHAR_INDEX)
+    {
+        ShowCharMenu(client);
+        return;
+    }
+    if (g_iPlayerSoundIdx[client] == INVALID_SOUND_INDEX)
+    {
+        ShowJumpSoundMenu(client);
+        return;
+    }
+}
+
+public Action Cmd_ShowCharInfo(int client, int args)
+{
+    char steam[64];
+    if (!GetClientSteamID(client, steam)) return Plugin_Handled;
+
+    PrintToChat(client, "[SonicJump] SteamID: %s", steam);
+    PrintToChat(client, "[SonicJump] Sonido actual: %d", g_iPlayerSoundIdx[client]);
+    PrintToChat(client, "[SonicJump] Personaje actual: %d", g_iPlayerCharIdx[client]);
+    return Plugin_Handled;
+}
+
+public Action L4D_OnEntityKilled(int victim, int attacker, int inflictor)
+{
+    if (!IsClientInGame(attacker))
+        return Plugin_Continue;
+
+    // 🔹 Verifica si el atacante es Sonic
+    if (g_iPlayerCharIdx[attacker] == SONIC_INDEX)
+    {
+        Sonic_OnKillInfected_Explosion(attacker, victim);
+    }
+
+    return Plugin_Continue;
+}
+
+public void SetCharacterForClient(int client, int newIndex)
+{
+    g_iPlayerCharIdx[client] = newIndex;
+
+    // Quita hooks antiguos
+    SDKUnhook(client, SDKHook_OnTakeDamage, Sonic_OnTakeDamage_Fall);
+
+    // Si ahora es Sonic, vuelve a enganchar
+    if (newIndex == SONIC_INDEX)
+    {
+        SDKHook(client, SDKHook_OnTakeDamage, Sonic_OnTakeDamage_Fall);
+    }
+}
+
+// Crea el ragdoll del jugador sin matarlo realmente
+// =====================
+//  Crear Ragdoll del jugador
+// =====================
+public void CreateSonicRagdoll(int client)
+{
+    if (!IsClientInGame(client) || !IsPlayerAlive(client))
+        return;
+
+    float pos[3], ang[3], vel[3];
+    GetClientAbsOrigin(client, pos);
+    GetClientAbsAngles(client, ang);
+    GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
+
+    char model[PLATFORM_MAX_PATH];
+    GetClientModel(client, model, sizeof(model));
+
+    // Crear entidad física (prop_ragdoll)
+    int ent = CreateEntityByName("prop_ragdoll");
+    if (ent == -1)
+    {
+        PrintToChat(client, "[Sonic] ❌ No se pudo crear ragdoll.");
+        return;
+    }
+
+    DispatchKeyValue(ent, "model", model);
+    DispatchKeyValue(ent, "spawnflags", "4"); // 4 = Debe colisionar
+    DispatchKeyValue(ent, "body", "0");
+    DispatchKeyValue(ent, "skin", "0");
+
+    DispatchSpawn(ent);
+    TeleportEntity(ent, pos, ang, vel);
+
+    SetEntityRenderColor(ent, 255, 255, 255, 255);
+    SetEntityMoveType(ent, MOVETYPE_VPHYSICS);
+    SetEntPropEnt(ent, Prop_Send, "m_hOwnerEntity", client);
+
+    PrintToChat(client, "[Sonic] 💀 Se ha generado tu ragdoll!");
+}
+
+public void OnMapEnd()
+{
+	Sally_OnMapEnd();
+	
+}

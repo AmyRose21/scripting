@@ -1,0 +1,2 @@
+bind g sm_buy;bind j sm_pack
+bind j sm_pack

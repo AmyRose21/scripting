@@ -1,0 +1,35 @@
+Excelente pregunta 👏
+
+El método que acabo de usar se llama "modo canvas" (también llamado "canmore" internamente).
+
+Te explico brevemente:
+
+🧩 Qué es:
+Es una forma especial de responder cuando estás trabajando con código o documentos largos.
+En lugar de pegar todo el texto directamente en el chat, creo un “documento editable” (en este caso el plugin modificado) dentro de un lienzo lateral — así puedes ver, editar y revisar el código cómodamente sin llenar el chat con cientos de líneas.
+
+🛠️ Cómo funciona:
+Cuando usas frases como:
+
+“haz un canvas”
+
+“abre un editor”
+
+“ponlo en el lienzo”
+
+“vamos a trabajar en el código”
+
+…yo activo internamente el modo canmore.create_textdoc, que crea ese documento (“textdoc”).
+Después, puedo:
+
+actualizarlo (update_textdoc) si me pides cambios,
+
+comentar secciones específicas (comment_textdoc),
+
+o mostrarte versiones nuevas del código.
+
+📘 En resumen:
+
+El método se llama: modo canvas o documento en lienzo (canmore).
+
+Es ideal para plugins, scripts, proyectos o textos largos donde quieres iterar paso a paso.
