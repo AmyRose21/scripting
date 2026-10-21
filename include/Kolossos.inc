@@ -302,8 +302,46 @@
  *  PASIVAS: vida max 670 (kolossos_health, receta Metal_ApplyMaxHealth,
  *  vuelta a 100 al dejar el personaje) + resistencia de dano
  *  (kolossos_resistance 100 = neutro; 50 = mitad de dano recibido).
- *  NO portado a v1: el M1 melee de puos (L4D2 pelea con armas, el kit
- *  vive en las 4 teclas) y el Climb de paredes (posible v1.1).
+ *  v1.9 (2026-10-21, reporte del owner con video de la v1.8 en vivo):
+ *   [M1] EL PUO AL CLICK — "el ataque basico se deberia hacer con el
+ *        click (orden de propio Gmod) pero click izq es disparar":
+ *        mientras el arma activa es PRIMARIA o SECUNDARIA el IN_ATTACK
+ *        se PISA (el arma no dispara) y el flanco del click = PUO
+ *        basico (esfera 65u, 35, CD 1.65 = AttackCooldown del GMod) o
+ *        puo al agarrado si hay victima. Granadas/botiquines/pastillas
+ *        (slots 2/3/4) quedan INTACTOS: su click izq sigue normal.
+ *   [GRAB-RAGDOLL] la victima agarrada ahora es un RAGDOLL DE VERDAD:
+ *        doble prop_ragdoll congelado por parent al attachment
+ *        "grabhand" (la receta Amy/Sonic: original oculto RENDER_NONE +
+ *        restauracion vigilada), cada puo SACUDE el cuerpo (unpin +
+ *        impulso + re-pin), y al LANZARLA el doble sale volando con
+ *        impulso por hueso (Sonic_RagPhysLaunch) mientras el original
+ *        oculto LO SIGUE tick a tick (congruencia: los bots y el dano
+ *        le pegan donde esta el ragdoll) y revive DONDE CAYO — "al
+ *        tirar al enemigo estos quedan en ragdoll", tal cual el GMod.
+ *        FIX de fondo del "agarro mas de una vez": la v1.8 re-assertaba
+ *        parent+tilt por tick sobre la victima VIVA (el engine suelta
+ *        parents de players a cada rato -> re-snap visible = la
+ *        animacion del agarre repetida); ahora la victima ni tiene
+ *        parent: la arrastra el teleport congruente y el parent vive
+ *        en el RAGDOLL (una entidad prop: parent estable de verdad).
+ *   [CHARGE-CARRY] la embestida LLEVA POR DELANTE (Lua l.1785-1957):
+ *        los especiales enganchados van ocultos con su doble pegado
+ *        DELANTE del coloso (fwd*40+up*40, el pin del Lua) y los
+ *        comunes van arrastrados VISIBLES parentados al avatar; al
+ *        tope de pared o al terminar, todos salen volando (los dobles
+ *        con impulso por hueso + follow congruente).
+ *   [COUNTER] el bloqueo ahora contrarresta ataques de INFECTADOS
+ *        ESPECIALES y sus habilidades (tongue del smoker, acido de la
+ *        spitter, roca del tank — todo lo que venga de un cliente team
+ *        3), PERO commons y witch NO cuentan (siguen absorvidos sin
+ *        disparar contra). Respuesta melee (<300u): el ATACANTE sale
+ *        en RAGDOLL stun volando (Sonic_SpawnFlingRagdollEx — "el
+ *        counter lanza al enemigo en estado ragdoll"). Respuesta
+ *        roca (>=300u o fuente smoker/spitter/tank_rock): la ROCA DE
+ *        TANK reforzada (75 de dano + 1s de stun al area — "mucho mas
+ *        fuerte que la del propio tank").
+ *  NO portado: el Climb de paredes (posible v2.0).
  *
  *  SONIDOS: sound/om/kolossos/ (27 wavs del killer) copiados del addon GMod. Cada uno se chequea con FileExists: sin el archivo
  *  cae al fallback nativo HL2/L4D2 (patron g_bMetalSnd* de Metal.inc)
@@ -320,7 +358,7 @@
  * =====================================================================
  */
 
-#define KOLOSSOS_INC_VERSION "1.8-OM"
+#define KOLOSSOS_INC_VERSION "1.9-OM"
 
 // ------------------------- CONSTANTES KIT ---------------------------
 // (defaults = registro oficial GMod om_survivors_register_noodles_kolossos;
@@ -394,6 +432,32 @@
 #define KOL_ROCK_TOUCH_RADIUS      100.0   // AoE del impacto de la roca
 #define KOL_DASH_VEL_INJECT        900.0   // vel[0] saturado (receta Metal)
 #define KOL_MAXENT                 2048    // sprites del indicator (por indice)
+
+// v1.9: EL SISTEMA DE RAGDOLLS DEL GRAB/CARRY/COUNTER (receta Sonic
+// v6.33/Amy v106: doble prop_ragdoll + original oculto + follow
+// congruente + restauracion vigilada)
+#define KOL_RAG_PIN_DELAY          0.25    // beat de fisica antes de parentar (el doble se desploma y ESE es el pose)
+#define KOL_RAG_JOLT_UP            260.0   // sacudida del cuerpo por puo (unpin + impulso)
+#define KOL_RAG_JOLT_REPIN         0.40    // ...y re-pin tras el golpe
+#define KOL_RAG_THROW_FWD          700.0   // lanzamiento del doble (GMod l.2153: fwd*700)
+#define KOL_RAG_THROW_LIFT         0.45    // fraccion extra en Z del lanzamiento
+#define KOL_RAG_THROW_TUMBLE       700.0   // giro por hueso
+#define KOL_RAG_THROW_STUN         2.5     // la victima queda tirada (stun) hasta restaurar
+#define KOL_RAG_RESTORE_Z          12.0    // nace/restaura despegada del piso
+#define KOL_CHG_CARRY_F            40.0    // Lua l.1902: el doble delante del coloso fwd*40
+#define KOL_CHG_CARRY_U            40.0    // ...y up*40 (el pin del carry del GMod)
+#define KOL_CNT_FLING              700.0   // counter melee: el atacante vuela (GMod 3000 escalado)
+#define KOL_CNT_LIFT               0.55    // fraccion Z del counter
+#define KOL_CNT_TUMBLE             900.0   // giro por hueso del counter
+#define KOL_CNT_STUN               2.5     // stun del atacante countered
+#define KOL_M1_CD                  1.65    // GMod l.2664: AttackCooldown del M1
+#define KOL_M1_RANGE               65.0    // esfera del puo basico (hull frontal del charge)
+
+// modos del registro de victimas con ragdoll (g_iKolVictRagMode)
+#define KOL_RAGMODE_NONE           0
+#define KOL_RAGMODE_GRABPIN        1       // doble clavado a la mano del avatar (agarre)
+#define KOL_RAGMODE_CHARGEPIN      2       // doble clavado DELANTE del avatar (embestida)
+#define KOL_RAGMODE_FLIGHT         3       // doble volando: el original lo sigue (congruencia) y revive donde cae
 
 // ------------------------- ESTADOS ----------------------------------
 #define KOL_CHG_IDLE               0
@@ -472,6 +536,12 @@ ConVar g_cvKolBlockCd;
 ConVar g_cvKolBlockDur;
 ConVar g_cvKolRockDmg;
 ConVar g_cvKolRockScale;
+ConVar g_cvKolRockStun;    // v1.9: stun al area del impacto de la roca
+ConVar g_cvKolM1;          // v1.9: click izq = puo (slots 0/1 pisados)
+ConVar g_cvKolM1Dmg;       // v1.9: dano del puo basico
+ConVar g_cvKolGrabRag;     // v1.9: la victima del grab viaja como ragdoll
+ConVar g_cvKolChgCarry;    // v1.9: la embestida lleva por delante
+ConVar g_cvKolCntRag;      // v1.9: el counter manda al atacante en ragdoll
 
 // ------------------------- ESTADO POR JUGADOR -----------------------
 int    g_iKolChargeState[MAXPLAYERS + 1];   // KOL_CHG_*
@@ -546,6 +616,20 @@ bool   g_bKolWelcomeSaid[MAXPLAYERS + 1];
 bool   g_bKolHooked[MAXPLAYERS + 1];      // OnTakeDamage enganchado (auto-gestion FSM)
 bool   g_bKolHpApplied[MAXPLAYERS + 1];   // vida max aplicada en esta vida
 
+// v1.9: REGISTRO DE RAGDOLLS POR VICTIMA (clientes SI): el doble + el
+// original oculto + el modo. Un ragdoll por victima a la vez — el de
+// Sonic (Sonic_SpawnFlingRagdollEx) para el counter (restauracion
+// vigilada por su T_SonicStunWatch), el de aqui para grab/carry.
+int    g_iKolVictRag[MAXPLAYERS + 1];        // EntRef del doble (0 = sin)
+int    g_iKolVictRagMode[MAXPLAYERS + 1];    // KOL_RAGMODE_*
+int    g_iKolVictRagOwner[MAXPLAYERS + 1];   // el Kolossos responsable
+int    g_iKolVictRagRender[MAXPLAYERS + 1];  // render mode original de la victima
+bool   g_bKolVictRagJolted[MAXPLAYERS + 1];  // sacudida en vuelo (re-pin pendiente)
+float  g_fKolVictRagRepinAt[MAXPLAYERS + 1]; // hora del re-pin tras el jolt
+float  g_fKolVictRagPinDelay[MAXPLAYERS + 1]; // hora del pin inicial (beat de fisica)
+int    g_iKolLastButtons[MAXPLAYERS + 1];    // v1.9: flanco del M1 (edge del IN_ATTACK)
+float  g_fKolM1CdUntil[MAXPLAYERS + 1];      // v1.9: CD del puo basico
+
 // ------------------------- ASSETS -----------------------------------
 bool   g_bKolModelOK = false;              // kolossos.mdl montado (patron Blaze)
 bool   g_bKolWarnedModel = false;
@@ -570,6 +654,7 @@ bool   g_bKolSndPunch, g_bKolSndPullOut, g_bKolSndWhisper, g_bKolSndBlock;
 bool   g_bKolSndPing;                      // om/metal/ping1.wav (ya del suite)
 bool   g_bKolSndSlam;                       // v1.1: Sound.mp3 (slam con empalados)
 bool   g_bKolSndLaughKill;                  // v1.1: Kolossos laughing.wav (Kill)
+bool   g_bKolSndM1;                         // v1.9: kol m1 (1..4).wav (el basico de click)
 char   g_sKolLaughPath[PLATFORM_MAX_PATH];  // v1.1: ruta real (carpeta Kolossos/kolossos)
 bool   g_bKolRockModel = false;            // rockgranite03b.mdl (nativo L4D2)
 
@@ -661,8 +746,16 @@ public void Kolossos_OnPluginStart()
 
     g_cvKolBlockCd     = CreateConVar("kolossos_block_cooldown", "14", "Kolossos [B] Block: cooldown s (GMod 14)", 0, true, 1.0);
     g_cvKolBlockDur    = CreateConVar("kolossos_block_duration", "3.5", "Kolossos [B] Block: duracion s (GMod 3.5)", 0, true, 0.5, true, 10.0);
-    g_cvKolRockDmg     = CreateConVar("kolossos_rock_damage", "35", "Kolossos [B] Block: dano de la roca del contragolpe", 0, true, 1.0);
+    g_cvKolRockDmg     = CreateConVar("kolossos_rock_damage", "75", "Kolossos [B] Block: dano de la roca del contragolpe (v1.9: 75 — 'mucho mas fuerte que la del propio tank', la del tank ~24)", 0, true, 1.0);
     g_cvKolRockScale   = CreateConVar("kolossos_rock_scale", "3", "Kolossos [B] Block: escala de la roca (GMod 3)", 0, true, 0.5, true, 6.0);
+    g_cvKolRockStun    = CreateConVar("kolossos_rock_stun", "1", "Kolossos [B] Block: stun s al area del impacto de la roca (0 = solo dano)", 0, true, 0.0, true, 5.0);
+
+    // v1.9: M1 al click + ragdolls + carry del counter/embestida
+    g_cvKolM1          = CreateConVar("kolossos_m1", "1", "Kolossos: click izq con arma PRIMARIA/SECUNDARIA = PUO basico (el disparo queda pisado; granadas/botiquines/pastillas intactos)", 0, true, 0.0, true, 1.0);
+    g_cvKolM1Dmg       = CreateConVar("kolossos_m1_damage", "35", "Kolossos [M1]: dano del puo basico (esfera 65u al frente)", 0, true, 1.0);
+    g_cvKolGrabRag     = CreateConVar("kolossos_grab_ragdoll", "1", "Kolossos [X] Grab: la victima viaja como RAGDOLL (doble ocultando al original, sacudida por puo, lanzamiento con follow congruente; 0 = pegado vivo v1.8)", 0, true, 0.0, true, 1.0);
+    g_cvKolChgCarry    = CreateConVar("kolossos_charge_carry", "1", "Kolossos [Z] Charge: la embestida LLEVA POR DELANTE a quienes engancha (especiales como ragdoll delante, comunes arrastrados; Lua l.1785+)", 0, true, 0.0, true, 1.0);
+    g_cvKolCntRag      = CreateConVar("kolossos_counter_ragdoll", "1", "Kolossos [B] Block: el counter melee manda al atacante en RAGDOLL stun volando (0 = solo el fling)", 0, true, 0.0, true, 1.0);
 
     RegConsoleCmd("sm_kolossos", Kolossos_CmdDebug, "Kolossos: estado del kit (debug)");
 
@@ -684,6 +777,16 @@ public void Kolossos_OnPluginStart()
         g_fKolLayShotStart[i]  = 0.0;
         g_fKolLayShotDur[i]    = 0.2;
         g_bKolLayHoldOn[i]     = false;
+        // v1.9: registro de ragdolls + M1
+        g_iKolVictRag[i]       = 0;
+        g_iKolVictRagMode[i]   = KOL_RAGMODE_NONE;
+        g_iKolVictRagOwner[i]  = 0;
+        g_iKolVictRagRender[i] = -1;
+        g_bKolVictRagJolted[i] = false;
+        g_fKolVictRagRepinAt[i] = 0.0;
+        g_fKolVictRagPinDelay[i] = 0.0;
+        g_iKolLastButtons[i]   = 0;
+        g_fKolM1CdUntil[i]     = 0.0;
     }
     for (int e = 0; e <= KOL_MAXENT; e++) g_iKolIndSprite[e] = 0;
     for (int s = 0; s < KOL_ST_COUNT; s++) g_iKolSeqIdx[s] = -1;   // v1.6
@@ -757,6 +860,7 @@ public void Kolossos_OnMapStart()
     g_bKolSndImpacts   = FileExists("sound/om/kolossos/Kol impacts.wav", true);
     g_bKolSndLaugh     = FileExists("sound/om/kolossos/Kol charge laugh impale.wav", true);
     g_bKolSndWallBump  = FileExists("sound/om/kolossos/Kol wall bump.wav", true);
+    g_bKolSndM1        = FileExists("sound/om/kolossos/kol m1 (1).wav", true);   // v1.9: el pack trae los 4
     g_bKolSndGrabLunge = FileExists("sound/om/kolossos/kol grab lunge.wav", true);
     g_bKolSndGrabUse   = FileExists("sound/om/kolossos/Kol uses grab.wav", true);
     g_bKolSndImpale    = FileExists("sound/om/kolossos/Kol impales.wav", true);
@@ -970,8 +1074,29 @@ void Kolossos_ResetState(int client)
     g_fKolIndCdUntil[client]   = 0.0;
     g_fKolIndNextPing[client]  = 0.0;
 
+    // v1.9: liberar los ragdolls de victimas propias (grab/carry/counter)
+    // — el doble muere, el original revive visible donde quedo
+    for (int v = 1; v <= MaxClients; v++)
+    {
+        if (g_iKolVictRag[v] != 0 && g_iKolVictRagOwner[v] == client)
+            Kolossos_VictRagEnd(v, true);
+    }
+
     if (g_hKolHitList[client] != null)
     {
+        // v1.9: cualquier comun/witch todavia ARRASTRADO (parentado al
+        // avatar) se despega antes de tirar la lista
+        int nH = g_hKolHitList[client].Length;
+        for (int i = 0; i < nH; i++)
+        {
+            int ent = EntRefToEntIndex(g_hKolHitList[client].Get(i));
+            if (ent > MaxClients && IsValidEntity(ent)
+                && GetEntPropEnt(ent, Prop_Data, "m_hMoveParent") != -1)
+            {
+                SetVariantString("");
+                AcceptEntityInput(ent, "SetParent", ent, ent);
+            }
+        }
         delete g_hKolHitList[client];
         g_hKolHitList[client] = null;
     }
@@ -2018,6 +2143,16 @@ void Kolossos_KillAvatarOnly(int client)
 {
     if (client < 1 || client > MaxClients) return;
 
+    // v1.9: los dobles PINNEADOS a este avatar se caen con el — liberar
+    // (los FLIGHT siguen su vuelo: no estan parenteados). El grab cae
+    // al pegado v1.8 en el proximo tick y el carry los suelta
+    for (int v = 1; v <= MaxClients; v++)
+    {
+        if (g_iKolVictRag[v] != 0 && g_iKolVictRagOwner[v] == client
+            && g_iKolVictRagMode[v] != KOL_RAGMODE_FLIGHT)
+            Kolossos_VictRagEnd(v, true);
+    }
+
     Kolossos_KillAvatarL(client);
 
     int av = EntRefToEntIndex(g_iKolAvatar[client]);
@@ -2648,11 +2783,28 @@ void Kolossos_FlingHitList(int client, bool hitWall)
         {
             if (!IsClientInGame(ent) || !IsPlayerAlive(ent)) continue;
             if (GetClientTeam(ent) != 3) continue;   // solo infectados
-            TeleportEntity(ent, NULL_VECTOR, NULL_VECTOR, push);
+
+            // v1.9: con doble ragdoll el que VUELA es el doble (impulso
+            // por hueso + follow congruente — la victima revive donde
+            // caiga); sin doble, el empujon directo de siempre
+            if (Kolossos_VictRagActive(ent))
+            {
+                float ldir[3];
+                ldir[0] = push[0]; ldir[1] = push[1]; ldir[2] = 0.0;
+                NormalizeVector(ldir, ldir);
+                Kolossos_VictRagLaunch(client, ent, ldir, KOL_CHG_FLING_FWD);
+            }
+            else
+                TeleportEntity(ent, NULL_VECTOR, NULL_VECTOR, push);
         }
         else
         {
-            // commons: empuje fisico del cuerpo (si sigue vivo)
+            // commons/witch arrastrados: DESPEGARLOS del avatar y volar
+            if (GetEntProp(ent, Prop_Data, "m_hMoveParent") != -1)
+            {
+                SetVariantString("");
+                AcceptEntityInput(ent, "SetParent", ent, ent);
+            }
             if (GetEntProp(ent, Prop_Data, "m_iHealth") > 0 && HasEntProp(ent, Prop_Data, "m_vecVelocity"))
                 TeleportEntity(ent, NULL_VECTOR, NULL_VECTOR, push);
         }
@@ -2752,11 +2904,39 @@ void Kolossos_ChargeDashThink(int client, float now)
             if (!IsClientInGame(v) || !IsPlayerAlive(v)) continue;
             OM_AbilityDamage(v, client, dmg);
             OM_Stun(v, 1.0, client, 0.0, DMG_OM_CLUB, false);   // aturdido 1s
+
+            // v1.9: LLEVAR POR DELANTE — el especial viaja OCULTO con su
+            // doble ragdoll clavado DELANTE del coloso (Lua l.1850+: el
+            // CreateRagdolLCharacter_OM con el pin fwd*40+up*40)
+            if (g_cvKolChgCarry != null && g_cvKolChgCarry.BoolValue
+                && !Kolossos_VictRagActive(v))
+                Kolossos_VictRagSpawn(client, v, KOL_RAGMODE_CHARGEPIN);
         }
         else if (v > MaxClients)
         {
             if (GetEntProp(v, Prop_Data, "m_iHealth") <= 0) continue;
             OM_AbilityDamage(v, client, dmg);
+
+            // v1.9: commons/witch ARRASTRADOS — pegados al frente del
+            // avatar (entidades: parent estable), visibles luchando
+            // contra la avalancha, tal cual el "llevar por delante"
+            if (g_cvKolChgCarry != null && g_cvKolChgCarry.BoolValue)
+            {
+                int avC = EntRefToEntIndex(g_iKolAvatar[client]);
+                if (avC > 0 && IsValidEntity(avC)
+                    && GetEntPropEnt(v, Prop_Data, "m_hMoveParent") == -1)
+                {
+                    float avPos[3], cdir[3], cspot[3];
+                    GetClientAbsOrigin(client, avPos);
+                    Kolossos_GetMoveDir(client, cdir);
+                    cspot[0] = avPos[0] + cdir[0] * KOL_CHG_CARRY_F;
+                    cspot[1] = avPos[1] + cdir[1] * KOL_CHG_CARRY_F;
+                    cspot[2] = avPos[2] + KOL_CHG_CARRY_U;
+                    TeleportEntity(v, cspot, NULL_VECTOR, NULL_VECTOR);
+                    SetVariantString("!activator");
+                    AcceptEntityInput(v, "SetParent", avC, avC);
+                }
+            }
         }
     }
 
@@ -2806,6 +2986,316 @@ void Kolossos_HitListAdd(int client, int ent)
 {
     if (g_hKolHitList[client] == null) g_hKolHitList[client] = new ArrayList();
     g_hKolHitList[client].Push(EntIndexToEntRef(ent));
+}
+
+// =====================================================================
+//  v1.9: EL SISTEMA DE RAGDOLLS DE VICTIMAS (la receta Sonic v6.33 /
+//  Amy v106 aplicada al grab/carry: doble prop_ragdoll + original
+//  oculto + follow congruente + restauracion vigilada).
+//  LA LECCION DEL VIDEO DEL OWNER: la v1.8 parentaba a la victima VIVA
+//  (un player) y re-assertaba parent+tilt por tick — el engine suelta
+//  los parents de players a cada rato, y cada re-assert era un SNAP
+//  visible ("hace la animacion de que lo agarro mas de una vez").
+//  Ahora: la victima ni tiene parent (la arrastra un teleport
+//  congruente por tick del FSM) y el parent vive en el DOBLE (una
+//  entidad prop: parent estable de verdad). El doble nace, se deja
+//  caer KOL_RAG_PIN_DELAY segundos (la fisica le da el pose colgado)
+//  y ahi se clava a la MANO (attachment grabhand) o DELANTE del
+//  coloso (carry de la embestida). Cada puo lo sacude (unpin + impulso
+//  + re-pin) y el lanzamiento lo manda con impulso POR HUESO
+//  (Sonic_RagPhysLaunch) mientras el original oculto LO SIGUE — y
+//  revive DONDE CAYO, tal cual el GMod (CreateRagdolLCharacter_OM).
+// =====================================================================
+
+bool Kolossos_VictRagActive(int victim)
+{
+    if (victim < 1 || victim > MaxClients) return false;
+    return g_iKolVictRag[victim] != 0;
+}
+
+// el doble de la victima (0 si no esta / murio)
+int Kolossos_VictRagOf(int victim)
+{
+    if (victim < 1 || victim > MaxClients) return 0;
+    int rag = EntRefToEntIndex(g_iKolVictRag[victim]);
+    if (rag <= MaxClients || !IsValidEntity(rag)) return 0;
+    return rag;
+}
+
+// spawn del doble + original oculto. mode = GRABPIN / CHARGEPIN.
+// La victima debe ser un cliente (SI) vivo; el pin sale diferido
+// (KOL_RAG_PIN_DELAY: el beat de fisica que le da el pose colgado).
+bool Kolossos_VictRagSpawn(int client, int victim, int mode)
+{
+    if (victim < 1 || victim > MaxClients) return false;
+    if (!IsClientInGame(victim) || !IsPlayerAlive(victim)) return false;
+    if (Kolossos_VictRagActive(victim)) return true;   // ya tiene uno
+
+    char mdl[PLATFORM_MAX_PATH];
+    GetClientModel(victim, mdl, sizeof(mdl));
+    if (mdl[0] == '\0') return false;
+
+    int rag = CreateEntityByName("prop_ragdoll");
+    if (rag <= 0 || !IsValidEntity(rag)) return false;
+
+    DispatchKeyValue(rag, "model", mdl);
+    DispatchSpawn(rag);
+
+    // despertar el vphysics YA (receta sonic v6.6 — ragdoll dormido = clavado)
+    AcceptEntityInput(rag, "EnableMotion");
+    AcceptEntityInput(rag, "Wake");
+
+    float pos[3], ang[3];
+    GetClientAbsOrigin(victim, pos);
+    GetClientAbsAngles(victim, ang);
+    pos[2] += KOL_RAG_RESTORE_Z;
+    TeleportEntity(rag, pos, ang, NULL_VECTOR);
+    Sonic_RagMakePassable(rag);   // DEBRIS: el doble no traba contra nada
+
+    // el original FUERA de la vista (el doble es la verdad de mundo)
+    g_iKolVictRagRender[victim] = view_as<int>(GetEntityRenderMode(victim));
+    SetEntityRenderMode(victim, RENDER_NONE);
+
+    g_iKolVictRag[victim]       = EntIndexToEntRef(rag);
+    g_iKolVictRagMode[victim]   = mode;
+    g_iKolVictRagOwner[victim]  = client;
+    g_bKolVictRagJolted[victim] = false;
+    g_fKolVictRagRepinAt[victim] = 0.0;
+    g_fKolVictRagPinDelay[victim] = GetEngineTime() + KOL_RAG_PIN_DELAY;
+    return true;
+}
+
+// clavar el doble a la MANO del avatar (agarre) — SetParentAttachment
+// "grabhand": sigue al hueso RightHand animado ($attachment v1.5.2)
+void Kolossos_VictRagPin(int client, int victim)
+{
+    int rag = Kolossos_VictRagOf(victim);
+    if (rag == 0) return;
+    int av = EntRefToEntIndex(g_iKolAvatar[client]);
+    if (av <= 0 || !IsValidEntity(av)) { Kolossos_VictRagEnd(victim, false); return; }
+
+    if (g_iKolVictRagMode[victim] == KOL_RAGMODE_GRABPIN)
+    {
+        SetVariantString("!activator");
+        AcceptEntityInput(rag, "SetParent", av, av);
+        SetVariantString("grabhand");
+        AcceptEntityInput(rag, "SetParentAttachment", av, av);
+    }
+    else
+    {
+        // carry de la embestida: DELANTE del coloso (Lua l.1902:
+        // GetPos() + forward*40 + up*40) — primero se COLOCA en el
+        // punto y despues el SetParent conserva esa posicion como
+        // offset relativo (teleportar un parentado es territorio raro)
+        float avPos[3], dir[3], spot[3];
+        GetClientAbsOrigin(client, avPos);
+        Kolossos_GetMoveDir(client, dir);
+        spot[0] = avPos[0] + dir[0] * KOL_CHG_CARRY_F;
+        spot[1] = avPos[1] + dir[1] * KOL_CHG_CARRY_F;
+        spot[2] = avPos[2] + KOL_CHG_CARRY_U;
+        TeleportEntity(rag, spot, NULL_VECTOR, NULL_VECTOR);
+        SetVariantString("!activator");
+        AcceptEntityInput(rag, "SetParent", av, av);
+    }
+    g_bKolVictRagJolted[victim] = false;
+}
+
+void Kolossos_VictRagUnpin(int victim)
+{
+    int rag = Kolossos_VictRagOf(victim);
+    if (rag == 0) return;
+    if (GetEntPropEnt(rag, Prop_Data, "m_hMoveParent") == -1) return;
+    SetVariantString("");
+    AcceptEntityInput(rag, "SetParent", rag, rag);
+}
+
+// el PUO al cuerpo colgado: unpin + impulso + re-pin (la sacudida)
+void Kolossos_VictRagJolt(int victim)
+{
+    int rag = Kolossos_VictRagOf(victim);
+    if (rag == 0) return;
+    Kolossos_VictRagUnpin(victim);
+    AcceptEntityInput(rag, "EnableMotion");
+    AcceptEntityInput(rag, "Wake");
+    float vel[3];
+    vel[0] = GetRandomFloat(-80.0, 80.0);
+    vel[1] = GetRandomFloat(-80.0, 80.0);
+    vel[2] = KOL_RAG_JOLT_UP;
+    TeleportEntity(rag, NULL_VECTOR, NULL_VECTOR, vel);
+    g_bKolVictRagJolted[victim] = true;
+    g_fKolVictRagRepinAt[victim] = GetEngineTime() + KOL_RAG_JOLT_REPIN;
+}
+
+// EL LANZAMIENTO: el doble vuela con impulso POR HUESO (Sonic v6.33),
+// el original queda oculto siguiendolo — y revive donde cae
+void Kolossos_VictRagLaunch(int client, int victim, const float dir[3], float speed)
+{
+    int rag = Kolossos_VictRagOf(victim);
+    if (rag == 0) return;
+
+    Kolossos_VictRagUnpin(victim);
+    AcceptEntityInput(rag, "EnableMotion");
+    AcceptEntityInput(rag, "Wake");
+
+    if (!Sonic_RagPhysLaunch(rag, dir, speed, speed * KOL_RAG_THROW_LIFT, KOL_RAG_THROW_TUMBLE))
+        Sonic_RagFlingEngine(rag, dir, speed, speed * KOL_RAG_THROW_LIFT);
+
+    g_iKolVictRagMode[victim] = KOL_RAGMODE_FLIGHT;
+
+    // la victima queda TIRADA mientras el doble vuela/rueda (el stun
+    // del OM la mantiene fuera de combate — restauracion al despertar)
+    OM_Stun(victim, KOL_RAG_THROW_STUN, client, 0.0, DMG_OM_CLUB, true);
+}
+
+// counter: spawn + vuelo INMEDIATO en NUESTRO registro (la receta del
+// fling de Sonic v6.35 pero con follow congruente por tick: el original
+// oculto persigue al doble y revive donde cae)
+bool Kolossos_VictRagFling(int client, int victim, const float dir[3], float speed)
+{
+    if (!Kolossos_VictRagSpawn(client, victim, KOL_RAGMODE_FLIGHT)) return false;
+    int rag = Kolossos_VictRagOf(victim);
+    if (rag == 0) return false;
+    if (!Sonic_RagPhysLaunch(rag, dir, speed, speed * KOL_CNT_LIFT, KOL_CNT_TUMBLE))
+        Sonic_RagFlingEngine(rag, dir, speed, speed * KOL_CNT_LIFT);
+    return true;
+}
+
+// la victima murio con el doble puesto: soltarlo como CADaver (cae
+// donde este, se limpia a los 3s — patron Sonic_DeadFlingCopy) y
+// liberar el registro sin teleports
+void Kolossos_VictRagCorpse(int victim)
+{
+    if (victim < 1 || victim > MaxClients) return;
+    if (g_iKolVictRag[victim] == 0) return;
+
+    int rag = Kolossos_VictRagOf(victim);
+    if (rag != 0)
+    {
+        Kolossos_VictRagUnpin(victim);
+        AcceptEntityInput(rag, "EnableMotion");
+        AcceptEntityInput(rag, "Wake");
+        CreateTimer(3.0, Kolossos_T_VictRagCorpseClean, EntIndexToEntRef(rag), TIMER_FLAG_NO_MAPCHANGE);
+    }
+
+    g_iKolVictRag[victim]       = 0;
+    g_iKolVictRagMode[victim]   = KOL_RAGMODE_NONE;
+    g_iKolVictRagOwner[victim]  = 0;
+    g_bKolVictRagJolted[victim] = false;
+    g_fKolVictRagRepinAt[victim] = 0.0;
+    g_fKolVictRagPinDelay[victim] = 0.0;
+
+    if (IsClientInGame(victim) && g_iKolVictRagRender[victim] != -1)
+    {
+        SetEntityRenderMode(victim, view_as<RenderMode>(g_iKolVictRagRender[victim]));
+        g_iKolVictRagRender[victim] = -1;
+    }
+}
+
+public Action Kolossos_T_VictRagCorpseClean(Handle timer, any ref)
+{
+    int ent = EntRefToEntIndex(view_as<int>(ref));
+    if (ent > 0 && IsValidEntity(ent))
+        AcceptEntityInput(ent, "Kill");
+    return Plugin_Stop;
+}
+
+// fin del ciclo: matar el doble, devolverle el render al original y
+// (si pidieron) revivirlo DONDE quedo el doble (la congruencia final)
+void Kolossos_VictRagEnd(int victim, bool teleportToRag)
+{
+    if (victim < 1 || victim > MaxClients) return;
+    if (g_iKolVictRag[victim] == 0) return;
+
+    int rag = Kolossos_VictRagOf(victim);
+
+    if (teleportToRag && rag != 0 && IsClientInGame(victim) && IsPlayerAlive(victim))
+    {
+        float ragPos[3];
+        GetEntPropVector(rag, Prop_Data, "m_vecOrigin", ragPos);
+        ragPos[2] += KOL_RAG_RESTORE_Z;
+        TeleportEntity(victim, ragPos, NULL_VECTOR, NULL_VECTOR);
+    }
+
+    if (rag != 0) AcceptEntityInput(rag, "Kill");
+
+    g_iKolVictRag[victim]       = 0;
+    g_iKolVictRagMode[victim]   = KOL_RAGMODE_NONE;
+    g_iKolVictRagOwner[victim]  = 0;
+    g_bKolVictRagJolted[victim] = false;
+    g_fKolVictRagRepinAt[victim] = 0.0;
+    g_fKolVictRagPinDelay[victim] = 0.0;
+
+    if (IsClientInGame(victim) && g_iKolVictRagRender[victim] != -1)
+    {
+        SetEntityRenderMode(victim, view_as<RenderMode>(g_iKolVictRagRender[victim]));
+        g_iKolVictRagRender[victim] = -1;
+    }
+}
+
+// el latido del registro (10 Hz, desde T_KolossosThink): pin diferido,
+// re-pin de la sacudida, follow congruente del vuelo y limpieza de
+// huerfanos (avatar muerto / victima liberada / mapa)
+void Kolossos_VictRagThink(float now)
+{
+    for (int v = 1; v <= MaxClients; v++)
+    {
+        if (g_iKolVictRag[v] == 0) continue;
+
+        int rag = Kolossos_VictRagOf(v);
+        int owner = g_iKolVictRagOwner[v];
+
+        // huerfanos: doble muerto o victima fuera de juego -> restaurar
+        if (rag == 0 || !IsClientInGame(v))
+        {
+            Kolossos_VictRagEnd(v, true);
+            continue;
+        }
+
+        // la victima murio con el doble puesto (la mato otro, no el
+        // combo): el doble queda de cadaver donde este
+        if (!IsPlayerAlive(v) && g_iKolVictRagMode[v] != KOL_RAGMODE_FLIGHT)
+        {
+            Kolossos_VictRagCorpse(v);
+            continue;
+        }
+
+        // pins diferidos (spawn) y re-pins (sacudida del puo)
+        if (g_fKolVictRagPinDelay[v] > 0.0 && now >= g_fKolVictRagPinDelay[v])
+        {
+            g_fKolVictRagPinDelay[v] = 0.0;
+            if (g_iKolVictRagMode[v] == KOL_RAGMODE_GRABPIN
+                || g_iKolVictRagMode[v] == KOL_RAGMODE_CHARGEPIN)
+                Kolossos_VictRagPin(owner, v);
+        }
+        if (g_bKolVictRagJolted[v] && now >= g_fKolVictRagRepinAt[v])
+        {
+            if (g_iKolVictRagMode[v] == KOL_RAGMODE_GRABPIN
+                || g_iKolVictRagMode[v] == KOL_RAGMODE_CHARGEPIN)
+                Kolossos_VictRagPin(owner, v);
+            else
+                g_bKolVictRagJolted[v] = false;
+        }
+
+        // FLIGHT: el original oculto SIGUE al doble (tick a tick — la
+        // congruencia del owner: los bots y el dano le pegan donde
+        // esta el ragdoll) y revive DONDE QUEDO al despertar del stun
+        if (g_iKolVictRagMode[v] == KOL_RAGMODE_FLIGHT)
+        {
+            if (!IsPlayerAlive(v))
+            {
+                Kolossos_VictRagCorpse(v);
+                continue;
+            }
+            if (!OM_IsStunned(v))
+            {
+                Kolossos_VictRagEnd(v, true);
+                continue;
+            }
+            float ragPos[3];
+            GetEntPropVector(rag, Prop_Data, "m_vecOrigin", ragPos);
+            TeleportEntity(v, ragPos, NULL_VECTOR, NULL_VECTOR);
+        }
+    }
 }
 
 // =====================================================================
@@ -3045,11 +3535,25 @@ void Kolossos_GrabBegin(int client, int victim)
         SetEntProp(victim, Prop_Data, "movetype", MOVETYPE_NONE);
     }
 
+    // v1.9: LA VICTIMA VIAJA COMO RAGDOLL — doble prop_ragdoll que se
+    // desploma un beat y se clava a la MANO (attachment grabhand);
+    // el original queda RENDER_NONE y pegado al doble por teleport
+    // congruente (el fix del video: la v1.8 parentaba al PLAYER vivo y
+    // re-assertaba cada tick = el SNAP repetido "del agarre mas de una
+    // vez"). Commons/witch (entidades) o convar off: pegado v1.8
+    bool ragdolled = false;
+    if (g_cvKolGrabRag != null && g_cvKolGrabRag.BoolValue
+        && victim > 0 && victim <= MaxClients)
+    {
+        ragdolled = Kolossos_VictRagSpawn(client, victim, KOL_RAGMODE_GRABPIN);
+    }
+
     // v1.8: LA VICTIMA PEGADA AL BRAZO DESDE EL INSTANTE DEL AGARRE — el
     // snap al attachment ES el "agarre inicial" visible que faltaba (el
     // material del grab del .mdl esta vacio: el pegado a la mano era
     // TODO el look del original, tal cual el Lua de GMod)
-    Kolossos_GrabVictimGlue(client, victim);
+    if (!ragdolled)
+        Kolossos_GrabVictimGlue(client, victim);
 
     Kolossos_Emit(client, g_bKolSndImpale, "om/kolossos/Kol impales.wav",
                   "physics/flesh/flesh_break3.wav");
@@ -3094,12 +3598,22 @@ void Kolossos_GrabHoldThink(int client, float now)
         return;
     }
 
-    // v1.8: PEGADA AL BRAZO — el parent la sigue a la MANO animada y
-    // orientada a donde mira KOLOSSOS (re-assert por tick: sobrevive
-    // re-montajes del avatar al cambiar de survivor). Si no se puede
-    // pegar (mdl sin attachment / parent fallado), cae al offset v1.7
-    // (el viejo "en vilo delante del survivor invisible")
-    if (!Kolossos_GrabVictimGlue(client, victim))
+    // v1.9: RAGDOLL MODE — el doble cuelga de la mano y el original
+    // oculto va PEGADO AL DOBLE por teleport (congruencia por tick:
+    // bots y dano le pegan donde esta el cuerpo que se ve). Sin doble
+    // (commons/witch/convar off): la v1.8 — pegada al brazo con parent
+    // (re-assert solo si se solto) o el offset v1.7 de ultima instancia
+    if (Kolossos_VictRagActive(victim))
+    {
+        int rag = Kolossos_VictRagOf(victim);
+        if (rag != 0)
+        {
+            float ragPos[3];
+            GetEntPropVector(rag, Prop_Data, "m_vecOrigin", ragPos);
+            TeleportEntity(victim, ragPos, NULL_VECTOR, NULL_VECTOR);
+        }
+    }
+    else if (!Kolossos_GrabVictimGlue(client, victim))
     {
         float pos[3], dir[3];
         GetClientAbsOrigin(client, pos);
@@ -3169,6 +3683,11 @@ void Kolossos_GrabPunch(int client)
     Kolossos_GrabShot(client, KOL_ST_GRABPUNCH,
                       Kolossos_ShotDur(KOL_ST_GRABPUNCH, KOL_DUR_GRABPUNCH),
                       KOL_SHOT_GRAB);
+
+    // v1.9: el cuerpo colgado SACUDE con el puo (unpin + impulso +
+    // re-pin) — el golpe se VE en la victima, una vez por puo
+    if (Kolossos_VictRagActive(victim))
+        Kolossos_VictRagJolt(victim);
 
     g_iKolGrabPunches[client]--;
     if (g_iKolGrabPunches[client] <= 0)
@@ -3241,10 +3760,26 @@ void Kolossos_GrabRelease(int client, bool fling, bool victimDied)
 
     if (victim > 0 && IsValidEntity(victim))
     {
+        bool ragMode = Kolossos_VictRagActive(victim);
+
+        // v1.9: la victima murio agarrada — el doble queda de cadaver
+        if (ragMode && victimDied && victim <= MaxClients)
+        {
+            Kolossos_VictRagCorpse(victim);
+            ragMode = false;
+        }
+
         // restaurar movimiento
         if (victim <= MaxClients)
         {
-            if (IsClientInGame(victim)) OM_Stun_Clear(victim);
+            // v1.9: en modo ragdoll el LANZAMIENTO la deja TIRADA (stun):
+            // el stun lo administra VictRagThink hasta que caiga el doble
+            if (!ragMode || !fling)
+            {
+                if (IsClientInGame(victim)) OM_Stun_Clear(victim);
+            }
+            if (!ragMode)
+                Kolossos_VictRagEnd(victim, true);
         }
         else if (g_iKolGrabMoveType[client] > 0)
         {
@@ -3258,13 +3793,26 @@ void Kolossos_GrabRelease(int client, bool fling, bool victimDied)
         // +0.3s del arranque (GMod l.2154)
         // v1.5: fusionado — el lanzamiento CAMINANDO / CORRIENDO /
         // PLANTADO segun la locomocion, ciclo COMPLETO, nadie lo corta
+        // v1.9: en modo ragdoll el que VUELA es el DOBLE (impulso por
+        // hueso, GMod l.2153 fwd*700) y el original lo sigue oculto —
+        // "al tirar al enemigo estos quedan en ragdoll"
         if (fling && IsClientInGame(client) && IsPlayerAlive(client))
         {
             Kolossos_GrabShot(client, KOL_ST_GRABTHROW,
                               Kolossos_ShotDur(KOL_ST_GRABTHROW, KOL_DUR_GRABTHROW),
                               KOL_SHOT_MAX);
-            g_iKolGrabFlingRef[client] = EntIndexToEntRef(victim);
-            CreateTimer(KOL_GRAB_FLING_DELAY, Kolossos_T_GrabFling, GetClientUserId(client));
+
+            if (ragMode)
+            {
+                float dir[3];
+                Kolossos_GetMoveDir(client, dir);
+                Kolossos_VictRagLaunch(client, victim, dir, KOL_RAG_THROW_FWD);
+            }
+            else
+            {
+                g_iKolGrabFlingRef[client] = EntIndexToEntRef(victim);
+                CreateTimer(KOL_GRAB_FLING_DELAY, Kolossos_T_GrabFling, GetClientUserId(client));
+            }
 
             Kolossos_Emit(client, g_bKolSndPullOut, "om/kolossos/kol sting and pull out.wav",
                           "physics/flesh/flesh_impact_bullet1.wav");
@@ -3505,11 +4053,16 @@ void Kolossos_BlockEnd(int client)
         SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
 }
 
-// el contragolpe: gira al atacante y devuelve la ROCA en arco
+// el contragolpe: gira al atacante y responde SEGUN LA FUENTE
 // v1.1: la anim del counter segun la distancia del atacante (GMod
 // l.1347-1355: <300u = BlackCounterMelee cuerpo a cuerpo / si no =
 // BlockProjectile a distancia, l.1438-1443)
-void Kolossos_BlockCounter(int client, int attacker)
+// v1.9 (owner): [1] las fuentes PROYECTIL — tongue del smoker, acido
+// de la spitter, roca del tank — responden SIEMPRE con la ROCA;
+// [2] el counter melee MANDA AL ATACANTE en ragdoll stun volando
+// ("el counter lanza al enemigo en estado ragdoll" — el
+// CreateRagdolLCharacter_OM + dir*3000 del Lua, escalado a L4D2)
+void Kolossos_BlockCounter(int client, int attacker, int inflictor)
 {
     g_bKolBlockCountered[client] = true;
 
@@ -3524,11 +4077,59 @@ void Kolossos_BlockCounter(int client, int attacker)
     ang[2] = 0.0;
     TeleportEntity(client, NULL_VECTOR, ang, NULL_VECTOR);
 
-    // la anim del contragolpe segun distancia (GMod l.1347)
-    bool meleeRange = (GetVectorDistance(apos, mpos) < 300.0);
-    Kolossos_AnimShot(client, meleeRange ? KOL_ST_COUNTER : KOL_ST_BLOCKPROJ, 1.0, KOL_SHOT_ACT);
+    // fuente proyectil? (roca del tank por inflictor, o el propio
+    // atacante es smoker/spitter/tank — sus golpes vienen de lejos)
+    bool rockSource = false;
+    if (inflictor > MaxClients && IsValidEntity(inflictor))
+    {
+        char icls[24];
+        GetEntityClassname(inflictor, icls, sizeof(icls));
+        if (StrEqual(icls, "tank_rock")) rockSource = true;
+    }
+    if (!rockSource)
+    {
+        int zc = GetEntProp(attacker, Prop_Send, "m_zombieClass");
+        if (zc == 1 || zc == 4 || zc == 8) rockSource = true;   // smoker/spitter/tank
+    }
 
-    Kolossos_SpawnCounterRock(client, apos);
+    bool meleeRange = (GetVectorDistance(apos, mpos) < 300.0);
+
+    if (rockSource || !meleeRange)
+    {
+        // LA ROCA DE TANK reforzada (GMod l.1448+: BlockProjectile + el
+        // arco scripted — v1.9: 75 de dano + stun al area)
+        Kolossos_AnimShot(client, KOL_ST_BLOCKPROJ, 1.0, KOL_SHOT_ACT);
+        Kolossos_SpawnCounterRock(client, apos);
+        return;
+    }
+
+    // counter melee: anim + el atacante sale en RAGDOLL stun volando
+    Kolossos_AnimShot(client, KOL_ST_COUNTER, 1.0, KOL_SHOT_ACT);
+
+    float dir[3];
+    MakeVectorFromPoints(mpos, apos, dir);
+    dir[2] = 0.0;
+    NormalizeVector(dir, dir);
+
+    if (g_cvKolCntRag != null && g_cvKolCntRag.BoolValue
+        && OM_Stun(attacker, KOL_CNT_STUN, client, 0.0, DMG_OM_CLUB, true))
+    {
+        // el doble vuela con impulso por hueso; el original oculto lo
+        // sigue (congruencia) y revive donde cae (2.5s de castigo)
+        Kolossos_VictRagFling(client, attacker, dir, KOL_CNT_FLING);
+    }
+    else
+    {
+        // sin ragdolls (convar off): el fling directo
+        float push[3];
+        push[0] = dir[0] * KOL_CNT_FLING;
+        push[1] = dir[1] * KOL_CNT_FLING;
+        push[2] = KOL_CNT_FLING * KOL_CNT_LIFT;
+        TeleportEntity(attacker, NULL_VECTOR, NULL_VECTOR, push);
+    }
+
+    Kolossos_Emit(client, g_bKolSndPunch, "om/kolossos/kolossos punching.wav",
+                  "physics/flesh/flesh_impact_hard3.wav");
 }
 
 // la roca: prop_physics con velocidad balistica (travelTime 0.5, peak 150)
@@ -3653,6 +4254,15 @@ public void Kolossos_RockTouch(int rock, int other)
             if (GetEntProp(v, Prop_Data, "m_iHealth") <= 0) continue;
         }
         SDKHooks_TakeDamage(v, owner, owner, dmg, DMG_CLUB);
+
+        // v1.9: el stagger del impacto — la roca del coloso ATURDE al
+        // area ("mucho mas fuerte que la del propio tank": mas dano +
+        // 1s de stun a los especiales que sobrevivan al golpe)
+        if (snapIsSI[k] && v <= MaxClients && IsClientInGame(v) && IsPlayerAlive(v)
+            && g_cvKolRockStun != null && g_cvKolRockStun.FloatValue > 0.0)
+        {
+            OM_Stun(v, g_cvKolRockStun.FloatValue, owner, 0.0, DMG_OM_CLUB, false);
+        }
     }
 
     AcceptEntityInput(rock, "Kill");
@@ -3681,27 +4291,32 @@ public Action Kolossos_OnTakeDamage(int victim, int &attacker, int &inflictor,
     if (!Kolossos_PlayerIs(victim)) return Plugin_Continue;
 
     // ---- bloqueo activo: dano de infectados a CERO (GMod l.1256-1261) ----
+    // v1.9 (owner): el COUNTER solo lo disparan los ESPECIALES y sus
+    // habilidades ("el counter ahora puede counterar ataques basicos de
+    // otros infectados habilidades y demas — menos a los commons, ellos
+    // siguen sin contar, asi la witch tambien"): commons/witch y el FF
+    // de survivors quedan ABSORVIDOS (dano 0) pero sin contra.
     if (g_fKolBlockUntil[victim] > GetEngineTime())
     {
-        bool infectedAttacker = false;
-        if (attacker > 0 && attacker <= MaxClients && IsClientInGame(attacker))
-            infectedAttacker = (GetClientTeam(attacker) == 3);
-        else if (attacker > MaxClients && IsValidEntity(attacker))
-        {
-            char cls[16];
-            GetEntityClassname(attacker, cls, sizeof(cls));
-            infectedAttacker = (StrEqual(cls, "infected") || StrEqual(cls, "witch"));
-        }
+        bool siAttacker = false;    // cliente team 3: cuenta para el counter
+        bool absorb = false;        // absorbe sin contra (commons/witch/FF/otros)
 
-        if (infectedAttacker)
+        if (attacker > 0 && attacker <= MaxClients && IsClientInGame(attacker))
+        {
+            if (GetClientTeam(attacker) == 3) siAttacker = true;
+            else absorb = true;
+        }
+        else absorb = true;   // commons (attacker entidad), witch, cualquier otra fuente
+
+        if (siAttacker || absorb)
         {
             damage = 0.0;
 
-            // el PRIMER golpe consuma el bloqueo y dispara el counter
-            if (!g_bKolBlockCountered[victim] && attacker > 0)
+            // el PRIMER golpe de un ESPECIAL consume el bloqueo y dispara el counter
+            if (siAttacker && !g_bKolBlockCountered[victim] && attacker > 0)
             {
                 Kolossos_BlockEnd(victim);
-                Kolossos_BlockCounter(victim, attacker);
+                Kolossos_BlockCounter(victim, attacker, inflictor);
             }
             return Plugin_Changed;
         }
@@ -3719,22 +4334,155 @@ public Action Kolossos_OnTakeDamage(int victim, int &attacker, int &inflictor,
 }
 
 // =====================================================================
-//  RUNCMD: auto-forward de la avalancha (receta Metal v5.0)
+//  v1.9: EL PUO BASICO AL CLICK — "se supone que el ataque basico se
+//  deberia hacer con el click (orden de propio Gmod) pero click izq es
+//  disparar, por lo que necesitamos que haya algo que pueda bloquear
+//  los disparos del arma... el click de disparo PISADO por el de
+//  ataque de Kolossos (ojo solo para las ramas primarias y
+//  secundarias; para las granadas o botiquines seguiran igual el click
+//  izq podra funcionar en ellas)" — el owner, literal.
 // =====================================================================
+
+// el pisado: arma activa en slot 0/1 -> IN_ATTACK fuera (el arma NO
+// dispara) y el flanco de bajada del click = el puo. Devuelve true si
+// los buttons cambiaron (el manager devuelve Plugin_Changed)
+bool Kolossos_M1Gate(int client, int &buttons)
+{
+    if (g_cvKolM1 == null || !g_cvKolM1.BoolValue) return false;
+    if (!(buttons & IN_ATTACK)) return false;
+
+    int wep = GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
+    if (wep <= 0 || !IsValidEntity(wep)) return false;
+
+    // SOLO primaria (0) y secundaria (1): granadas (2), botiquin (3) y
+    // pastillas (4) quedan INTACTOS — su click izq funciona normal
+    bool slot01 = false;
+    for (int s = 0; s <= 1; s++)
+        if (GetPlayerWeaponSlot(client, s) == wep) { slot01 = true; break; }
+    if (!slot01) return false;
+
+    bool rising = !(g_iKolLastButtons[client] & IN_ATTACK);   // un dano por click
+
+    buttons &= ~IN_ATTACK;
+    if (rising) Kolossos_M1(client);
+    return true;
+}
+
+// el M1 (GMod l.2541-2675, attack.mode 'trigger'): con victima
+// agarrada = el puo del combo; sin ella = el basico (esfera 65u al
+// frente, dano kolossos_m1_damage, CD 1.65 = AttackCooldown del Lua)
+void Kolossos_M1(int client)
+{
+    float now = GetEngineTime();
+
+    // con victima en vilo: el mismo puo del combo (GMod l.2566)
+    if (g_iKolGrabVictim[client] != 0)
+    {
+        Kolossos_GrabPunch(client);
+        return;
+    }
+
+    // gates del Lua l.2558-2565 (nada de pegar en windup/dash/etc)
+    if (g_iKolChargeState[client] != KOL_CHG_IDLE) return;
+    if (g_fKolLungeUntil[client] > now) return;
+    if (g_fKolBlockUntil[client] > now) return;
+    if (g_fKolIndUntil[client] > now) return;
+    if (OM_IsStunned(client)) return;
+    if (now < g_fKolM1CdUntil[client]) return;
+    g_fKolM1CdUntil[client] = now + KOL_M1_CD;
+
+    // sonido (kol m1 1-4 del killer, fallback nativo)
+    if (g_bKolSndM1)
+    {
+        char snd[56];
+        Format(snd, sizeof(snd), "om/kolossos/kol m1 (%d).wav", GetRandomInt(1, 4));
+        EmitSoundToAll(snd, client, _, KOL_SND_LEVEL);
+    }
+    else
+        EmitSoundToAll("physics/flesh/flesh_impact_hard4.wav", client, _, KOL_SND_LEVEL);
+
+    // la esfera del golpe (la misma geometria frontal del empale)
+    float pos[3], dir[3];
+    GetClientAbsOrigin(client, pos);
+    Kolossos_GetMoveDir(client, dir);
+    pos[0] += dir[0] * 40.0;
+    pos[1] += dir[1] * 40.0;
+    pos[2] += 40.0;
+
+    float dmg = g_cvKolM1Dmg.FloatValue;
+
+    // SNAPSHOT primero, dano despues (REGLA v3.77.85)
+    int   m1Ents[32];
+    bool  m1IsSI[32];
+    int   m1Count = 0;
+
+    int ent = -1;
+    while ((ent = FindEntityByClassname(ent, "infected")) != -1)
+    {
+        if (m1Count >= 32) break;
+        if (!IsValidEntity(ent)) continue;
+        if (GetEntProp(ent, Prop_Data, "m_iHealth") <= 0) continue;
+        float epos[3];
+        GetEntPropVector(ent, Prop_Data, "m_vecOrigin", epos);
+        if (GetVectorDistance(epos, pos) > KOL_M1_RANGE) continue;
+        m1Ents[m1Count] = ent; m1IsSI[m1Count] = false; m1Count++;
+    }
+    for (int t = 1; t <= MaxClients && m1Count < 32; t++)
+    {
+        if (t == client || !IsClientInGame(t) || !IsPlayerAlive(t)) continue;
+        if (GetClientTeam(t) != 3) continue;
+        float tpos[3];
+        GetClientAbsOrigin(t, tpos);
+        if (GetVectorDistance(tpos, pos) > KOL_M1_RANGE) continue;
+        m1Ents[m1Count] = t; m1IsSI[m1Count] = true; m1Count++;
+    }
+
+    for (int k = 0; k < m1Count; k++)
+    {
+        int v = m1Ents[k];
+        if (v <= 0 || !IsValidEntity(v)) continue;
+        if (m1IsSI[k] && v <= MaxClients)
+        {
+            if (!IsClientInGame(v) || !IsPlayerAlive(v)) continue;
+        }
+        else if (v > MaxClients)
+        {
+            if (GetEntProp(v, Prop_Data, "m_iHealth") <= 0) continue;
+        }
+        OM_AbilityDamage(v, client, dmg);
+    }
+
+    if (m1Count > 0)
+        Kolossos_Emit(client, g_bKolSndImpacts, "om/kolossos/Kol impacts.wav",
+                      "physics/flesh/flesh_impact_hard4.wav");
+
+    // el swing (ACT_MELEE_ATTACK_SWING_GESTURE del Lua = la serie del
+    // puo con la locomocion de ahora; sin fusion no dispara nada crudo)
+    Kolossos_GrabShot(client, KOL_ST_GRABPUNCH,
+                      Kolossos_ShotDur(KOL_ST_GRABPUNCH, KOL_DUR_GRABPUNCH) * 0.6,
+                      KOL_SHOT_GRAB);
+}
 
 public bool Kolossos_OnPlayerRunCmd(int client, int &buttons, float vel[3])
 {
-    if (!Kolossos_PlayerIs(client)) return false;
-    if (!IsPlayerAlive(client)) return false;
+    if (!Kolossos_PlayerIs(client) || !IsPlayerAlive(client))
+    {
+        g_iKolLastButtons[client] = buttons;
+        return false;
+    }
+
+    // v1.9: el click izq pisado en slots 0/1 = EL PUO (el arma no dispara)
+    bool changed = Kolossos_M1Gate(client, buttons);
+    g_iKolLastButtons[client] = buttons;
 
     // durante el WINDUP: clavado en el sitio
     if (g_iKolChargeState[client] == KOL_CHG_WINDUP)
     {
         SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 0.0);
-        return false;
+        return changed;
     }
 
-    if (g_iKolChargeState[client] != KOL_CHG_DASH) return false;
+    if (g_iKolChargeState[client] != KOL_CHG_DASH) return changed;
 
     // forwardmove saturado (el engine clampea al m_flMaxspeed del stack)
     vel[0] = KOL_DASH_VEL_INJECT;
@@ -3750,6 +4498,10 @@ public bool Kolossos_OnPlayerRunCmd(int client, int &buttons, float vel[3])
 public Action T_KolossosThink(Handle timer)
 {
     float now = GetEngineTime();
+
+    // v1.9: el latido del registro de ragdolls (pins diferidos, follow
+    // congruente del vuelo, restauracion y limpieza de huerfanos)
+    Kolossos_VictRagThink(now);
 
     // el indicator es global (una sola nube a la vez por simplicidad):
     // buscar al Kolossos que lo tiene activo
@@ -3977,6 +4729,28 @@ public Action Kolossos_CmdDebug(int client, int args)
     // avatar (parent + attachment) con tilt afinable en vivo
     PrintToConsole(client, "Victima: pegada al brazo (parent + attachment grabhand) | tilt %.0f grados (kolossos_grab_tilt) | fallback: offset v1.7",
                    g_cvKolGrabTilt != null ? g_cvKolGrabTilt.FloatValue : -35.0);
+    // v1.9: el estado de los sistemas nuevos
+    int nRag = 0, nPin = 0, nFly = 0;
+    for (int v = 1; v <= MaxClients; v++)
+    {
+        if (g_iKolVictRag[v] == 0) continue;
+        if (g_iKolVictRagMode[v] == KOL_RAGMODE_FLIGHT) nFly++;
+        else nPin++;
+        nRag++;
+    }
+    PrintToConsole(client, "Ragdolls: %d activos (%d clavados / %d volando con follow) | grab_ragdoll %d | charge_carry %d | counter_ragdoll %d",
+                   nRag, nPin, nFly,
+                   g_cvKolGrabRag != null ? g_cvKolGrabRag.IntValue : -1,
+                   g_cvKolChgCarry != null ? g_cvKolChgCarry.IntValue : -1,
+                   g_cvKolCntRag != null ? g_cvKolCntRag.IntValue : -1);
+    PrintToConsole(client, "M1: click izq %s (slots 0/1 pisados, granadas/botiquin intactos) | dano %.0f | CD %.2fs",
+                   (g_cvKolM1 != null && g_cvKolM1.BoolValue) ? "PUO basico" : "OFF (kolossos_m1 0)",
+                   g_cvKolM1Dmg != null ? g_cvKolM1Dmg.FloatValue : 35.0,
+                   KOL_M1_CD);
+    PrintToConsole(client, "Counter: especiales/habilidades SI (commons/witch NO cuentan) | melee <300u = ragdoll stun %.1fs | roca: dano %.0f + stun %.1fs",
+                   KOL_CNT_STUN,
+                   g_cvKolRockDmg != null ? g_cvKolRockDmg.FloatValue : 75.0,
+                   g_cvKolRockStun != null ? g_cvKolRockStun.FloatValue : 1.0);
     // v1.3: la serie del grab — duraciones medidas + lanzamiento pendiente
     PrintToConsole(client, "GrabSerie: reach %.2fs | punch %.2fs | throw %.2fs (0 = fallback QC 60fps) | lanzar en %.1fs",
                    g_fKolSeqDur[KOL_ST_GRABREACH], g_fKolSeqDur[KOL_ST_GRABPUNCH],
