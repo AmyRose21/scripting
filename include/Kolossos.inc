@@ -1,11 +1,28 @@
 /*
  * =====================================================================
- *  [MODULO] KOLOSSOS — El Coloso de OutComeMemories v1.1-OM
+ *  [MODULO] KOLOSSOS — El Coloso de OutComeMemories v1.2-OM
  *  PERSONAJE 14 DEL SUITE (KOLOSSOS_INDEX 13)
  *
  *  Port directo de "Lua de OM de Gmod/autorun/include/killer/
  *  noodles_om_pills_killer_kolossos.lua" (by noodles) — el killer
  *  colosal del pack OM pills, traido a L4D2 como personaje jugable.
+ *
+ *  v1.2 (manager 3.77.96) — FIX "AL ELEGIRLO NO SALE EL AVATAR"
+ *  (reporte del owner tras probar la v1.1): la FSM de 10 Hz llevaba
+ *  TIMER_FLAG_NO_MAPCHANGE pero se creaba UNA SOLA VEZ en
+ *  OnPluginStart — al primer cambio de mapa el timer moria y NUNCA se
+ *  re-creaba: sin T_KolossosThink no hay montaje (Kolossos_CreateAvatar
+ *  SOLO la llama la FSM), no hay auto-reparacion de la copia L y no hay
+ *  tick del kit (avalancha/agarre/bloqueo/indicator). Por eso la v1.0
+ *  parecia funcionar (se probO en el primer mapa tras instalar) y en el
+ *  mapa 2+ el coloso ya no salia. Receta canon del suite (Rouge v10 /
+ *  Blaze v2.11 / Silver v2.0): re-crear el timer en OnMapStart + nuevo
+ *  Kolossos_OnMapEnd que suelta el handle mientras sigue vivo (la
+ *  leccion del "crash del capitulo 2" del manager v3.30). FIX
+ *  secundario incluido: el ref de la copia R ahora se asigna ANTES de
+ *  crear la L (CreateAvatarL valida que la R exista; en v1.0/v1.1 la L
+ *  nacia solo por la auto-reparacion 0.1s tarde, con el cuerpo ya en
+ *  RENDER_NONE = una decima de invisibilidad total en cada montaje).
  *
  *  v1.1 (manager 3.77.95) — LAS ANIMACIONES COMPLETAS + EL FIX DEL
  *  DOBLADO, reporte del owner: "Las animaciones de kolossos faltaron" y
@@ -84,7 +101,7 @@
  * =====================================================================
  */
 
-#define KOLOSSOS_INC_VERSION "1.1-OM"
+#define KOLOSSOS_INC_VERSION "1.2-OM"
 
 // ------------------------- CONSTANTES KIT ---------------------------
 // (defaults = registro oficial GMod om_survivors_register_noodles_kolossos;
@@ -337,6 +354,15 @@ public void Kolossos_OnPluginStart()
 
 public void Kolossos_OnMapStart()
 {
+    // v1.2 FIX "AL ELEGIRLO NO SALE EL AVATAR" — la FSM de 10 Hz llevaba
+    // TIMER_FLAG_NO_MAPCHANGE pero solo se creaba en OnPluginStart: al
+    // primer cambio de mapa moria y ya nunca revivia (sin FSM no hay
+    // montaje del avatar, ni auto-reparacion de la L, ni tick del kit).
+    // Receta canon del suite (Rouge v10 L786 / Blaze v2.11 L755 / Silver
+    // v2.0): re-crear el timer AQUI, en CADA arranque de mapa.
+    delete g_hKolThink;
+    g_hKolThink = CreateTimer(0.1, T_KolossosThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+
     // modelo del avatar (patron Blaze g_bBlazeModelOK)
     char mdl[PLATFORM_MAX_PATH];
     g_cvKolModel.GetString(mdl, sizeof(mdl));
@@ -406,6 +432,64 @@ public void Kolossos_OnMapStart()
     if (g_bKolSndLaughKill) PrecacheSound(g_sKolLaughPath, true);
 
     g_bKolWarnedModel = false;   // avisa 1 vez por mapa si falta el modelo
+}
+
+// v1.2: la mitad que faltaba del ciclo de vida (patron Rouge_OnMapEnd /
+// Blaze_OnMapEnd / Silver_OnMapEnd): soltar el handle del timer AQUI,
+// mientras sigue vivo, para que el OnMapStart del mapa siguiente no
+// herede un handle muerto (la leccion del "crash del capitulo 2" del
+// manager v3.30) — y el estado del kit a cero porque las entidades
+// (avatares, sprites del indicator, rocas) murieron con el mapa. La
+// limpieza PROFUNDA del gameplay la hace round_start del mapa nuevo.
+public void Kolossos_OnMapEnd()
+{
+    delete g_hKolThink;
+
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        // avatares y anims: las entidades murieron con el mapa
+        g_iKolAvatar[i]        = 0;
+        g_iKolAvatarL[i]       = 0;
+        g_iKolAnimState[i]     = -1;
+        g_iKolAnimShotState[i] = -1;
+        g_fKolAnimShotUntil[i] = 0.0;
+        g_iKolBodyRender[i]    = -1;
+        g_bKolSmSnap[i]        = false;
+
+        // el kit a cero (refs y ventanas del mapa viejo)
+        g_iKolChargeState[i]    = KOL_CHG_IDLE;
+        g_fKolChargeEnd[i]      = 0.0;
+        g_fKolWindupStart[i]    = 0.0;
+        g_fKolChargeCdUntil[i]  = 0.0;
+        g_fKolStuckSince[i]     = 0.0;
+        g_iKolSavedColGroup[i]  = -1;
+        g_iKolGrabVictim[i]     = 0;
+        g_iKolGrabPunches[i]    = 0;
+        g_iKolGrabMoveType[i]   = -1;
+        g_fKolLungeUntil[i]     = 0.0;
+        g_fKolGrabHoldEnd[i]    = 0.0;
+        g_fKolGrabCdUntil[i]    = 0.0;
+        g_bKolGrabLunged[i]     = false;
+        g_fKolBlockUntil[i]     = 0.0;
+        g_fKolBlockCdUntil[i]   = 0.0;
+        g_bKolBlockCountered[i] = false;
+        g_fKolIndUntil[i]       = 0.0;
+        g_fKolIndCdUntil[i]     = 0.0;
+        g_fKolIndNextPing[i]    = 0.0;
+
+        // flags de auto-gestion de la FSM: el mapa nuevo arranca limpio
+        g_bKolHooked[i]    = false;
+        g_bKolHpApplied[i] = false;
+
+        if (g_hKolHitList[i] != null)
+        {
+            delete g_hKolHitList[i];
+            g_hKolHitList[i] = null;
+        }
+    }
+
+    // los sprites del indicator murieron con el mapa
+    for (int e = 0; e <= KOL_MAXENT; e++) g_iKolIndSprite[e] = 0;
 }
 
 // =====================================================================
@@ -802,6 +886,13 @@ void Kolossos_CreateAvatar(int client)
 
     SDKHook(av, SDKHook_SetTransmit, Kolossos_TransmitAvatarR);
 
+    // v1.2: el ref de la R ANTES de crear la L — CreateAvatarL valida que
+    // la R exista, y en v1.0/v1.1 este ref se asignaba DESPUES: la copia
+    // L (la que ve el DUENO) nacia solo por la auto-reparacion de la FSM
+    // 0.1s tarde, con el cuerpo ya en RENDER_NONE = una decima de
+    // invisibilidad total en cada montaje. Ahora nace en el mismo tick.
+    g_iKolAvatar[client] = EntIndexToEntRef(av);
+
     g_iKolAvatarL[client] = 0;
     Kolossos_CreateAvatarL(client);
 
@@ -812,8 +903,6 @@ void Kolossos_CreateAvatar(int client)
     else if (g_iKolBodyRender[client] == -1)
         g_iKolBodyRender[client] = view_as<int>(RENDER_NORMAL);
     SetEntityRenderMode(client, RENDER_NONE);
-
-    g_iKolAvatar[client] = EntIndexToEntRef(av);
 
     // per-tick: angulos locales (contra-rotacion del parent)
     SDKHook(client, SDKHook_PostThink, Kolossos_AvatarFollow);
