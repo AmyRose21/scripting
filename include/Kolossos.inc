@@ -1,11 +1,31 @@
 /*
  * =====================================================================
- *  [MODULO] KOLOSSOS — El Coloso de OutComeMemories v1.0-OM
+ *  [MODULO] KOLOSSOS — El Coloso de OutComeMemories v1.1-OM
  *  PERSONAJE 14 DEL SUITE (KOLOSSOS_INDEX 13)
  *
  *  Port directo de "Lua de OM de Gmod/autorun/include/killer/
  *  noodles_om_pills_killer_kolossos.lua" (by noodles) — el killer
  *  colosal del pack OM pills, traido a L4D2 como personaje jugable.
+ *
+ *  v1.1 (manager 3.77.95) — LAS ANIMACIONES COMPLETAS + EL FIX DEL
+ *  DOBLADO, reporte del owner: "Las animaciones de kolossos faltaron" y
+ *  "si yo muevo la camara el personaje se dobla a mirar, un error viejo
+ *  de cuando probabamos a Tails". [1] FIX DOBLADO: la copia L (la que
+ *  ve el dueño) ahora contra-rota contra los EYE angles (receta Tails
+ *  v5.17-B / Blaze — el bug v5.4 "cuerpo inclinado con la mira" era
+ *  exactamente este): SU cliente arma el parent con el cuerpo PREDICHO
+ *  = camara completa, y cancelando el pitch de la mirada el coloso
+ *  queda vertical SIEMPRE en su pantalla, ergido tambien al pausar.
+ *  [2] ANIMS: la FSM pasa de 5 estados base a las 15 del registro del
+ *  Lua: chargestart (windup), charge_notimpaled / Charge_impaled
+ *  (avalancha segun HitList, rate 1.2 del animrates), BlockStart +
+ *  BlockPos (bloqueo), BlockProjectile / BlackCounterMelee (counters
+ *  segun distancia <300u), slaminwall (tope de pared con empalados,
+ *  1.3s + Sound.mp3), Kill (ejecucion del agarre cuando un puo mata,
+ *  1.65s + la risa a +1s), stun (ShouldAlternate), walk con la victima
+ *  en vilo (run->walk) y paso a 3x durante el lunge del grab. Todas se
+ *  resuelven por SONDA contra el .mdl real (SetAnimation + m_nSequence)
+ *  con cadena de fallbacks: nunca T-pose aunque falte una secuencia.
  *
  *  SIN CUERPO CST (no existe un survivor model de Kolossos): el
  *  AVATAR ESPEJO (patron Blaze v2.11 / sonic.inc v6.30 — doble copia
@@ -64,7 +84,7 @@
  * =====================================================================
  */
 
-#define KOLOSSOS_INC_VERSION "1.0-OM"
+#define KOLOSSOS_INC_VERSION "1.1-OM"
 
 // ------------------------- CONSTANTES KIT ---------------------------
 // (defaults = registro oficial GMod om_survivors_register_noodles_kolossos;
@@ -98,14 +118,28 @@
 #define KOL_CHG_WINDUP             1
 #define KOL_CHG_DASH               2
 
-// FSM de animacion del avatar (nombres de secuencia del Kolossos.mdl
-// GMod: idle/run/walk/jump/fall — el registro anims del killer Lua)
+// FSM de animacion del avatar — v1.1: EL REGISTRO COMPLETO del killer Lua.
+// anims.default (L134-145): idle/run/walk/jump(jump2)/fall(glide)/
+// slaminwall/BlockStart/BlackCounterMelee/BlockProjectile/Kill.
+// ShouldAlternate (L322-395): stun/climb/BlockPos/chargestart/
+// charge_notimpaled/Charge_impaled (+run->walk con victima en vilo).
+// animrates (L404-439): charge 1.2 | lunge del grab 3 | run base 1.05.
 #define KOL_ST_IDLE                0
 #define KOL_ST_WALK                1
 #define KOL_ST_RUN                 2
 #define KOL_ST_JUMP                3
 #define KOL_ST_FALL                4
-#define KOL_ST_COUNT               5
+#define KOL_ST_STUN                5    // ShouldAlternate: stun
+#define KOL_ST_CHARGESTART         6    // windup de la avalancha
+#define KOL_ST_CHARGE              7    // avalancha sin empalados
+#define KOL_ST_CHARGE_IMP          8    // avalancha CON empalados
+#define KOL_ST_BLOCKSTART          9    // arranque del bloqueo (one-shot)
+#define KOL_ST_BLOCK               10   // pose de bloqueo (BlockPos)
+#define KOL_ST_BLOCKPROJ           11   // counter a distancia (one-shot)
+#define KOL_ST_COUNTER             12   // counter melee (one-shot)
+#define KOL_ST_SLAMINWALL          13   // tope de pared con empalados (one-shot)
+#define KOL_ST_KILL                14   // ejecucion del agarre (one-shot)
+#define KOL_ST_COUNT               15
 
 // ------------------------- CONVARS ----------------------------------
 ConVar g_cvKolEnabled;
@@ -164,6 +198,8 @@ int    g_iKolAvatar[MAXPLAYERS + 1];        // EntRef copia R (0 = sin avatar)
 int    g_iKolAvatarL[MAXPLAYERS + 1];       // EntRef copia L
 int    g_iKolBodyRender[MAXPLAYERS + 1];    // render del cuerpo oculto
 int    g_iKolAnimState[MAXPLAYERS + 1];
+int    g_iKolAnimShotState[MAXPLAYERS + 1];  // v1.1: one-shot activo (-1 = ninguno)
+float  g_fKolAnimShotUntil[MAXPLAYERS + 1];  // v1.1: fin del one-shot
 float  g_fKolJumpStart[MAXPLAYERS + 1];
 float  g_fKolBodyYaw[MAXPLAYERS + 1];
 float  g_fKolYawLastT[MAXPLAYERS + 1];
@@ -179,7 +215,9 @@ bool   g_bKolModelOK = false;              // kolossos.mdl montado (patron Blaze
 bool   g_bKolWarnedModel = false;
 bool   g_bKolSeqsOK = false;
 bool   g_bKolSeqOK[KOL_ST_COUNT];
-char   g_sKolSeqName[KOL_ST_COUNT][24] = { "idle", "walk", "run", "jump", "fall" };
+char   g_sKolSeqName[KOL_ST_COUNT][24] = { "idle", "walk", "run", "jump", "fall",
+                                            "idle", "idle", "run", "run", "idle",
+                                            "idle", "idle", "idle", "idle", "idle" };
 
 // sonidos del killer (sound/om/kolossos/) — fallback nativo si falta
 bool   g_bKolSndSigh, g_bKolSndRumble, g_bKolSndRoar, g_bKolSndStartup;
@@ -187,6 +225,9 @@ bool   g_bKolSndImpacts, g_bKolSndLaugh, g_bKolSndWallBump;
 bool   g_bKolSndGrabLunge, g_bKolSndGrabUse, g_bKolSndImpale;
 bool   g_bKolSndPunch, g_bKolSndPullOut, g_bKolSndWhisper, g_bKolSndBlock;
 bool   g_bKolSndPing;                      // om/metal/ping1.wav (ya del suite)
+bool   g_bKolSndSlam;                       // v1.1: Sound.mp3 (slam con empalados)
+bool   g_bKolSndLaughKill;                  // v1.1: Kolossos laughing.wav (Kill)
+char   g_sKolLaughPath[PLATFORM_MAX_PATH];  // v1.1: ruta real (carpeta Kolossos/kolossos)
 bool   g_bKolRockModel = false;            // rockgranite03b.mdl (nativo L4D2)
 
 // sprites del indicator: g_iKolIndSprite[entidx] = EntRef del glow
@@ -282,6 +323,8 @@ public void Kolossos_OnPluginStart()
         g_iKolSavedColGroup[i] = -1;
         g_iKolBodyRender[i]    = -1;
         g_iKolAnimState[i]     = -1;
+        g_iKolAnimShotState[i] = -1;
+        g_fKolAnimShotUntil[i] = 0.0;
         g_iKolGrabMoveType[i]  = -1;
         g_iKolGrabVictim[i]    = 0;
         g_hKolHitList[i]       = null;
@@ -329,6 +372,20 @@ public void Kolossos_OnMapStart()
     g_bKolSndWhisper   = FileExists("sound/om/kolossos/kol whispers.wav", true);
     g_bKolSndBlock     = FileExists("sound/om/kolossos/kol block.wav", true);
     g_bKolSndPing      = FileExists("sound/om/metal/ping1.wav", true);   // ya lo usa Metal
+    // v1.1: el slam con empalados ("Sound.mp3" literal del Lua l.1735) y
+    // la risa de la ejecucion (carpeta con K mayuscula en el Lua l.1225:
+    // "OM/Kolossos/Kolossos laughing.wav" — se prueban ambas mayusculas)
+    g_bKolSndSlam      = FileExists("sound/om/kolossos/Sound.mp3", true);
+    g_bKolSndLaughKill = (FileExists("sound/om/Kolossos/Kolossos laughing.wav", true)
+                       || FileExists("sound/om/kolossos/Kolossos laughing.wav", true));
+    g_sKolLaughPath[0] = '\0';
+    if (g_bKolSndLaughKill)
+    {
+        if (FileExists("sound/om/Kolossos/Kolossos laughing.wav", true))
+            strcopy(g_sKolLaughPath, PLATFORM_MAX_PATH, "om/Kolossos/Kolossos laughing.wav");
+        else
+            strcopy(g_sKolLaughPath, PLATFORM_MAX_PATH, "om/kolossos/Kolossos laughing.wav");
+    }
 
     if (g_bKolSndSigh)      PrecacheSound("om/kolossos/kol sigh i think.wav", true);
     if (g_bKolSndRumble)    PrecacheSound("om/kolossos/kol charge start ground rumble.wav", true);
@@ -345,6 +402,8 @@ public void Kolossos_OnMapStart()
     if (g_bKolSndWhisper)   PrecacheSound("om/kolossos/kol whispers.wav", true);
     if (g_bKolSndBlock)     PrecacheSound("om/kolossos/kol block.wav", true);
     if (g_bKolSndPing)      PrecacheSound("om/metal/ping1.wav", true);
+    if (g_bKolSndSlam)      PrecacheSound("om/kolossos/Sound.mp3", true);
+    if (g_bKolSndLaughKill) PrecacheSound(g_sKolLaughPath, true);
 
     g_bKolWarnedModel = false;   // avisa 1 vez por mapa si falta el modelo
 }
@@ -421,6 +480,8 @@ void Kolossos_ResetState(int client)
     g_fKolBlockUntil[client]   = 0.0;
     g_fKolBlockCdUntil[client] = 0.0;
     g_bKolBlockCountered[client] = false;
+    g_iKolAnimShotState[client] = -1;   // v1.1: sin one-shot
+    g_fKolAnimShotUntil[client] = 0.0;
     g_fKolIndUntil[client]     = 0.0;
     g_fKolIndCdUntil[client]   = 0.0;
     g_fKolIndNextPing[client]  = 0.0;
@@ -444,6 +505,8 @@ void Kolossos_CleanupState(int client)
     g_bKolHpApplied[client]  = false;
     g_bKolWelcomeSaid[client] = false;
     g_iKolAnimState[client]   = -1;
+    g_iKolAnimShotState[client] = -1;
+    g_fKolAnimShotUntil[client] = 0.0;
 }
 
 // =====================================================================
@@ -560,25 +623,77 @@ void Kolossos_ResolveSeqs(int av)
     if (g_bKolSeqsOK) return;
     g_bKolSeqsOK = true;
 
-    // candidatos por estado: nombres GMod + variantes comunes
-    char idleCands[][16] = { "idle", "Idle", "IDLE", "idle01" };
-    char walkCands[][16] = { "walk", "Walk", "walk01", "WalkAll" };
-    char runCands[][16]  = { "run", "Run", "run01", "RunAll" };
-    char jumpCands[][16] = { "jump", "Jump", "jump01" };
-    char fallCands[][16] = { "fall", "Fall", "glide", "fall01" };
+    // candidatos por estado: nombres literales del registro anims del
+    // killer Lua + variantes comunes por si el .mdl difiere
+    char idleCands[][16]  = { "idle", "Idle", "IDLE", "idle01" };
+    char walkCands[][16]  = { "walk", "Walk", "walk01", "WalkAll" };
+    char runCands[][16]   = { "run", "Run", "run01", "RunAll" };
+    char jumpCands[][16]  = { "jump", "Jump", "jump01" };
+    char fallCands[][16]  = { "fall", "Fall", "glide", "fall01" };
+    char stunCands[][16]  = { "stun", "Stun" };
+    char chgStCands[][22] = { "chargestart", "ChargeStart", "charge_start" };
+    char chgCands[][22]   = { "charge_notimpaled", "charge", "Charge" };
+    char chgImpCands[][22]= { "Charge_impaled", "charge_impaled", "ChargeImpaled" };
+    char blkStCands[][22] = { "BlockStart", "blockstart" };
+    char blkCands[][22]   = { "BlockPos", "blockpos", "Block" };
+    char blkPrCands[][22] = { "BlockProjectile", "blockprojectile" };
+    char ctrCands[][22]   = { "BlackCounterMelee", "blackcountermelee", "CounterMelee" };
+    char slamCands[][22]  = { "slaminwall", "SlamInWall", "slam_in_wall" };
+    char killCands[][22]  = { "Kill", "kill", "Execution" };
 
     for (int c = 0; c < sizeof(idleCands); c++) { Kolossos_ResolveTry(av, KOL_ST_IDLE, idleCands[c]); if (g_bKolSeqOK[KOL_ST_IDLE]) break; }
     for (int c = 0; c < sizeof(walkCands); c++) { Kolossos_ResolveTry(av, KOL_ST_WALK, walkCands[c]); if (g_bKolSeqOK[KOL_ST_WALK]) break; }
     for (int c = 0; c < sizeof(runCands);  c++) { Kolossos_ResolveTry(av, KOL_ST_RUN,  runCands[c]);  if (g_bKolSeqOK[KOL_ST_RUN])  break; }
     for (int c = 0; c < sizeof(jumpCands); c++) { Kolossos_ResolveTry(av, KOL_ST_JUMP, jumpCands[c]); if (g_bKolSeqOK[KOL_ST_JUMP]) break; }
     for (int c = 0; c < sizeof(fallCands); c++) { Kolossos_ResolveTry(av, KOL_ST_FALL, fallCands[c]); if (g_bKolSeqOK[KOL_ST_FALL]) break; }
+    for (int c = 0; c < sizeof(stunCands); c++) { Kolossos_ResolveTry(av, KOL_ST_STUN, stunCands[c]); if (g_bKolSeqOK[KOL_ST_STUN]) break; }
+    for (int c = 0; c < sizeof(chgStCands); c++) { Kolossos_ResolveTry(av, KOL_ST_CHARGESTART, chgStCands[c]); if (g_bKolSeqOK[KOL_ST_CHARGESTART]) break; }
+    for (int c = 0; c < sizeof(chgCands); c++)   { Kolossos_ResolveTry(av, KOL_ST_CHARGE, chgCands[c]);      if (g_bKolSeqOK[KOL_ST_CHARGE]) break; }
+    for (int c = 0; c < sizeof(chgImpCands); c++){ Kolossos_ResolveTry(av, KOL_ST_CHARGE_IMP, chgImpCands[c]);if (g_bKolSeqOK[KOL_ST_CHARGE_IMP]) break; }
+    for (int c = 0; c < sizeof(blkStCands); c++) { Kolossos_ResolveTry(av, KOL_ST_BLOCKSTART, blkStCands[c]); if (g_bKolSeqOK[KOL_ST_BLOCKSTART]) break; }
+    for (int c = 0; c < sizeof(blkCands); c++)   { Kolossos_ResolveTry(av, KOL_ST_BLOCK, blkCands[c]);        if (g_bKolSeqOK[KOL_ST_BLOCK]) break; }
+    for (int c = 0; c < sizeof(blkPrCands); c++) { Kolossos_ResolveTry(av, KOL_ST_BLOCKPROJ, blkPrCands[c]);  if (g_bKolSeqOK[KOL_ST_BLOCKPROJ]) break; }
+    for (int c = 0; c < sizeof(ctrCands); c++)   { Kolossos_ResolveTry(av, KOL_ST_COUNTER, ctrCands[c]);      if (g_bKolSeqOK[KOL_ST_COUNTER]) break; }
+    for (int c = 0; c < sizeof(slamCands); c++)  { Kolossos_ResolveTry(av, KOL_ST_SLAMINWALL, slamCands[c]);  if (g_bKolSeqOK[KOL_ST_SLAMINWALL]) break; }
+    for (int c = 0; c < sizeof(killCands); c++)  { Kolossos_ResolveTry(av, KOL_ST_KILL, killCands[c]);        if (g_bKolSeqOK[KOL_ST_KILL]) break; }
 
-    // fallbacks: lo que falte cae a idle (nunca T-pose)
-    for (int s = 1; s < KOL_ST_COUNT; s++)
+    // cadena de fallbacks (nunca T-pose; cada hueco cae a su par visual
+    // mas cercano: la avalancha sin anim dedicada corre, el bloqueo sin
+    // pose se planta, los one-shot raros caen a idle)
+    if (!g_bKolSeqOK[KOL_ST_CHARGE])
+        Kolossos_FallbackTo(KOL_ST_CHARGE, KOL_ST_RUN);
+    if (!g_bKolSeqOK[KOL_ST_CHARGE_IMP])
+        Kolossos_FallbackTo(KOL_ST_CHARGE_IMP, g_bKolSeqOK[KOL_ST_CHARGE] ? KOL_ST_CHARGE : KOL_ST_RUN);
+    if (!g_bKolSeqOK[KOL_ST_BLOCK])
+        Kolossos_FallbackTo(KOL_ST_BLOCK, KOL_ST_IDLE);
+    if (!g_bKolSeqOK[KOL_ST_BLOCKSTART])
+        Kolossos_FallbackTo(KOL_ST_BLOCKSTART, KOL_ST_BLOCK);
+    if (!g_bKolSeqOK[KOL_ST_BLOCKPROJ])
+        Kolossos_FallbackTo(KOL_ST_BLOCKPROJ, KOL_ST_BLOCK);
+    if (!g_bKolSeqOK[KOL_ST_COUNTER])
+        Kolossos_FallbackTo(KOL_ST_COUNTER, KOL_ST_BLOCK);
+    if (!g_bKolSeqOK[KOL_ST_STUN])
+        Kolossos_FallbackTo(KOL_ST_STUN, KOL_ST_IDLE);
+    if (!g_bKolSeqOK[KOL_ST_CHARGESTART])
+        Kolossos_FallbackTo(KOL_ST_CHARGESTART, KOL_ST_IDLE);
+    if (!g_bKolSeqOK[KOL_ST_SLAMINWALL])
+        Kolossos_FallbackTo(KOL_ST_SLAMINWALL, KOL_ST_IDLE);
+    if (!g_bKolSeqOK[KOL_ST_KILL])
+        Kolossos_FallbackTo(KOL_ST_KILL, KOL_ST_IDLE);
+
+    // locomocion base: lo que falte cae a idle (regla v1.0)
+    for (int s = 1; s <= KOL_ST_FALL; s++)
     {
         if (!g_bKolSeqOK[s])
-            strcopy(g_sKolSeqName[s], 24, g_sKolSeqName[KOL_ST_IDLE]);
+            Kolossos_FallbackTo(s, KOL_ST_IDLE);
     }
+}
+
+// v1.1: copia el nombre resuelto de un estado a otro (fallback en cadena)
+void Kolossos_FallbackTo(int dst, int src)
+{
+    strcopy(g_sKolSeqName[dst], 24, g_sKolSeqName[src]);
+    g_bKolSeqOK[dst] = g_bKolSeqOK[src];
 }
 
 void Kolossos_SeqFor(int state, char[] out, int maxlen)
@@ -809,12 +924,24 @@ public void Kolossos_AvatarFollow(int client)
     g_bKolSmSnap[client] = false;
 
     // ---- copia L: contra-rotada contra los EYE del dueno ----
+    // v1.1 FIX DEL DOBLADO (reporte del owner: "si muevo la camara el
+    // personaje se dobla a mirar" — el bug v5.4 de la era Tails): la
+    // copia L es la que ve el DUEÑO, y SU cliente arma el parent con el
+    // cuerpo PREDICHO = camara completa (pitch incluido). Contra-rotar
+    // contra los ABS angles (lo que hizo la v1.0) deja el pitch de la
+    // mirada SIN cancelar en su pantalla -> el coloso se inclina con la
+    // camara y al pausar queda doblado. La receta correcta es la del
+    // Tails v5.17-B / Blaze: GetClientEyeAngles + Tails_AvatarLocalAngles
+    // -> vertical SIEMPRE en la pantalla del dueno (ergido tambien al
+    // pausar: la ultima escritura cancela el ultimo pitch de la camara).
     if (g_iKolAvatarL[client] != 0)
     {
         int avL = EntRefToEntIndex(g_iKolAvatarL[client]);
         if (avL > 0 && IsValidEntity(avL))
         {
-            Tails_AvatarLocalAngles(par[0], par[1], yawPuppet, loc);
+            float eye[3];
+            GetClientEyeAngles(client, eye);
+            Tails_AvatarLocalAngles(eye[0], eye[1], yawPuppet, loc);
             loc[1] = Tails_UnwrapYaw(g_fKolSmLocL[client][1], loc[1]);
             Tails_ExpDamp(loc, g_fKolSmLocL[client], 0.05, dt, false);
             if (HasEntProp(avL, Prop_Send, "m_angRotation"))
@@ -824,44 +951,96 @@ public void Kolossos_AvatarFollow(int client)
     }
 }
 
-// anims del avatar (prioridades: aire -> suelo; receta Blaze_AvatarUpdate)
+// v1.1: lanza una animacion ONE-SHOT (Kill / slaminwall / counters /
+// BlockStart) que bloquea la FSM hasta su fin — el equivalente del
+// PillAnim directo del GMod para las anims que no son estados continuos
+void Kolossos_AnimShot(int client, int state, float dur)
+{
+    if (client < 1 || client > MaxClients) return;
+    g_iKolAnimShotState[client] = state;
+    g_fKolAnimShotUntil[client] = GetEngineTime() + dur;
+}
+
+// anims del avatar — v1.1: EL ARBOL COMPLETO de prioridades del Lua.
+// ShouldAlternate manda el orden: stun > agarre (run->walk) > bloqueo >
+// chargestart > charge (impaled/no) ; los one-shot por encima de todo;
+// animrates: charge 1.2 | lunge del grab 3x | curva L4D2 para el run
 void Kolossos_AvatarUpdate(int client, int av, float now)
 {
     int state;
     float rate = 1.0;
 
-    if (g_iKolChargeState[client] == KOL_CHG_WINDUP)
+    // ---- [1] one-shot activo (Kill / slaminwall / counter / BlockStart) ----
+    if (g_iKolAnimShotState[client] >= 0 && now < g_fKolAnimShotUntil[client])
     {
-        state = KOL_ST_IDLE;   // el coloso planta los pies para arrancar
-    }
-    else if (g_iKolChargeState[client] == KOL_CHG_DASH)
-    {
-        state = KOL_ST_RUN;
-        rate  = 1.6;
-    }
-    else if (!(GetEntityFlags(client) & FL_ONGROUND))
-    {
-        float vel[3];
-        GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
-        state = (vel[2] > 40.0) ? KOL_ST_JUMP : KOL_ST_FALL;
-    }
-    else if (g_iKolAnimState[client] == KOL_ST_JUMP
-             && now - g_fKolJumpStart[client] < 0.5)
-    {
-        state = KOL_ST_JUMP;   // FL_ONGROUND parpadea en escalones
+        state = g_iKolAnimShotState[client];
     }
     else
     {
-        float s = Kolossos_Speed2D(client);
-        if (s < 40.0)               state = KOL_ST_IDLE;
-        else if (s < 150.0
-                 || (GetClientButtons(client) & IN_DUCK)) state = KOL_ST_WALK;
+        if (g_iKolAnimShotState[client] >= 0) g_iKolAnimShotState[client] = -1;
+
+        // ---- [2] aturdido (ShouldAlternate: "stun" en todos los estados) ----
+        if (OM_IsStunned(client))
+        {
+            state = KOL_ST_STUN;
+        }
+        // ---- [3] victima en vilo: la base camina (run->walk del Lua);
+        //      parado se planta (idle). El ACT_HOVER del GMod es un
+        //      gesture de puppet — el prop no puede capas, la base camina
+        else if (g_iKolGrabVictim[client] != 0)
+        {
+            state = (Kolossos_Speed2D(client) > 40.0) ? KOL_ST_WALK : KOL_ST_IDLE;
+        }
+        // ---- [4] bloqueo en pie (ShouldAlternate: "BlockPos") ----
+        else if (g_fKolBlockUntil[client] > now)
+        {
+            state = KOL_ST_BLOCK;
+        }
+        // ---- [5] windup de la avalancha (ShouldAlternate: "chargestart") ----
+        else if (g_iKolChargeState[client] == KOL_CHG_WINDUP)
+        {
+            state = KOL_ST_CHARGESTART;
+        }
+        // ---- [6] avalancha: impalados o no (rate 1.2 del animrates) ----
+        else if (g_iKolChargeState[client] == KOL_CHG_DASH)
+        {
+            bool imp = (g_hKolHitList[client] != null && g_hKolHitList[client].Length > 0);
+            state = imp ? KOL_ST_CHARGE_IMP : KOL_ST_CHARGE;
+            rate  = 1.2;
+        }
         else
         {
-            state = KOL_ST_RUN;
-            rate  = 1.32 * (s / 450.0);
-            if (rate < 0.72) rate = 0.72;
-            if (rate > 3.6)  rate = 3.6;
+            bool lunge = (g_fKolLungeUntil[client] > now);
+
+            // ---- [7] aire (jump2="jump" / glide="fall") ----
+            if (!(GetEntityFlags(client) & FL_ONGROUND))
+            {
+                float vel[3];
+                GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
+                state = (vel[2] > 40.0) ? KOL_ST_JUMP : KOL_ST_FALL;
+            }
+            else if (g_iKolAnimState[client] == KOL_ST_JUMP
+                     && now - g_fKolJumpStart[client] < 0.5)
+            {
+                state = KOL_ST_JUMP;   // FL_ONGROUND parpadea en escalones
+            }
+            else
+            {
+                float s = Kolossos_Speed2D(client);
+                if (s < 40.0)               state = KOL_ST_IDLE;
+                else if (s < 150.0
+                         || (GetClientButtons(client) & IN_DUCK)) state = KOL_ST_WALK;
+                else
+                {
+                    state = KOL_ST_RUN;
+                    rate  = 1.32 * (s / 450.0);   // curva L4D2 (GMod base 1.05)
+                    if (rate < 0.72) rate = 0.72;
+                    if (rate > 3.6)  rate = 3.6;
+                }
+            }
+
+            // ---- [8] lunge del grab: paso a 3x (animrates walk/run=3) ----
+            if (lunge && (state == KOL_ST_WALK || state == KOL_ST_RUN)) rate = 3.0;
         }
     }
 
@@ -1060,12 +1239,26 @@ void Kolossos_ChargeEnd(int client, bool hitWall)
     }
 
     // fling de las victimas vivas de la HitList (el GMod las suelta volando)
+    // v1.1: capturar ANTES si habia empalados (FlingHitList vacia la lista)
+    bool hadImpaled = (g_hKolHitList[client] != null && g_hKolHitList[client].Length > 0);
     Kolossos_FlingHitList(client, hitWall);
 
-    // tope de pared: sonido + bloqueo de ataque breve (GMod 3.65s AttackCooldown)
+    // tope de pared: slaminwall con empalados (anim 1.3s + Sound.mp3) o
+    // el wall bump seco sin ellos (GMod l.1729-1747); CD 3.65s en ambos
     if (hitWall && IsClientInGame(client) && IsPlayerAlive(client))
-        Kolossos_Emit(client, g_bKolSndWallBump, "om/kolossos/Kol wall bump.wav",
-                      "physics/concrete/concrete_break2.wav");
+    {
+        if (hadImpaled)
+        {
+            Kolossos_AnimShot(client, KOL_ST_SLAMINWALL, 1.3);
+            Kolossos_Emit(client, g_bKolSndSlam, "om/kolossos/Sound.mp3",
+                          "physics/concrete/concrete_break2.wav");
+        }
+        else
+        {
+            Kolossos_Emit(client, g_bKolSndWallBump, "om/kolossos/Kol wall bump.wav",
+                          "physics/concrete/concrete_break2.wav");
+        }
+    }
 
     g_iKolChargeState[client] = KOL_CHG_IDLE;
 }
@@ -1436,6 +1629,9 @@ void Kolossos_GrabHoldThink(int client, float now)
 }
 
 // Z durante el agarre: puo (GMod l.2566-2630)
+// v1.1: si el puo MATA a la victima -> la EJECUCION del GMod (l.1137-
+// 1142): PillAnim("Kill") por la duracion de la secuencia (1.65s en el
+// registro) + la risa "Kolossos laughing" un segundo despues (l.1220-1228)
 void Kolossos_GrabPunch(int client)
 {
     int victim = EntRefToEntIndex(g_iKolGrabVictim[client]);
@@ -1445,6 +1641,20 @@ void Kolossos_GrabPunch(int client)
                   "physics/flesh/flesh_impact_hard3.wav");
 
     OM_AbilityDamage(victim, client, g_cvKolGrabPunchDmg.FloatValue);
+
+    // ?murio con ese puo? (SI: cliente muerto / comun sin vida)
+    bool killed = false;
+    if (victim <= MaxClients)
+        killed = (!IsClientInGame(victim) || !IsPlayerAlive(victim));
+    else
+        killed = (!IsValidEntity(victim) || GetEntProp(victim, Prop_Data, "m_iHealth") <= 0);
+
+    if (killed)
+    {
+        Kolossos_AnimShot(client, KOL_ST_KILL, 1.65);
+        if (g_bKolSndLaughKill)
+            CreateTimer(1.0, Kolossos_T_KillLaugh, GetClientUserId(client));
+    }
 
     g_iKolGrabPunches[client]--;
     if (g_iKolGrabPunches[client] <= 0)
@@ -1456,6 +1666,17 @@ void Kolossos_GrabPunch(int client)
     {
         PrintCenterText(client, "Puo! Quedan %d", g_iKolGrabPunches[client]);
     }
+}
+
+// v1.1: la risa de la ejecucion (GMod l.1220-1228: laughing 1s tras el Kill)
+public Action Kolossos_T_KillLaugh(Handle timer, int userid)
+{
+    int client = GetClientOfUserId(userid);
+    if (client < 1 || !IsClientInGame(client) || !IsPlayerAlive(client)) return Plugin_Stop;
+    if (!Kolossos_PlayerIs(client)) return Plugin_Stop;
+    if (g_sKolLaughPath[0] != '\0')
+        EmitSoundToAll(g_sKolLaughPath, client, _, KOL_SND_LEVEL);
+    return Plugin_Stop;
 }
 
 // soltar: fling opcional + restaurar a la victima + CD
@@ -1702,6 +1923,10 @@ void Kolossos_Ability4(int client)
     g_fKolBlockCdUntil[client]   = now + g_cvKolBlockCd.FloatValue;
     g_bKolBlockCountered[client] = false;
 
+    // v1.1: anim de arranque del bloqueo (GMod l.2520: PillAnim(BlockStart))
+    // — la FSM sostiene BlockPos durante toda la ventana
+    Kolossos_AnimShot(client, KOL_ST_BLOCKSTART, 0.5);
+
     // planta los pies (GMod: OM_NoMovement durante el bloqueo)
     SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 0.0);
 
@@ -1722,6 +1947,9 @@ void Kolossos_BlockEnd(int client)
 }
 
 // el contragolpe: gira al atacante y devuelve la ROCA en arco
+// v1.1: la anim del counter segun la distancia del atacante (GMod
+// l.1347-1355: <300u = BlackCounterMelee cuerpo a cuerpo / si no =
+// BlockProjectile a distancia, l.1438-1443)
 void Kolossos_BlockCounter(int client, int attacker)
 {
     g_bKolBlockCountered[client] = true;
@@ -1736,6 +1964,10 @@ void Kolossos_BlockCounter(int client, int attacker)
     ang[1] = RadToDeg(ArcTangent2(apos[1] - mpos[1], apos[0] - mpos[0]));
     ang[2] = 0.0;
     TeleportEntity(client, NULL_VECTOR, ang, NULL_VECTOR);
+
+    // la anim del contragolpe segun distancia (GMod l.1347)
+    bool meleeRange = (GetVectorDistance(apos, mpos) < 300.0);
+    Kolossos_AnimShot(client, meleeRange ? KOL_ST_COUNTER : KOL_ST_BLOCKPROJ, 1.0);
 
     Kolossos_SpawnCounterRock(client, apos);
 }
@@ -2116,6 +2348,13 @@ public Action Kolossos_CmdDebug(int client, int args)
     PrintToConsole(client, "Block: %.1f | Indicator: %.1f",
                    g_fKolBlockUntil[client] - now,
                    g_fKolIndUntil[client] - now);
+    // v1.1: la FSM de animacion al dia (estado + one-shot activo)
+    char seqNow[24];
+    Kolossos_SeqFor(g_iKolAnimState[client] >= 0 ? g_iKolAnimState[client] : 0, seqNow, sizeof(seqNow));
+    PrintToConsole(client, "Anim: estado %d (%s) | one-shot %s",
+                   g_iKolAnimState[client], seqNow,
+                   (g_iKolAnimShotState[client] >= 0 && now < g_fKolAnimShotUntil[client])
+                       ? g_sKolSeqName[g_iKolAnimShotState[client]] : "-");
     PrintToChat(client, "\x04[Kolossos]\x01 Estado en consola (sm_kolossos).");
     return Plugin_Handled;
 }
