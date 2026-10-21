@@ -7,6 +7,59 @@
  *  noodles_om_pills_killer_kolossos.lua" (by noodles) — el killer
  *  colosal del pack OM pills, traido a L4D2 como personaje jugable.
  *
+ *  v1.4 (manager 3.77.98) — LAS CAPAS DEL GRAB + AGARRAR ESPECIALES
+ *  (reporte del owner tras probar la v1.3: "la animacion grab nunca se
+ *  logra apresiar es pisoteada por la animacion de caminar" y "No agarra
+ *  a especiales (al tank no lo agarra. tampoco)"; "la animacion por
+ *  capas si es compatible con l4d2, por que no se le esta aplicando?").
+ *  RAIZ del bug 1 (el kolossos.qc del zip del owner lo confirma): las
+ *  secuencias Grab/GrabIdle/GrabPunch/GrabThrow estan compiladas con
+ *  weightlist "weights_swing" (SOLO animan los 15 huesos de brazos) +
+ *  addlayer delta de torso + fps 60 — fueron autoradas EXCLUSIVAMENTE
+ *  como gestures de CAPA (el AddGesture del GMod las reproduce asi:
+ *  brazos encima de la locomocion, piernas vivas). Ponerlas como
+ *  secuencia PRINCIPAL del prop (motor monocapa v1.3) deja los huesos
+ *  peso-0 en pose de referencia = un vistazo de nada "pisoteado por
+ *  caminar". FIX: MOTOR DE CAPAS REAL — m_AnimOverlay (L4D2 lo lleva en
+ *  CBaseAnimating, compatible con props): slot 1 = pose GrabIdle
+ *  sostenida (ACT_HOVER), slot 2 = reach/puño/lanzamiento (one-shots de
+ *  duracion COMPLETA), SOBRE la locomocion main (walk/run/idle) — las
+ *  PIERNAS SIGUEN ANDANDO mientras los brazos agarran, exactamente el
+ *  sistema de los survivors al cambiar arma que pedia el owner. Sonda
+ *  HasEntProp + GetEntPropArraySize por mapa, convar
+ *  kolossos_grab_layers (1 = capas auto, 0 = fallback monocapa v1.3),
+ *  driver per-tick del m_flCycle y duraciones corregidas al fps 60 REAL
+ *  del QC (reach 0.52s / puño 0.85s / lanzamiento 1.02s — v1.3 asumía
+ *  30fps: el doble). FIX del bug 2: el tank estaba EXPLICITAMENTE
+ *  excluido en la v1.0 ("demasiado grande para el puño") y los demas
+ *  especiales perdian contra cualquier comun en la esfera (los commons
+ *  se chequeaban primero con return): ahora los ESPECIALES tienen
+ *  PRIORIDAD (se chequean primero, el mas cercano), el TANK entra por
+ *  convar kolossos_grab_tank (default 1) y la WITCH por
+ *  kolossos_grab_witch (default 1, via movetype como los commons).
+ *
+ *  v1.3 (manager 3.77.97) — LAS ANIMACIONES DEL GRAB (reporte del
+ *  owner con los SMD decompilados del .mdl: "faltaron las animaciones
+ *  de grab; la del lanzamiento debe ser PRIORITARIA y durar lo que
+ *  debe durar; las grab son de solo torso y las piernas tienen que
+ *  seguir andando, como los survivors cuando cambian arma"). Analisis
+ *  de los SMD: Grab 31f / GrabPunch 51f / GrabThrow 61f animan SOLO
+ *  brazos+torso (cero piernas) y GrabIdle es una pose de 1 frame — en
+ *  GMod son GESTURES (ACT_HOVER sostiene, ACT_DISARM lanza cortado a
+ *  0.9s con fade, MELEE_ATTACK2 puÿea) sobre la locomocion base. El
+ *  prop de L4D2 es MONOCAPA (sin overlay), asi que la serie se cablea
+ *  con la regla "las piernas nunca se congelan": [a] KOL_ST_GRABREACH
+ *  al enganchar (el reach, one-shot), [b] KOL_ST_GRABHOLD plantado
+ *  (pose GrabIdle) y WALK en el suelo moviÿendose / JUMP-FALL en el
+ *  aire (la locomocion MANDA sobre la pose mientras haya movimiento),
+ *  [c] KOL_ST_GRABPUNCH por puÿo, [d] KOL_ST_GRABTHROW al lanzar:
+ *  prioridad MAXIMA (KOL_SHOT_MAX: ni el stun ni otra acciÿn la
+ *  cortan) y DURACION COMPLETA medida EN VIVO contra el .mdl real
+ *  (calibrador m_flCycle con prop desechable — el fps del .mdl no es
+ *  30: el Kill del Lua dura 1.65s con 276 frames) + la victima sale
+ *  volando a +0.3s del arranque (GMod l.2154). El combo 3er puÿo ->
+ *  lanzamiento queda encadenado (GMod l.2617: duration+1.75).
+ *
  *  v1.2 (manager 3.77.96) — FIX "AL ELEGIRLO NO SALE EL AVATAR"
  *  (reporte del owner tras probar la v1.1): la FSM de 10 Hz llevaba
  *  TIMER_FLAG_NO_MAPCHANGE pero se creaba UNA SOLA VEZ en
@@ -101,7 +154,7 @@
  * =====================================================================
  */
 
-#define KOLOSSOS_INC_VERSION "1.2-OM"
+#define KOLOSSOS_INC_VERSION "1.4-OM"
 
 // ------------------------- CONSTANTES KIT ---------------------------
 // (defaults = registro oficial GMod om_survivors_register_noodles_kolossos;
@@ -122,6 +175,29 @@
 #define KOL_GRAB_HOLD_Z            12.0
 #define KOL_GRAB_FLING_FWD         500.0
 #define KOL_GRAB_FLING_UP          300.0
+#define KOL_GRAB_FLING_DELAY       0.3     // v1.3: GMod l.2154 — la victima vuela a +0.3s del arranque del throw
+#define KOL_GRAB_THROW_AT          1.4     // v1.3: 3er puo -> lanzamiento encadenado (GMod duration+1.75 con la anim de por medio)
+
+// v1.3: prioridades del one-shot (un disparo nuevo solo pisa al activo
+// si su prioridad es igual o mayor — el LANZAMIENTO no lo corta nadie)
+#define KOL_SHOT_ACT               1       // counters / blockstart / slaminwall
+#define KOL_SHOT_GRAB              2       // grab reach / puo
+#define KOL_SHOT_MAX               3       // Kill / GrabThrow — prioridad total
+
+// v1.4: fallbacks fps 60 del QC del owner (kolossos.qc: TODAS las grab
+// van a fps 60, no 30 — Grab 31f/60 = 0.52s, GrabPunch 51f/60 = 0.85s,
+// GrabThrow 61f/60 = 1.02s; v1.3 asumía 30fps = el doble de largo)
+#define KOL_DUR_GRABREACH          0.52    // Grab.smd 31 frames @ 60fps
+#define KOL_DUR_GRABPUNCH          0.85    // GrabPunch.smd 51 frames @ 60fps
+#define KOL_DUR_GRABTHROW          1.02    // GrabThrow.smd 61 frames @ 60fps
+
+// v1.4: slots del MOTOR DE CAPAS (m_AnimOverlay) en el avatar — L4D2
+// lleva el sistema de overlays en CBaseAnimating (los props lo tienen):
+// slot 1 = pose GrabIdle sostenida mientras se sujeta, slot 2 = los
+// one-shots de la serie (reach / puño / lanzamiento). El 0 queda libre.
+#define KOL_LAYER_HOLD             1       // pose de sujetar (ACT_HOVER)
+#define KOL_LAYER_SHOT             2       // one-shots de la serie grab
+#define KOL_LAYER_MIN_SIZE         3       // hacen falta >= 3 slots
 #define KOL_IND_PING_EVERY         1.0     // heartbeat del indicator
 #define KOL_ROCK_LIFETIME          3.0     // la roca muere sola si no toca nada
 #define KOL_ROCK_ARC_TIME          0.5     // GMod: travelTime 0.5
@@ -156,7 +232,11 @@
 #define KOL_ST_COUNTER             12   // counter melee (one-shot)
 #define KOL_ST_SLAMINWALL          13   // tope de pared con empalados (one-shot)
 #define KOL_ST_KILL                14   // ejecucion del agarre (one-shot)
-#define KOL_ST_COUNT               15
+#define KOL_ST_GRABREACH           15   // v1.3: el reach al enganchar la victima (one-shot)
+#define KOL_ST_GRABHOLD            16   // v1.3: plantado sujetando (pose GrabIdle)
+#define KOL_ST_GRABPUNCH           17   // v1.3: puo al agarrado (one-shot)
+#define KOL_ST_GRABTHROW           18   // v1.3: EL LANZAMIENTO (one-shot prioridad maxima)
+#define KOL_ST_COUNT               19
 
 // ------------------------- CONVARS ----------------------------------
 ConVar g_cvKolEnabled;
@@ -177,6 +257,9 @@ ConVar g_cvKolGrabHold;
 ConVar g_cvKolGrabPunches;
 ConVar g_cvKolGrabPunchDmg;
 ConVar g_cvKolGrabCancel;
+ConVar g_cvKolGrabLayers;                       // v1.4: motor de capas del grab
+ConVar g_cvKolGrabTank;                         // v1.4: agarrar al tank
+ConVar g_cvKolGrabWitch;                        // v1.4: agarrar a la witch
 ConVar g_cvKolIndCd;
 ConVar g_cvKolIndDur;
 ConVar g_cvKolIndRadius;
@@ -217,6 +300,26 @@ int    g_iKolBodyRender[MAXPLAYERS + 1];    // render del cuerpo oculto
 int    g_iKolAnimState[MAXPLAYERS + 1];
 int    g_iKolAnimShotState[MAXPLAYERS + 1];  // v1.1: one-shot activo (-1 = ninguno)
 float  g_fKolAnimShotUntil[MAXPLAYERS + 1];  // v1.1: fin del one-shot
+int    g_iKolAnimShotTier[MAXPLAYERS + 1];   // v1.3: prioridad del one-shot activo (KOL_SHOT_*)
+float  g_fKolGrabThrowAt[MAXPLAYERS + 1];    // v1.3: lanzamiento encadenado tras el 3er puo (0 = off)
+int    g_iKolGrabFlingRef[MAXPLAYERS + 1];   // v1.3: victima del fling demorado (+0.3s, EntRef)
+float  g_fKolSeqDur[KOL_ST_COUNT];           // v1.3: duraciones REALES medidas al .mdl (0 = fallback)
+
+// v1.4: MOTOR DE CAPAS — los one-shots de la serie grab viajan en
+// m_AnimOverlay (brazos) mientras el main sigue en locomocion (piernas)
+int    g_iKolSeqIdx[KOL_ST_COUNT];             // v1.4: INDICE de secuencia (lo da la sonda — las capas usan indice, no nombre)
+bool   g_bKolLayersOK = false;                 // v1.4: el prop soporta m_AnimOverlay (sonda por mapa)
+int    g_iKolLayerSize = 0;                    // v1.4: slots disponibles
+int    g_iKolLayShotState[MAXPLAYERS + 1];     // v1.4: one-shot de capa activo (-1 = ninguno)
+float  g_fKolLayShotStart[MAXPLAYERS + 1];     // v1.4: arranque del one-shot de capa
+float  g_fKolLayShotDur[MAXPLAYERS + 1];       // v1.4: duracion del one-shot de capa
+bool   g_bKolLayHoldOn[MAXPLAYERS + 1];        // v1.4: pose GrabIdle sostenida en slot 1
+Handle g_hKolLayThink = null;                  // v1.4: driver per-tick del ciclo de la capa
+bool   g_bKolCalibDone = false;              // v1.3: el calibrador ya corrio en este mapa
+int    g_iKolCalibProp = INVALID_ENT_REFERENCE; // v1.3: prop desechable del calibrador
+int    g_iKolCalibStage = 0;                 // v1.3: 0=reach 1=punch 2=throw
+float  g_fKolCalibStart = 0.0;               // v1.3: arranque del stage actual
+float  g_fKolCalibLastCycle = -1.0;          // v1.3: ultimo m_flCycle leido
 float  g_fKolJumpStart[MAXPLAYERS + 1];
 float  g_fKolBodyYaw[MAXPLAYERS + 1];
 float  g_fKolYawLastT[MAXPLAYERS + 1];
@@ -234,7 +337,9 @@ bool   g_bKolSeqsOK = false;
 bool   g_bKolSeqOK[KOL_ST_COUNT];
 char   g_sKolSeqName[KOL_ST_COUNT][24] = { "idle", "walk", "run", "jump", "fall",
                                             "idle", "idle", "run", "run", "idle",
-                                            "idle", "idle", "idle", "idle", "idle" };
+                                            "idle", "idle", "idle", "idle", "idle",
+                                            // v1.3: la serie del grab (defaults = nombres de los SMD)
+                                            "Grab", "GrabIdle", "GrabPunch", "GrabThrow" };
 
 // sonidos del killer (sound/om/kolossos/) — fallback nativo si falta
 bool   g_bKolSndSigh, g_bKolSndRumble, g_bKolSndRoar, g_bKolSndStartup;
@@ -319,6 +424,12 @@ public void Kolossos_OnPluginStart()
     g_cvKolGrabPunches = CreateConVar("kolossos_grab_punches", "3", "Kolossos [X] Grab: puos antes del lanzamiento (GMod 3)", 0, true, 1.0, true, 10.0);
     g_cvKolGrabPunchDmg= CreateConVar("kolossos_grab_punchdamage", "15", "Kolossos [X] Grab: dano por puo (GMod slamDamage 15)", 0, true, 1.0);
     g_cvKolGrabCancel  = CreateConVar("kolossos_grab_cancel", "0", "Kolossos [X] Grab: X de nuevo suelta a la victima (GMod CanCancelGrab=0)", 0, true, 0.0, true, 1.0);
+    // v1.4: el motor de capas (m_AnimOverlay) — brazos de la serie grab
+    // SOBRE la locomocion (piernas andando, como los survivors al cambiar
+    // arma). 1 = auto (capas si el prop las soporta); 0 = monocapa v1.3
+    g_cvKolGrabLayers  = CreateConVar("kolossos_grab_layers", "1", "Kolossos [X] Grab: 1 = serie grab por CAPAS m_AnimOverlay (piernas vivas), 0 = monocapa", 0, true, 0.0, true, 1.0);
+    g_cvKolGrabTank    = CreateConVar("kolossos_grab_tank", "1", "Kolossos [X] Grab: 1 = TAMBIEN agarra al tank (v1.4: el veto de la v1.0 fuera)", 0, true, 0.0, true, 1.0);
+    g_cvKolGrabWitch   = CreateConVar("kolossos_grab_witch", "1", "Kolossos [X] Grab: 1 = tambien agarra a la witch", 0, true, 0.0, true, 1.0);
 
     g_cvKolIndCd       = CreateConVar("kolossos_indicator_cooldown", "14", "Kolossos [C] Indicator: cooldown s (GMod 14)", 0, true, 1.0);
     g_cvKolIndDur      = CreateConVar("kolossos_indicator_duration", "5", "Kolossos [C] Indicator: duracion s (GMod 5)", 0, true, 1.0, true, 30.0);
@@ -342,6 +453,10 @@ public void Kolossos_OnPluginStart()
         g_iKolAnimState[i]     = -1;
         g_iKolAnimShotState[i] = -1;
         g_fKolAnimShotUntil[i] = 0.0;
+        g_iKolLayShotState[i]  = -1;   // v1.4: sin one-shot de capa
+        g_fKolLayShotStart[i]  = 0.0;
+        g_fKolLayShotDur[i]    = 0.0;
+        g_bKolLayHoldOn[i]     = false;
         g_iKolGrabMoveType[i]  = -1;
         g_iKolGrabVictim[i]    = 0;
         g_hKolHitList[i]       = null;
@@ -350,6 +465,11 @@ public void Kolossos_OnPluginStart()
 
     delete g_hKolThink;
     g_hKolThink = CreateTimer(0.1, T_KolossosThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+
+    // v1.4: driver per-tick del ciclo de las capas (m_flCycle del slot 2
+    // — el cliente NO avanza los overlays de un prop: lo empuja el server)
+    delete g_hKolLayThink;
+    g_hKolLayThink = CreateTimer(0.0, T_Kol_LayerThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 }
 
 public void Kolossos_OnMapStart()
@@ -363,6 +483,10 @@ public void Kolossos_OnMapStart()
     delete g_hKolThink;
     g_hKolThink = CreateTimer(0.1, T_KolossosThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 
+    // v1.4: el driver de capas tambien renace en cada mapa (leccion v1.2)
+    delete g_hKolLayThink;
+    g_hKolLayThink = CreateTimer(0.0, T_Kol_LayerThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+
     // modelo del avatar (patron Blaze g_bBlazeModelOK)
     char mdl[PLATFORM_MAX_PATH];
     g_cvKolModel.GetString(mdl, sizeof(mdl));
@@ -371,6 +495,14 @@ public void Kolossos_OnMapStart()
     {
         PrecacheModel(mdl, true);
         g_bKolSeqsOK = false;   // se resuelven al nacer el primer avatar
+        g_bKolCalibDone = false;   // v1.3: las duraciones se miden de nuevo (prop nuevo)
+        g_bKolLayersOK = false;    // v1.4: la sonda de capas corre de nuevo
+        g_iKolLayerSize = 0;
+        for (int s = 0; s < KOL_ST_COUNT; s++)
+        {
+            g_fKolSeqDur[s] = 0.0;
+            g_iKolSeqIdx[s] = -1;   // v1.4: indices reales al re-sondear
+        }
     }
     else if (!g_bKolWarnedModel)
     {
@@ -444,6 +576,17 @@ public void Kolossos_OnMapStart()
 public void Kolossos_OnMapEnd()
 {
     delete g_hKolThink;
+    delete g_hKolLayThink;   // v1.4: driver de capas fuera con el mapa
+
+    // v1.3: el prop del calibrador y sus medidas mueren con el mapa
+    int cp = EntRefToEntIndex(g_iKolCalibProp);
+    if (cp > 0 && IsValidEntity(cp)) AcceptEntityInput(cp, "Kill");
+    g_iKolCalibProp   = INVALID_ENT_REFERENCE;
+    g_bKolCalibDone   = false;
+    g_iKolCalibStage  = 0;
+    g_fKolCalibStart  = 0.0;
+    g_fKolCalibLastCycle = -1.0;
+    for (int s = 0; s < KOL_ST_COUNT; s++) g_fKolSeqDur[s] = 0.0;
 
     for (int i = 1; i <= MaxClients; i++)
     {
@@ -453,6 +596,9 @@ public void Kolossos_OnMapEnd()
         g_iKolAnimState[i]     = -1;
         g_iKolAnimShotState[i] = -1;
         g_fKolAnimShotUntil[i] = 0.0;
+        g_iKolAnimShotTier[i]  = KOL_SHOT_ACT;
+        g_fKolGrabThrowAt[i]   = 0.0;
+        g_iKolGrabFlingRef[i]  = 0;
         g_iKolBodyRender[i]    = -1;
         g_bKolSmSnap[i]        = false;
 
@@ -566,6 +712,11 @@ void Kolossos_ResetState(int client)
     g_bKolBlockCountered[client] = false;
     g_iKolAnimShotState[client] = -1;   // v1.1: sin one-shot
     g_fKolAnimShotUntil[client] = 0.0;
+    g_iKolAnimShotTier[client]  = KOL_SHOT_ACT;   // v1.3
+    Kolossos_LayerHold(client, false);            // v1.4: pose de sujetar fuera
+    Kolossos_LayerClearShot(client);              // v1.4: one-shot de capa fuera
+    g_fKolGrabThrowAt[client]   = 0.0;            // v1.3: sin lanzamiento pendiente
+    g_iKolGrabFlingRef[client]  = 0;              // v1.3 (anula el fling demorado si habia)
     g_fKolIndUntil[client]     = 0.0;
     g_fKolIndCdUntil[client]   = 0.0;
     g_fKolIndNextPing[client]  = 0.0;
@@ -591,6 +742,11 @@ void Kolossos_CleanupState(int client)
     g_iKolAnimState[client]   = -1;
     g_iKolAnimShotState[client] = -1;
     g_fKolAnimShotUntil[client] = 0.0;
+    g_iKolAnimShotTier[client]  = KOL_SHOT_ACT;   // v1.3
+    g_iKolLayShotState[client] = -1;              // v1.4: capas fuera
+    g_bKolLayHoldOn[client]    = false;
+    g_fKolGrabThrowAt[client]   = 0.0;            // v1.3
+    g_iKolGrabFlingRef[client]  = 0;              // v1.3
 }
 
 // =====================================================================
@@ -699,6 +855,7 @@ void Kolossos_ResolveTry(int av, int state, const char[] name)
     {
         strcopy(g_sKolSeqName[state], 24, name);
         g_bKolSeqOK[state] = true;
+        g_iKolSeqIdx[state] = after;   // v1.4: el INDICE — las capas (m_AnimOverlay) usan indice, no nombre
     }
 }
 
@@ -706,6 +863,9 @@ void Kolossos_ResolveSeqs(int av)
 {
     if (g_bKolSeqsOK) return;
     g_bKolSeqsOK = true;
+
+    // v1.4: indices de secuencia frescos (la sonda los rellena)
+    for (int s = 0; s < KOL_ST_COUNT; s++) g_iKolSeqIdx[s] = -1;
 
     // candidatos por estado: nombres literales del registro anims del
     // killer Lua + variantes comunes por si el .mdl difiere
@@ -724,6 +884,12 @@ void Kolossos_ResolveSeqs(int av)
     char ctrCands[][22]   = { "BlackCounterMelee", "blackcountermelee", "CounterMelee" };
     char slamCands[][22]  = { "slaminwall", "SlamInWall", "slam_in_wall" };
     char killCands[][22]  = { "Kill", "kill", "Execution" };
+    // v1.3: la serie del grab — nombres literales de los SMD del .mdl
+    // (Grab 31f / GrabIdle pose / GrabPunch 51f / GrabThrow 61f)
+    char grabRcCands[][22] = { "Grab", "grab", "Grab_reach", "Reach" };
+    char grabHdCands[][22] = { "GrabIdle", "grabidle", "Grab_Idle", "grab_idle", "IdleGrab" };
+    char grabPnCands[][22] = { "GrabPunch", "grabpunch", "Grab_Punch", "Punch" };
+    char grabThCands[][22] = { "GrabThrow", "grabthrow", "Grab_Throw", "Throw" };
 
     for (int c = 0; c < sizeof(idleCands); c++) { Kolossos_ResolveTry(av, KOL_ST_IDLE, idleCands[c]); if (g_bKolSeqOK[KOL_ST_IDLE]) break; }
     for (int c = 0; c < sizeof(walkCands); c++) { Kolossos_ResolveTry(av, KOL_ST_WALK, walkCands[c]); if (g_bKolSeqOK[KOL_ST_WALK]) break; }
@@ -740,6 +906,10 @@ void Kolossos_ResolveSeqs(int av)
     for (int c = 0; c < sizeof(ctrCands); c++)   { Kolossos_ResolveTry(av, KOL_ST_COUNTER, ctrCands[c]);      if (g_bKolSeqOK[KOL_ST_COUNTER]) break; }
     for (int c = 0; c < sizeof(slamCands); c++)  { Kolossos_ResolveTry(av, KOL_ST_SLAMINWALL, slamCands[c]);  if (g_bKolSeqOK[KOL_ST_SLAMINWALL]) break; }
     for (int c = 0; c < sizeof(killCands); c++)  { Kolossos_ResolveTry(av, KOL_ST_KILL, killCands[c]);        if (g_bKolSeqOK[KOL_ST_KILL]) break; }
+    for (int c = 0; c < sizeof(grabRcCands); c++) { Kolossos_ResolveTry(av, KOL_ST_GRABREACH, grabRcCands[c]); if (g_bKolSeqOK[KOL_ST_GRABREACH]) break; }
+    for (int c = 0; c < sizeof(grabHdCands); c++) { Kolossos_ResolveTry(av, KOL_ST_GRABHOLD, grabHdCands[c]);  if (g_bKolSeqOK[KOL_ST_GRABHOLD]) break; }
+    for (int c = 0; c < sizeof(grabPnCands); c++) { Kolossos_ResolveTry(av, KOL_ST_GRABPUNCH, grabPnCands[c]); if (g_bKolSeqOK[KOL_ST_GRABPUNCH]) break; }
+    for (int c = 0; c < sizeof(grabThCands); c++) { Kolossos_ResolveTry(av, KOL_ST_GRABTHROW, grabThCands[c]); if (g_bKolSeqOK[KOL_ST_GRABTHROW]) break; }
 
     // cadena de fallbacks (nunca T-pose; cada hueco cae a su par visual
     // mas cercano: la avalancha sin anim dedicada corre, el bloqueo sin
@@ -765,6 +935,18 @@ void Kolossos_ResolveSeqs(int av)
     if (!g_bKolSeqOK[KOL_ST_KILL])
         Kolossos_FallbackTo(KOL_ST_KILL, KOL_ST_IDLE);
 
+    // v1.3: la serie del grab — cada hueco cae a su par visual mas cercano
+    // (sujetando sin pose = plantado normal; sin reach/puo/throw caen por
+    // la cadena hasta idle — nunca T-pose)
+    if (!g_bKolSeqOK[KOL_ST_GRABHOLD])
+        Kolossos_FallbackTo(KOL_ST_GRABHOLD, KOL_ST_IDLE);
+    if (!g_bKolSeqOK[KOL_ST_GRABREACH])
+        Kolossos_FallbackTo(KOL_ST_GRABREACH, g_bKolSeqOK[KOL_ST_GRABHOLD] ? KOL_ST_GRABHOLD : KOL_ST_IDLE);
+    if (!g_bKolSeqOK[KOL_ST_GRABPUNCH])
+        Kolossos_FallbackTo(KOL_ST_GRABPUNCH, g_bKolSeqOK[KOL_ST_GRABREACH] ? KOL_ST_GRABREACH : KOL_ST_IDLE);
+    if (!g_bKolSeqOK[KOL_ST_GRABTHROW])
+        Kolossos_FallbackTo(KOL_ST_GRABTHROW, g_bKolSeqOK[KOL_ST_GRABPUNCH] ? KOL_ST_GRABPUNCH : (g_bKolSeqOK[KOL_ST_GRABREACH] ? KOL_ST_GRABREACH : KOL_ST_IDLE));
+
     // locomocion base: lo que falte cae a idle (regla v1.0)
     for (int s = 1; s <= KOL_ST_FALL; s++)
     {
@@ -783,6 +965,324 @@ void Kolossos_FallbackTo(int dst, int src)
 void Kolossos_SeqFor(int state, char[] out, int maxlen)
 {
     strcopy(out, maxlen, g_sKolSeqName[state]);
+}
+
+// =====================================================================
+//  v1.3: CALIBRADOR DE DURACIONES — "debe durar lo que debe durar".
+//  Los SMD dicen 31/51/61 frames, pero el fps REAL lo decide el .mdl
+//  compilado (el Kill del Lua dura 1.65s con 276 frames — NO es 30fps).
+//  En vez de adivinar: se mide EN VIVO con un prop desechable —
+//  SetAnimation + m_bClientSideAnimation 0 (el SERVER avanza m_flCycle)
+//  y se cuenta cuanto tarda el ciclo en clavarse en 1.0 (fin de un
+//  one-shot no loopeado). Una sola vez por mapa, al primer montaje.
+// =====================================================================
+
+int Kolossos_CalibStateOf(int stage)
+{
+    if (stage <= 0) return KOL_ST_GRABREACH;
+    if (stage == 1) return KOL_ST_GRABPUNCH;
+    return KOL_ST_GRABTHROW;
+}
+
+void Kolossos_CalibStart()
+{
+    if (g_bKolCalibDone || !g_bKolModelOK) return;
+
+    // sin ninguna secuencia de la serie no hay nada que medir
+    if (!g_bKolSeqOK[KOL_ST_GRABREACH] && !g_bKolSeqOK[KOL_ST_GRABPUNCH]
+        && !g_bKolSeqOK[KOL_ST_GRABTHROW])
+    {
+        g_bKolCalibDone = true;
+        return;
+    }
+
+    char mdl[PLATFORM_MAX_PATH];
+    g_cvKolModel.GetString(mdl, sizeof(mdl));
+
+    int cp = CreateEntityByName("prop_dynamic_override");
+    if (cp <= 0 || !IsValidEntity(cp))
+    {
+        g_bKolCalibDone = true;   // sin prop: fallbacks 30fps y listo
+        return;
+    }
+    DispatchKeyValue(cp, "model", mdl);
+    DispatchKeyValue(cp, "targetname", "kolossos_calib_om");
+    DispatchKeyValue(cp, "solid", "0");
+    DispatchKeyValue(cp, "disableshadows", "1");
+    DispatchSpawn(cp);
+
+    // invisible y lejos: solo el SERVER lo anima (asi m_flCycle avanza
+    // de verdad y se puede medir)
+    SetEntityRenderMode(cp, RENDER_NONE);
+    if (HasEntProp(cp, Prop_Send, "m_bClientSideAnimation"))
+        SetEntProp(cp, Prop_Send, "m_bClientSideAnimation", 0);
+
+    float far[3] = { 0.0, 0.0, -16000.0 };
+    TeleportEntity(cp, far, NULL_VECTOR, NULL_VECTOR);
+
+    g_iKolCalibProp      = EntIndexToEntRef(cp);
+    g_iKolCalibStage     = 0;
+    g_fKolCalibStart     = 0.0;
+    g_fKolCalibLastCycle = -1.0;
+
+    CreateTimer(0.1, Kolossos_T_Calib, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+}
+
+// el tick del calibrador (10 Hz): stage actual -> anim -> esperar el clavado
+public Action Kolossos_T_Calib(Handle timer)
+{
+    // el prop murio (fin de mapa): se re-calibrara en el proximo montaje
+    int cp = EntRefToEntIndex(g_iKolCalibProp);
+    if (cp <= 0 || !IsValidEntity(cp))
+    {
+        g_bKolCalibDone = false;
+        return Plugin_Stop;
+    }
+
+    float now = GetEngineTime();
+
+    // arrancar el stage actual si falta (saltando los no resueltos)
+    if (g_fKolCalibStart == 0.0)
+    {
+        while (g_iKolCalibStage < 3 && !g_bKolSeqOK[Kolossos_CalibStateOf(g_iKolCalibStage)])
+            g_iKolCalibStage++;
+
+        if (g_iKolCalibStage >= 3) return Kolossos_CalibFinish(cp);
+
+        char seq[24];
+        Kolossos_SeqFor(Kolossos_CalibStateOf(g_iKolCalibStage), seq, sizeof(seq));
+        SetVariantString(seq);
+        AcceptEntityInput(cp, "SetAnimation");
+        if (HasEntProp(cp, Prop_Data, "m_flPlaybackRate"))
+            SetEntPropFloat(cp, Prop_Data, "m_flPlaybackRate", 1.0);
+
+        g_fKolCalibStart     = now;
+        g_fKolCalibLastCycle = -1.0;
+        return Plugin_Continue;
+    }
+
+    float cycle = 0.0;
+    if (HasEntProp(cp, Prop_Send, "m_flCycle"))
+        cycle = GetEntPropFloat(cp, Prop_Send, "m_flCycle");
+
+    int st = Kolossos_CalibStateOf(g_iKolCalibStage);
+
+    // one-shot no loopeado: el ciclo se clava en ~1.0 al terminar
+    if (cycle >= 0.999)
+    {
+        float dur = now - g_fKolCalibStart + 0.05;   // gracia de cierre
+        if (dur < 0.2)  dur = 0.2;
+        if (dur > 4.0)  dur = 0.0;    // absurdo: fallback 30fps
+        g_fKolSeqDur[st] = dur;
+
+        g_iKolCalibStage++;
+        g_fKolCalibStart = 0.0;
+        if (g_iKolCalibStage >= 3) return Kolossos_CalibFinish(cp);
+    }
+    // el ciclo dejo de avanzar: fin legitimo SOLO si ya iba avanzado
+    // (cerca del 1.0); si sigue en el arranque es que el SERVER no
+    // anima este prop -> calibracion imposible: fallbacks 30fps
+    else if (g_fKolCalibLastCycle >= 0.0 && cycle <= g_fKolCalibLastCycle)
+    {
+        if (cycle < 0.5) return Kolossos_CalibGiveUp(cp);
+
+        float dur2 = now - g_fKolCalibStart + 0.05;
+        if (dur2 < 0.2) dur2 = 0.2;
+        if (dur2 > 4.0) dur2 = 0.0;
+        g_fKolSeqDur[st] = dur2;
+
+        g_iKolCalibStage++;
+        g_fKolCalibStart = 0.0;
+        if (g_iKolCalibStage >= 3) return Kolossos_CalibFinish(cp);
+    }
+    else if (now - g_fKolCalibStart > 4.5)
+    {
+        // loopeado o algo raro: fallback 30fps para este y seguir
+        g_fKolSeqDur[st] = 0.0;
+        g_iKolCalibStage++;
+        g_fKolCalibStart = 0.0;
+        if (g_iKolCalibStage >= 3) return Kolossos_CalibFinish(cp);
+    }
+    else g_fKolCalibLastCycle = cycle;
+
+    return Plugin_Continue;
+}
+
+// el server no anima el prop (client-side anim real): nada se puede
+// medir en vivo — fallbacks 30fps de los SMD y fuera
+Action Kolossos_CalibGiveUp(int cp)
+{
+    for (int s = 0; s < KOL_ST_COUNT; s++) g_fKolSeqDur[s] = 0.0;
+    return Kolossos_CalibFinish(cp);
+}
+
+Action Kolossos_CalibFinish(int cp)
+{
+    AcceptEntityInput(cp, "Kill");
+    g_iKolCalibProp = INVALID_ENT_REFERENCE;
+    g_bKolCalibDone = true;
+    return Plugin_Stop;
+}
+
+// =====================================================================
+//  v1.4: MOTOR DE CAPAS — m_AnimOverlay sobre el avatar (ambas copias).
+//  Es EL sistema que pedia el owner: "la animacion por capas si es
+//  compatible con l4d2, por que no se le esta aplicando?" — L4D2 lleva
+//  el sistema de overlays dentro de CBaseAnimating (los props tambien
+//  lo networkan). Las secuencias grab del .mdl estan autoradas como
+//  gestures (weightlist weights_swing = SOLO brazos + addlayer delta
+//  de torso): en una CAPA solo contribuyen sus huesos con peso > 0,
+//  asi que los BRAZOS agarran mientras las PIERNAS siguen andando en
+//  el main (walk/run/idle) — el mismo sistema de los survivors al
+//  cambiar arma. El cliente no avanza el ciclo de un overlay de prop:
+//  el SERVER lo empuja (driver per-tick T_Kol_LayerThink).
+// =====================================================================
+
+// la sonda: ¿este prop networka m_AnimOverlay y con cuantos slots?
+void Kolossos_LayerProbe(int av)
+{
+    g_bKolLayersOK = false;
+    g_iKolLayerSize = 0;
+
+    if (!HasEntProp(av, Prop_Send, "m_AnimOverlay.m_nSequence")) return;
+
+    int size = GetEntPropArraySize(av, Prop_Send, "m_AnimOverlay.m_nSequence");
+    if (size < KOL_LAYER_MIN_SIZE) return;   // hacen falta los slots 1 y 2
+
+    // verificacion de escritura: el slot 2 acepta y devuelve el valor
+    int before = GetEntProp(av, Prop_Send, "m_AnimOverlay.m_nSequence", _, KOL_LAYER_SHOT);
+    SetEntProp(av, Prop_Send, "m_AnimOverlay.m_nSequence", 0, _, KOL_LAYER_SHOT);
+    int readBack = GetEntProp(av, Prop_Send, "m_AnimOverlay.m_nSequence", _, KOL_LAYER_SHOT);
+    SetEntProp(av, Prop_Send, "m_AnimOverlay.m_nSequence", before, _, KOL_LAYER_SHOT);
+    if (readBack != 0) return;               // el slot no se deja escribir
+
+    g_iKolLayerSize = size;
+    g_bKolLayersOK = true;
+}
+
+// ¿el motor de capas esta operativo? (convar + sonda del mapa)
+bool Kolossos_LayersActive()
+{
+    return g_cvKolGrabLayers != null && g_cvKolGrabLayers.BoolValue
+        && g_bKolLayersOK && g_iKolLayerSize >= KOL_LAYER_MIN_SIZE;
+}
+
+// escribe un slot de capa en UN prop (todo con guarda: si el .mdl o el
+// prop no soporta un campo, se escribe lo que haya)
+void Kolossos_LayerWrite(int av, int slot, int seqIdx, float cycle, float weight, int order)
+{
+    if (av <= 0 || !IsValidEntity(av)) return;
+
+    SetEntProp(av, Prop_Send, "m_AnimOverlay.m_nSequence", seqIdx, _, slot);
+    SetEntPropFloat(av, Prop_Send, "m_AnimOverlay.m_flCycle", cycle, slot);
+    if (HasEntProp(av, Prop_Send, "m_AnimOverlay.m_flPrevCycle"))
+        SetEntPropFloat(av, Prop_Send, "m_AnimOverlay.m_flPrevCycle", cycle, slot);
+    if (HasEntProp(av, Prop_Send, "m_AnimOverlay.m_flPlaybackRate"))
+        SetEntPropFloat(av, Prop_Send, "m_AnimOverlay.m_flPlaybackRate", 1.0, slot);
+    SetEntPropFloat(av, Prop_Send, "m_AnimOverlay.m_flWeight", weight, slot);
+    if (HasEntProp(av, Prop_Send, "m_AnimOverlay.m_flWeightDeltaRate"))
+        SetEntPropFloat(av, Prop_Send, "m_AnimOverlay.m_flWeightDeltaRate", 0.0, slot);
+    if (HasEntProp(av, Prop_Send, "m_AnimOverlay.m_nOrder"))
+        SetEntProp(av, Prop_Send, "m_AnimOverlay.m_nOrder", order, _, slot);
+}
+
+// escribe el mismo slot en las DOS copias del avatar (R + L)
+void Kolossos_LayerWriteBoth(int client, int slot, int seqIdx, float cycle, float weight, int order)
+{
+    int av = EntRefToEntIndex(g_iKolAvatar[client]);
+    if (av > 0 && IsValidEntity(av))
+        Kolossos_LayerWrite(av, slot, seqIdx, cycle, weight, order);
+    if (g_iKolAvatarL[client] != 0)
+    {
+        int avL = EntRefToEntIndex(g_iKolAvatarL[client]);
+        if (avL > 0 && IsValidEntity(avL))
+            Kolossos_LayerWrite(avL, slot, seqIdx, cycle, weight, order);
+    }
+}
+
+// lanza un ONE-SHOT de la serie grab en la capa 2 (brazos) — el main
+// sigue en locomocion (piernas). Devuelve false si hay que caer al
+// motor monocapa (sin capas / secuencia sin resolver)
+bool Kolossos_LayerShot(int client, int state, float dur)
+{
+    if (!Kolossos_LayersActive()) return false;
+    if (g_iKolSeqIdx[state] < 0) return false;   // la sonda no la resolvio
+
+    Kolossos_LayerWriteBoth(client, KOL_LAYER_SHOT, g_iKolSeqIdx[state], 0.0, 1.0, 2);
+    g_iKolLayShotState[client] = state;
+    g_fKolLayShotStart[client] = GetEngineTime();
+    g_fKolLayShotDur[client]   = (dur > 0.15) ? dur : 0.2;
+    return true;
+}
+
+// apaga la capa del one-shot
+void Kolossos_LayerClearShot(int client)
+{
+    if (g_iKolLayShotState[client] < 0) return;
+    g_iKolLayShotState[client] = -1;
+    Kolossos_LayerWriteBoth(client, KOL_LAYER_SHOT, 0, 0.0, 0.0, 0);
+}
+
+// la POSE de sujetar (GrabIdle, el ACT_HOVER del GMod) en la capa 1:
+// 1 frame congelado — brazos sujetando mientras el main camina/corre.
+// Sin resolver GrabIdle: se queda en locomocion pura (degradacion fina)
+void Kolossos_LayerHold(int client, bool on)
+{
+    if (on == g_bKolLayHoldOn[client]) return;
+    if (!on)
+    {
+        g_bKolLayHoldOn[client] = false;
+        Kolossos_LayerWriteBoth(client, KOL_LAYER_HOLD, 0, 0.0, 0.0, 0);
+        return;
+    }
+    if (!Kolossos_LayersActive()) return;
+    if (g_iKolSeqIdx[KOL_ST_GRABHOLD] < 0) return;
+
+    g_bKolLayHoldOn[client] = true;
+    Kolossos_LayerWriteBoth(client, KOL_LAYER_HOLD, g_iKolSeqIdx[KOL_ST_GRABHOLD], 0.0, 1.0, 1);
+}
+
+// el dispatcher de la serie grab: CAPAS si se puede (piernas vivas),
+// monocapa v1.3 si no — MISMA prioridad en ambos mundos
+void Kolossos_GrabShot(int client, int state, float dur, int tier)
+{
+    if (Kolossos_LayerShot(client, state, dur)) return;
+    Kolossos_AnimShot(client, state, dur, tier);   // fallback monocapa
+}
+
+// driver per-tick: empuja el m_flCycle de la capa one-shot (el cliente
+// NO avanza overlays de props — sin esto la capa quedaria clavada en 0)
+public Action T_Kol_LayerThink(Handle timer)
+{
+    float now = GetEngineTime();
+
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (g_iKolLayShotState[i] < 0) continue;
+
+        int av = EntRefToEntIndex(g_iKolAvatar[i]);
+        if (av <= 0 || !IsValidEntity(av))
+        {
+            g_iKolLayShotState[i] = -1;   // avatar muerto: tracking fuera
+            continue;
+        }
+
+        float t = (now - g_fKolLayShotStart[i]) / g_fKolLayShotDur[i];
+        if (t < 0.0) t = 0.0;
+        if (t > 1.0) t = 1.0;
+
+        // el LANZAMIENTO y el REACH duran lo que deben durar: el ciclo
+        // llega a 1.0 y la capa se apaga recien ahi (nadie la corta)
+        if (t >= 1.0)
+        {
+            Kolossos_LayerClearShot(i);
+            continue;
+        }
+
+        Kolossos_LayerWriteBoth(i, KOL_LAYER_SHOT, g_iKolSeqIdx[g_iKolLayShotState[i]], t, 1.0, 2);
+    }
+
+    return Plugin_Continue;
 }
 
 // transmit: R la ven TODOS menos el dueno; L solo el dueno
@@ -877,6 +1377,14 @@ void Kolossos_CreateAvatar(int client)
     if (av == 0) return;
 
     Kolossos_ResolveSeqs(av);
+
+    // v1.4: sonda de capas (m_AnimOverlay) — una vez por mapa, con el
+    // mismo prop de la sonda de nombres
+    Kolossos_LayerProbe(av);
+
+    // v1.3: medir las duraciones reales de la serie del grab contra el
+    // .mdl ("debe durar lo que debe durar") — una vez por mapa
+    Kolossos_CalibStart();
 
     char seqIdle[24];
     Kolossos_SeqFor(KOL_ST_IDLE, seqIdle, sizeof(seqIdle));
@@ -1042,12 +1550,31 @@ public void Kolossos_AvatarFollow(int client)
 
 // v1.1: lanza una animacion ONE-SHOT (Kill / slaminwall / counters /
 // BlockStart) que bloquea la FSM hasta su fin — el equivalente del
-// PillAnim directo del GMod para las anims que no son estados continuos
-void Kolossos_AnimShot(int client, int state, float dur)
+// PillAnim directo del GMod para las anims que no son estados continuos.
+// v1.3: + PRIORIDAD (tier): un disparo nuevo solo pisa al activo si es
+// de igual o mayor categoria — el LANZAMIENTO (KOL_SHOT_MAX) no lo
+// corta nadie, como pidio el owner ("debe durar lo que debe durar")
+void Kolossos_AnimShot(int client, int state, float dur, int tier)
 {
     if (client < 1 || client > MaxClients) return;
+
+    float now = GetEngineTime();
+    if (g_iKolAnimShotState[client] >= 0 && now < g_fKolAnimShotUntil[client]
+        && tier < g_iKolAnimShotTier[client])
+        return;   // uno de mayor prioridad esta sonando: NO se pisa
+
     g_iKolAnimShotState[client] = state;
-    g_fKolAnimShotUntil[client] = GetEngineTime() + dur;
+    g_fKolAnimShotUntil[client] = now + dur;
+    g_iKolAnimShotTier[client]  = tier;
+}
+
+// v1.3: duracion de un one-shot de la serie grab — la medida EN VIVO
+// contra el .mdl si el calibrador pudo correr; si no, el fallback 30fps
+// de los SMD (31/51/61 frames)
+float Kolossos_ShotDur(int state, float fallback)
+{
+    if (g_fKolSeqDur[state] > 0.15) return g_fKolSeqDur[state];
+    return fallback;
 }
 
 // anims del avatar — v1.1: EL ARBOL COMPLETO de prioridades del Lua.
@@ -1066,19 +1593,38 @@ void Kolossos_AvatarUpdate(int client, int av, float now)
     }
     else
     {
-        if (g_iKolAnimShotState[client] >= 0) g_iKolAnimShotState[client] = -1;
+        if (g_iKolAnimShotState[client] >= 0)
+        {
+            g_iKolAnimShotState[client] = -1;
+            g_iKolAnimShotTier[client]  = KOL_SHOT_ACT;   // v1.3
+        }
 
         // ---- [2] aturdido (ShouldAlternate: "stun" en todos los estados) ----
         if (OM_IsStunned(client))
         {
             state = KOL_ST_STUN;
         }
-        // ---- [3] victima en vilo: la base camina (run->walk del Lua);
-        //      parado se planta (idle). El ACT_HOVER del GMod es un
-        //      gesture de puppet — el prop no puede capas, la base camina
+        // ---- [3] victima en vilo — v1.4 LA SERIE DEL GRAB POR CAPAS ----
+        //      Con capas (kolossos_grab_layers 1): el main es SIEMPRE
+        //      locomocion (idle/walk/jump/fall) — la pose de sujetar
+        //      vive en la capa 1 y reach/puo/lanzamiento en la capa 2:
+        //      las PIERNAS SIGUEN ANDANDO mientras los brazos agarran,
+        //      como los survivors al cambiar arma (lo que pedia el
+        //      owner). Sin capas: la regla monocapa v1.3 (walk en
+        //      movimiento, pose GrabIdle SOLO plantado).
         else if (g_iKolGrabVictim[client] != 0)
         {
-            state = (Kolossos_Speed2D(client) > 40.0) ? KOL_ST_WALK : KOL_ST_IDLE;
+            bool lay = Kolossos_LayersActive();
+            if (!(GetEntityFlags(client) & FL_ONGROUND))
+            {
+                float hvel[3];
+                GetEntPropVector(client, Prop_Data, "m_vecVelocity", hvel);
+                state = (hvel[2] > 40.0) ? KOL_ST_JUMP : KOL_ST_FALL;
+            }
+            else if (lay)
+                state = (Kolossos_Speed2D(client) > 40.0) ? KOL_ST_WALK : KOL_ST_IDLE;
+            else
+                state = (Kolossos_Speed2D(client) > 40.0) ? KOL_ST_WALK : KOL_ST_GRABHOLD;
         }
         // ---- [4] bloqueo en pie (ShouldAlternate: "BlockPos") ----
         else if (g_fKolBlockUntil[client] > now)
@@ -1338,7 +1884,7 @@ void Kolossos_ChargeEnd(int client, bool hitWall)
     {
         if (hadImpaled)
         {
-            Kolossos_AnimShot(client, KOL_ST_SLAMINWALL, 1.3);
+            Kolossos_AnimShot(client, KOL_ST_SLAMINWALL, 1.3, KOL_SHOT_ACT);
             Kolossos_Emit(client, g_bKolSndSlam, "om/kolossos/Sound.mp3",
                           "physics/concrete/concrete_break2.wav");
         }
@@ -1622,7 +2168,38 @@ void Kolossos_GrabLungeThink(int client, float now)
 
     float radius = g_cvKolChgRadius.FloatValue;
 
-    // commons primero (GMod: cualquier player/NPC/NextBot)
+    // v1.4 — ESPECIALES PRIMERO (reporte del owner: "No agarra a
+    // especiales (al tank no lo agarra. tampoco)"). En la v1.0-1.3 los
+    // commons se chequeaban primero con return: cualquier comun en la
+    // esfera se robaba el agarre y el TANK estaba explicitamente vetado
+    // ("demasiado grande para el puño") — el unico especial que SE ACERCA
+    // era inagarrable. Ahora: [1] SI+TANK (clientes team 3, el mas
+    // cercano), [2] commons, [3] witch (via movetype, como los commons)
+    int bestSI = 0;
+    float bestSIDist = radius;
+    for (int t = 1; t <= MaxClients; t++)
+    {
+        if (t == client || !IsClientInGame(t) || !IsPlayerAlive(t)) continue;
+        if (GetClientTeam(t) != 3) continue;
+        // v1.4: el tank entra por convar (el veto de la v1.0 fuera)
+        if (GetEntProp(t, Prop_Send, "m_zombieClass") == 8
+            && !g_cvKolGrabTank.BoolValue) continue;
+        float tpos[3];
+        GetClientAbsOrigin(t, tpos);
+        float d = GetVectorDistance(tpos, pos);
+        if (d > bestSIDist) continue;
+        bestSI = t;
+        bestSIDist = d;
+    }
+    if (bestSI != 0)
+    {
+        Kolossos_GrabBegin(client, bestSI);
+        return;
+    }
+
+    // commons (GMod: cualquier player/NPC/NextBot) — el MAS CERCANO
+    int bestCm = 0;
+    float bestCmDist = radius;
     int ent = -1;
     while ((ent = FindEntityByClassname(ent, "infected")) != -1)
     {
@@ -1630,22 +2207,40 @@ void Kolossos_GrabLungeThink(int client, float now)
         if (GetEntProp(ent, Prop_Data, "m_iHealth") <= 0) continue;
         float epos[3];
         GetEntPropVector(ent, Prop_Data, "m_vecOrigin", epos);
-        if (GetVectorDistance(epos, pos) > radius) continue;
-        Kolossos_GrabBegin(client, ent);
+        float d = GetVectorDistance(epos, pos);
+        if (d > bestCmDist) continue;
+        bestCm = ent;
+        bestCmDist = d;
+    }
+    if (bestCm != 0)
+    {
+        Kolossos_GrabBegin(client, bestCm);
         return;
     }
 
-    // infectados especiales (no tank: demasiado grande para el puo)
-    for (int t = 1; t <= MaxClients; t++)
+    // v1.4: la WITCH (convar) — entidad como los commons: congelada por
+    // movetype, en vilo por la FSM, y los puños le pegan igual
+    if (g_cvKolGrabWitch.BoolValue)
     {
-        if (t == client || !IsClientInGame(t) || !IsPlayerAlive(t)) continue;
-        if (GetClientTeam(t) != 3) continue;
-        if (GetEntProp(t, Prop_Send, "m_zombieClass") == 8) continue;   // tank fuera
-        float tpos[3];
-        GetClientAbsOrigin(t, tpos);
-        if (GetVectorDistance(tpos, pos) > radius) continue;
-        Kolossos_GrabBegin(client, t);
-        return;
+        int w = -1;
+        int bestW = 0;
+        float bestWDist = radius;
+        while ((w = FindEntityByClassname(w, "witch")) != -1)
+        {
+            if (!IsValidEntity(w)) continue;
+            if (GetEntProp(w, Prop_Data, "m_iHealth") <= 0) continue;
+            float wpos[3];
+            GetEntPropVector(w, Prop_Data, "m_vecOrigin", wpos);
+            float d = GetVectorDistance(wpos, pos);
+            if (d > bestWDist) continue;
+            bestW = w;
+            bestWDist = d;
+        }
+        if (bestW != 0)
+        {
+            Kolossos_GrabBegin(client, bestW);
+            return;
+        }
     }
 
     // ventana agotada sin nadie: CD completo (GMod l.2179)
@@ -1678,6 +2273,21 @@ void Kolossos_GrabBegin(int client, int victim)
 
     Kolossos_Emit(client, g_bKolSndImpale, "om/kolossos/Kol impales.wav",
                   "physics/flesh/flesh_break3.wav");
+
+    // v1.4: la POSE de sujetar (GrabIdle = el ACT_HOVER del GMod) vive en
+    // la CAPA 1 desde el enganche — brazos sujetando mientras el main
+    // sigue en locomocion (piernas andando, el sistema del owner)
+    Kolossos_LayerHold(client, true);
+
+    // v1.3: el REACH — la serie del grab arranca con el enganche (el
+    // "Grab" 31f de los SMD; en GMod el reach es el gesture del lunge
+    // MELEE_ATTACK1, pero aca el lunge va a 3x con las piernas vivas:
+    // el lugar monocapa natural del reach es JUSTO al enganchar)
+    // v1.4: por CAPAS — brazos del reach sobre las piernas corriendo;
+    // si no hay capas cae al one-shot monocapa de la v1.3
+    Kolossos_GrabShot(client, KOL_ST_GRABREACH,
+                      Kolossos_ShotDur(KOL_ST_GRABREACH, KOL_DUR_GRABREACH),
+                      KOL_SHOT_GRAB);
 
     PrintCenterText(client, "Agarrado! Puos restantes: %d (Z)", g_iKolGrabPunches[client]);
 }
@@ -1712,6 +2322,16 @@ void Kolossos_GrabHoldThink(int client, float now)
     pos[2] += KOL_GRAB_HOLD_Z;
     TeleportEntity(victim, pos, NULL_VECTOR, NULL_VECTOR);
 
+    // v1.3: lanzamiento encadenado tras el 3er puo (GMod l.2617-2623:
+    // duration+1.75 — el throw sale DESPUES de la anim del puo, no
+    // instantaneo)
+    if (g_fKolGrabThrowAt[client] > 0.0 && now >= g_fKolGrabThrowAt[client])
+    {
+        g_fKolGrabThrowAt[client] = 0.0;
+        Kolossos_GrabRelease(client, true, false);
+        return;
+    }
+
     // timeout del agarre (max 10s)
     if (now >= g_fKolGrabHoldEnd[client])
         Kolossos_GrabRelease(client, true, false);
@@ -1725,6 +2345,8 @@ void Kolossos_GrabPunch(int client)
 {
     int victim = EntRefToEntIndex(g_iKolGrabVictim[client]);
     if (victim <= 0 || !IsValidEntity(victim)) return;
+
+    float now = GetEngineTime();
 
     Kolossos_Emit(client, g_bKolSndPunch, "om/kolossos/kolossos punching.wav",
                   "physics/flesh/flesh_impact_hard3.wav");
@@ -1740,16 +2362,36 @@ void Kolossos_GrabPunch(int client)
 
     if (killed)
     {
-        Kolossos_AnimShot(client, KOL_ST_KILL, 1.65);
+        // v1.3: la ejecucion ahora es prioridad MAXIMA (nadie la corta)
+        Kolossos_AnimShot(client, KOL_ST_KILL, 1.65, KOL_SHOT_MAX);
         if (g_bKolSndLaughKill)
             CreateTimer(1.0, Kolossos_T_KillLaugh, GetClientUserId(client));
+
+        // v1.3: ejecucion pura — sin lanzamiento (el Kill ES el payoff)
+        g_iKolGrabPunches[client] = 0;
+        Kolossos_GrabRelease(client, false, true);
+        return;
     }
+
+    // v1.3: el puo tiene su animacion (el gesture MELEE_ATTACK2 del GMod
+    // = GrabPunch 51f de los SMD) — prioridad GRAB: la locomocion no la
+    // corta, solo el lanzamiento/ejecucion
+    // v1.4: por CAPAS — el puo va en la capa 2 sobre la pose de sujetar
+    // (capa 1) y las piernas siguen en el main (walk si te mueves)
+    Kolossos_GrabShot(client, KOL_ST_GRABPUNCH,
+                      Kolossos_ShotDur(KOL_ST_GRABPUNCH, KOL_DUR_GRABPUNCH),
+                      KOL_SHOT_GRAB);
 
     g_iKolGrabPunches[client]--;
     if (g_iKolGrabPunches[client] <= 0)
     {
-        // combo completo: lanzamiento + pull out (GMod l.2623-2627)
-        Kolossos_GrabRelease(client, true, false);
+        // v1.3: combo completo ENCADENADO (GMod l.2617-2623: al 3er puo
+        // duration+1.75): el lanzamiento sale cuando la anim del puo
+        // TERMINA — cada anim dura lo que debe durar
+        float punchDur = Kolossos_ShotDur(KOL_ST_GRABPUNCH, KOL_DUR_GRABPUNCH);
+        g_fKolGrabThrowAt[client] = now + punchDur + 0.1;
+        g_fKolGrabHoldEnd[client] = now + punchDur + 1.0;
+        PrintCenterText(client, "TERCER PUO — lanzamiento!");
     }
     else
     {
@@ -1768,11 +2410,39 @@ public Action Kolossos_T_KillLaugh(Handle timer, int userid)
     return Plugin_Stop;
 }
 
+// v1.3: LA VICTIMA VUELA A +0.3s DEL ARRANQUE DE LA ANIM (GMod
+// l.2154: timer.Simple(0.3) -> phys:SetVelocityInstantaneous(fwd*700))
+// — el brazo empuja al frente cuando la anim llega al envion
+public Action Kolossos_T_GrabFling(Handle timer, int userid)
+{
+    int client = GetClientOfUserId(userid);
+    if (client < 1 || !IsClientInGame(client) || !IsPlayerAlive(client)) return Plugin_Stop;
+    if (!Kolossos_PlayerIs(client)) return Plugin_Stop;
+
+    int victim = EntRefToEntIndex(g_iKolGrabFlingRef[client]);
+    g_iKolGrabFlingRef[client] = 0;
+    if (victim <= 0 || !IsValidEntity(victim)) return Plugin_Stop;
+
+    float dir[3], push[3];
+    Kolossos_GetMoveDir(client, dir);
+    push[0] = dir[0] * KOL_GRAB_FLING_FWD;
+    push[1] = dir[1] * KOL_GRAB_FLING_FWD;
+    push[2] = KOL_GRAB_FLING_UP;
+    TeleportEntity(victim, NULL_VECTOR, NULL_VECTOR, push);
+    return Plugin_Stop;
+}
+
 // soltar: fling opcional + restaurar a la victima + CD
 void Kolossos_GrabRelease(int client, bool fling, bool victimDied)
 {
     int victim = EntRefToEntIndex(g_iKolGrabVictim[client]);
     g_iKolGrabVictim[client] = 0;
+    g_fKolGrabThrowAt[client] = 0.0;    // v1.3: sin lanzamiento pendiente
+    g_iKolGrabFlingRef[client] = 0;     // v1.3: anula un fling demorado previo
+
+    // v1.4: la pose de sujetar se apaga SIEMPRE al soltar (con o sin
+    // lanzamiento — el ACT_HOVER del GMod se remueve al liberar)
+    Kolossos_LayerHold(client, false);
 
     if (victim > 0 && IsValidEntity(victim))
     {
@@ -1786,15 +2456,20 @@ void Kolossos_GrabRelease(int client, bool fling, bool victimDied)
             SetEntProp(victim, Prop_Data, "movetype", g_iKolGrabMoveType[client]);
         }
 
-        // lanzamiento (fwd*500 + up*300 — la receta Rouge del suite)
+        // v1.3: EL LANZAMIENTO — la anim PRIORITARIA de duracion COMPLETA
+        // (en GMod era el gesture ACT_DISARM cortado a 0.9s con fade; aca
+        // manda sobre todo: KOL_SHOT_MAX nadie la corta y la duracion la
+        // midio el calibrador contra el .mdl real) + la victima vuela a
+        // +0.3s del arranque (GMod l.2154)
+        // v1.4: por CAPAS — el lanzamiento viaja en la capa 2 su ciclo
+        // COMPLETO (0->1.0: nadie lo corta) con las piernas en el main
         if (fling && IsClientInGame(client) && IsPlayerAlive(client))
         {
-            float dir[3], push[3];
-            Kolossos_GetMoveDir(client, dir);
-            push[0] = dir[0] * KOL_GRAB_FLING_FWD;
-            push[1] = dir[1] * KOL_GRAB_FLING_FWD;
-            push[2] = KOL_GRAB_FLING_UP;
-            TeleportEntity(victim, NULL_VECTOR, NULL_VECTOR, push);
+            Kolossos_GrabShot(client, KOL_ST_GRABTHROW,
+                              Kolossos_ShotDur(KOL_ST_GRABTHROW, KOL_DUR_GRABTHROW),
+                              KOL_SHOT_MAX);
+            g_iKolGrabFlingRef[client] = EntIndexToEntRef(victim);
+            CreateTimer(KOL_GRAB_FLING_DELAY, Kolossos_T_GrabFling, GetClientUserId(client));
 
             Kolossos_Emit(client, g_bKolSndPullOut, "om/kolossos/kol sting and pull out.wav",
                           "physics/flesh/flesh_impact_bullet1.wav");
@@ -2014,7 +2689,7 @@ void Kolossos_Ability4(int client)
 
     // v1.1: anim de arranque del bloqueo (GMod l.2520: PillAnim(BlockStart))
     // — la FSM sostiene BlockPos durante toda la ventana
-    Kolossos_AnimShot(client, KOL_ST_BLOCKSTART, 0.5);
+    Kolossos_AnimShot(client, KOL_ST_BLOCKSTART, 0.5, KOL_SHOT_ACT);
 
     // planta los pies (GMod: OM_NoMovement durante el bloqueo)
     SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 0.0);
@@ -2056,7 +2731,7 @@ void Kolossos_BlockCounter(int client, int attacker)
 
     // la anim del contragolpe segun distancia (GMod l.1347)
     bool meleeRange = (GetVectorDistance(apos, mpos) < 300.0);
-    Kolossos_AnimShot(client, meleeRange ? KOL_ST_COUNTER : KOL_ST_BLOCKPROJ, 1.0);
+    Kolossos_AnimShot(client, meleeRange ? KOL_ST_COUNTER : KOL_ST_BLOCKPROJ, 1.0, KOL_SHOT_ACT);
 
     Kolossos_SpawnCounterRock(client, apos);
 }
@@ -2440,10 +3115,27 @@ public Action Kolossos_CmdDebug(int client, int args)
     // v1.1: la FSM de animacion al dia (estado + one-shot activo)
     char seqNow[24];
     Kolossos_SeqFor(g_iKolAnimState[client] >= 0 ? g_iKolAnimState[client] : 0, seqNow, sizeof(seqNow));
-    PrintToConsole(client, "Anim: estado %d (%s) | one-shot %s",
+    PrintToConsole(client, "Anim: estado %d (%s) | one-shot %s (prio %d)",
                    g_iKolAnimState[client], seqNow,
                    (g_iKolAnimShotState[client] >= 0 && now < g_fKolAnimShotUntil[client])
-                       ? g_sKolSeqName[g_iKolAnimShotState[client]] : "-");
+                       ? g_sKolSeqName[g_iKolAnimShotState[client]] : "-",
+                   g_iKolAnimShotTier[client]);
+    // v1.4: el estado del MOTOR DE CAPAS — si el avatar del prop
+    // networka m_AnimOverlay (slots) y que hay sonando ahora
+    char layShot[24];
+    if (g_iKolLayShotState[client] >= 0) strcopy(layShot, 24, g_sKolSeqName[g_iKolLayShotState[client]]);
+    else strcopy(layShot, 24, "-");
+    PrintToConsole(client, "Capas: %s (slots %d) | sujetar %s | one-shot %s | convar kolossos_grab_layers %d",
+                   Kolossos_LayersActive() ? "ACTIVAS" : (g_bKolLayersOK ? "sondadas pero convar OFF" : "NO DISPONIBLES (fallback monocapa)"),
+                   g_iKolLayerSize,
+                   g_bKolLayHoldOn[client] ? "ON" : "off",
+                   layShot,
+                   g_cvKolGrabLayers != null ? g_cvKolGrabLayers.IntValue : -1);
+    // v1.3: la serie del grab — duraciones medidas + lanzamiento pendiente
+    PrintToConsole(client, "GrabSerie: reach %.2fs | punch %.2fs | throw %.2fs (0 = fallback QC 60fps) | lanzar en %.1fs",
+                   g_fKolSeqDur[KOL_ST_GRABREACH], g_fKolSeqDur[KOL_ST_GRABPUNCH],
+                   g_fKolSeqDur[KOL_ST_GRABTHROW],
+                   g_fKolGrabThrowAt[client] > 0.0 ? g_fKolGrabThrowAt[client] - now : 0.0);
     PrintToChat(client, "\x04[Kolossos]\x01 Estado en consola (sm_kolossos).");
     return Plugin_Handled;
 }
