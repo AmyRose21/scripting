@@ -821,7 +821,7 @@
 //   algo lo piso, se RE-DISPARA en el acto en R y L. La eva corre
 //   ENTERA y encima de cualquier estado (peelout incluido: al acabar
 //   la FSM devuelve la animación que toque).
-#define SONIC_OM_VERSION "v6.37-OM"   // v6.37: LA BARRA AL CHAT — paleta colors.inc [AZUL survivor lleno/medio — su color / bajo {green}=AMARILLO aviso / SIN ANILLOS! {red}] vía g_iSBarChatColor + throttle sbar_chat_interval/_refresh (la captura del owner mató el rich text del hint: los <font> salen literales en L4D2) | v6.36: LA BARRA DE ANILLOS — pedido del owner 2026-10-15 ("ese mismo tipo de barra debería salir para sonic y todos aquellos que lo usan (silver para su vuelo sonic para su evasión)"): el Dodgemeter (los anillos, su EVA) vive en BARRA GRÁFICA con el motor común SBar del manager 3.77.81 (Sonic_PlayerIs + Sonic_BarState; el hint "Anillos: x/y" se RETIRA — la barra lo reemplaza en vivo)   // v6.35: AMPLIFICADOR + RAGDOLLS PARAMETRIZADOS — (1) Sonic_SpawnFlingRagdollEx(victim, dir, speed, liftMul, tumble): la velocidad del doble DEJA de venir fija de sonicom_ragblast — cada habilidad pone SU fuerza (contras de Amy/Rouge/Knuckles); la vanilla SpawnFlingRagdoll la envuelve con los números de siempre (CERO cambio en spindash); (2) Sonic_DeadFlingCopy(victim, dir, speed, becomeRag): la receta Rouge/Amy del CADaver VOLANDO generalizada al suite (copia prop_ragdoll + impulso por hueso + limpieza 3s — la usan los counters cuando MATAN); (3) el dano directo del suite (bola, embestida, poderes del supertank) pasa por OM_AbilityDamage = amplificador hibrido del OM_Stun v2.2 (x2 + % vs jefes, pedido del owner)   // v6.34: ENVOLTURA PUBLICA Sonic_PhysSetVel — el SDKCall SetVelocity(lineal, angular) del motor v6.33 abierto a PROPS físicos (no-ragdoll), con cache propio del m_pPhysicsObject de CBaseEntity y las mismas 4 sondas; lo usa el MARTILLO LANZADO de Amy v105 para su TUMBLE REAL en vuelo (el m_angVelocity del datamap lo mata el vphysics cada tick — misma lección del doble v6.9)   // v6.33: IMPULSO VPHYSICS DIRECTO POR HUESO (SetVelocity por SDKCall al IPhysicsObject de cada hueso leido del datamap — la receta GMod literal; la onda v6.11 queda de fallback) — fix del "doble que nace y cae en seco"   // v6.32: PATCH DE BALANCE (spin +35% en TODAS sus fases 121.5/141.75, peel cd -8s 17/37) + FIX DEL AGARRE del carry (salto heredado + hueco bloqueado)   // v6.31: ADOPCION EN EL MONTAJE + reemplazo limpio del avatar (manager 3.77.40: fin del barrido en caliente). v6.30: ESTATUA SI + TANK NO ATURDE A SONIC   // v6.19: TRAILS A MATERIAL NATIVO (default) — análisis del pack de materiales ORIGINALES del OM subido por el owner (2026-10-08): los .vmt del sonicball son legítimos (UnlitGeneric $translucent $vertexcolor/$vertexalpha, VTF 7.2 RGBA8888) pero diseniados para el renderer del SpriteTrail de GMod: bluetrail.vtf = barra vertical nucleo-blanco/halo-azul (perfil transversal), bluestartrail2.vtf = 98% TRANSPARENTE con destellos sueltos (la 'capa ancha' es casi aire), blue2/Sonicred = chips 2x2 shared_t/t2. En los TE beams del L4D2 la textura se mapea al reves (U a lo largo del beam) = look bugeado (reporte del owner); el laserbeam radial nativo es inmune a la orientación. NATIVO default con la geometria 3-capas GMod completa (halo 70->40 + nucleo 40->1 + magenta 40->1, aditivas como alla) y el peel gana los 2 pies ROJOS nativos. FIX descargas: Sonic_AddMatToDownloads ahora encola el $basetexture REAL (blue.vmt->bluetrail.vtf etc.; el v6.17 encolaba un blue.vtf INEXISTENTE = damero en clientes). sonicom_trails_mat default 0 (1 = auténtico opt-in). v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o auténtico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migración al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueño/demas (el beam del dueño sigue su copia L, el de los demas la R — lección del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: única forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseño de materiales v6.17 INTACTO: FileExists -> auténticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTÉNTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidió ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aquí offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximación documentada). Detección por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo).
+#define SONIC_OM_VERSION "v6.38-OM"   // v6.38: EL PIN GMod — Sonic_RagPhysPin + Sonic_RagPhysGet: SetPosition/GetPosition/SetVelocityInstantaneous del IPhysicsObject RAIZ por SDKCall_Raw (indices del mismo vphysics_interface.h l4d2: 46/48/51 win +shift lin), la receta literal del killer Lua de Kolossos para el agarre (el hueso ancla en la mano por tick con velocidad a CERO y el resto del cuerpo cuelga por fisica — JAMAS SetParent: el vphysics despierto contra un padre que se mueve acumula velocidad fantasma y el doble sale disparado).   // v6.37: LA BARRA AL CHAT — paleta colors.inc [AZUL survivor lleno/medio — su color / bajo {green}=AMARILLO aviso / SIN ANILLOS! {red}] vía g_iSBarChatColor + throttle sbar_chat_interval/_refresh (la captura del owner mató el rich text del hint: los <font> salen literales en L4D2) | v6.36: LA BARRA DE ANILLOS — pedido del owner 2026-10-15 ("ese mismo tipo de barra debería salir para sonic y todos aquellos que lo usan (silver para su vuelo sonic para su evasión)"): el Dodgemeter (los anillos, su EVA) vive en BARRA GRÁFICA con el motor común SBar del manager 3.77.81 (Sonic_PlayerIs + Sonic_BarState; el hint "Anillos: x/y" se RETIRA — la barra lo reemplaza en vivo)   // v6.35: AMPLIFICADOR + RAGDOLLS PARAMETRIZADOS — (1) Sonic_SpawnFlingRagdollEx(victim, dir, speed, liftMul, tumble): la velocidad del doble DEJA de venir fija de sonicom_ragblast — cada habilidad pone SU fuerza (contras de Amy/Rouge/Knuckles); la vanilla SpawnFlingRagdoll la envuelve con los números de siempre (CERO cambio en spindash); (2) Sonic_DeadFlingCopy(victim, dir, speed, becomeRag): la receta Rouge/Amy del CADaver VOLANDO generalizada al suite (copia prop_ragdoll + impulso por hueso + limpieza 3s — la usan los counters cuando MATAN); (3) el dano directo del suite (bola, embestida, poderes del supertank) pasa por OM_AbilityDamage = amplificador hibrido del OM_Stun v2.2 (x2 + % vs jefes, pedido del owner)   // v6.34: ENVOLTURA PUBLICA Sonic_PhysSetVel — el SDKCall SetVelocity(lineal, angular) del motor v6.33 abierto a PROPS físicos (no-ragdoll), con cache propio del m_pPhysicsObject de CBaseEntity y las mismas 4 sondas; lo usa el MARTILLO LANZADO de Amy v105 para su TUMBLE REAL en vuelo (el m_angVelocity del datamap lo mata el vphysics cada tick — misma lección del doble v6.9)   // v6.33: IMPULSO VPHYSICS DIRECTO POR HUESO (SetVelocity por SDKCall al IPhysicsObject de cada hueso leido del datamap — la receta GMod literal; la onda v6.11 queda de fallback) — fix del "doble que nace y cae en seco"   // v6.32: PATCH DE BALANCE (spin +35% en TODAS sus fases 121.5/141.75, peel cd -8s 17/37) + FIX DEL AGARRE del carry (salto heredado + hueco bloqueado)   // v6.31: ADOPCION EN EL MONTAJE + reemplazo limpio del avatar (manager 3.77.40: fin del barrido en caliente). v6.30: ESTATUA SI + TANK NO ATURDE A SONIC   // v6.19: TRAILS A MATERIAL NATIVO (default) — análisis del pack de materiales ORIGINALES del OM subido por el owner (2026-10-08): los .vmt del sonicball son legítimos (UnlitGeneric $translucent $vertexcolor/$vertexalpha, VTF 7.2 RGBA8888) pero diseniados para el renderer del SpriteTrail de GMod: bluetrail.vtf = barra vertical nucleo-blanco/halo-azul (perfil transversal), bluestartrail2.vtf = 98% TRANSPARENTE con destellos sueltos (la 'capa ancha' es casi aire), blue2/Sonicred = chips 2x2 shared_t/t2. En los TE beams del L4D2 la textura se mapea al reves (U a lo largo del beam) = look bugeado (reporte del owner); el laserbeam radial nativo es inmune a la orientación. NATIVO default con la geometria 3-capas GMod completa (halo 70->40 + nucleo 40->1 + magenta 40->1, aditivas como alla) y el peel gana los 2 pies ROJOS nativos. FIX descargas: Sonic_AddMatToDownloads ahora encola el $basetexture REAL (blue.vmt->bluetrail.vtf etc.; el v6.17 encolaba un blue.vtf INEXISTENTE = damero en clientes). sonicom_trails_mat default 0 (1 = auténtico opt-in). v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o auténtico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migración al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueño/demas (el beam del dueño sigue su copia L, el de los demas la R — lección del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: única forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseño de materiales v6.17 INTACTO: FileExists -> auténticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTÉNTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidió ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aquí offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximación documentada). Detección por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo).
 
 // =======================
 // RECURSOS (VPK de recursos del owner; mismas rutas que GMod OM)
@@ -1173,6 +1173,16 @@ Handle g_hRagPhysMotion;       // bool  IsMotionEnabled()  [sonda]
 Handle g_hRagPhysMoveable;     // bool  IsMoveable()       [sonda]
 Handle g_hRagPhysMass;         // float GetMass()          [sonda]
 Handle g_hRagPhysSetVel;       // void  SetVelocity(const Vector*, const AngularImpulse*)  [LA HABILIDAD]
+// v6.38: EL PIN DEL KOLOSSOS — SetPosition/GetPosition/SetVelocityInstantaneous
+// sobre el hueso RAIZ (la receta literal del killer Lua: headPhys:SetPos +
+// SetVelocityInstantaneous(vector_origin) por tick). Indices contados del
+// MISMO vphysics_interface.h l4d2: SetPosition win=46/lin=47, GetPosition
+// win=48/lin=49 (vecinos ya verificados de SetVelocity 50: GetPositionMatrix
+// 49... ojo, GetPosition=48 y GetPositionMatrix=49; SetVelocityInstantaneous
+// win=51/lin=52 — confirmado por el vecino documentado del 50).
+Handle g_hRagPhysSetPos;       // void  SetPosition(const Vector&, const QAngle&, bool isTeleport)
+Handle g_hRagPhysGetPos;       // void  GetPosition(Vector*, QAngle*)
+Handle g_hRagPhysSetVelInst;   // void  SetVelocityInstantaneous(const Vector*, const AngularImpulse*)
 int    g_iRagPhysState = 0;    // 0=sin init, 1=listo, -1=mesa mala -> onda
 int    g_iRagOffRoot = -1;     // datamap "m_pPhysicsObject" (hueso 0)
 int    g_iRagOffCount = -1;    // datamap "m_ragdoll.listCount"
@@ -5559,9 +5569,33 @@ bool Sonic_RagPhysReady()
     PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_Pointer);   // impulso angular (3 floats, misma maleta que Vector)
     g_hRagPhysSetVel = EndPrepSDKCall();
 
+    // v6.38: EL PIN — misma interface, vecinos del SetVelocity ya validados
+    // por el motor v6.33 (GetPositionMatrix 49 y SetVelocityInstantaneous 51
+    // eran los "inofensivos" del blindaje original: ahora son HABILIDAD).
+    StartPrepSDKCall(SDKCall_Raw);
+    PrepSDKCall_SetVirtual(46 + shift);   // SetPosition(const Vector&, const QAngle&, bool isTeleport)
+    PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_Pointer);
+    PrepSDKCall_AddParameter(SDKType_QAngle, SDKPass_Pointer);
+    PrepSDKCall_AddParameter(SDKType_Bool, SDKPass_Plain);
+    g_hRagPhysSetPos = EndPrepSDKCall();
+
+    StartPrepSDKCall(SDKCall_Raw);
+    PrepSDKCall_SetVirtual(48 + shift);   // GetPosition(Vector*, QAngle*)
+    PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_Pointer);
+    PrepSDKCall_AddParameter(SDKType_QAngle, SDKPass_Pointer);
+    g_hRagPhysGetPos = EndPrepSDKCall();
+
+    StartPrepSDKCall(SDKCall_Raw);
+    PrepSDKCall_SetVirtual(51 + shift);   // SetVelocityInstantaneous(const Vector*, const AngularImpulse*)
+    PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_Pointer);
+    PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_Pointer);   // AngularImpulse = 3 floats
+    g_hRagPhysSetVelInst = EndPrepSDKCall();
+
     if (g_hRagPhysIsAsleep == null || g_hRagPhysMotion == null
         || g_hRagPhysMoveable == null || g_hRagPhysMass == null
-        || g_hRagPhysSetVel == null)
+        || g_hRagPhysSetVel == null
+        || g_hRagPhysSetPos == null || g_hRagPhysGetPos == null
+        || g_hRagPhysSetVelInst == null)
         return false;
 
     g_iRagPhysState = 1;
@@ -5646,6 +5680,72 @@ bool Sonic_RagPhysLaunch(int rag, const float fDir[3], float speed, float liftUp
         launched++;
     }
     return (launched > 0);
+}
+
+// v6.38 — EL PIN GMod (pedido del owner via Kolossos v2.0: "el ragdoll no
+// queda adherido al brazo... se va hasta el fondo del mapa"). El killer Lua
+// NUNCA parenta el ragdoll: su shoulddocustomfunction corre CADA TICK y hace
+// headPhys:SetPos(mano) + SetAngles + SetVelocityInstantaneous(vector_origin)
+// + Wake — el hueso ancla en la mano y el RESTO del cuerpo cuelga por
+// fisica (el look "limp" del agarre). Este es el mismo pin sobre el hueso
+// RAIZ del doble: SetPosition(pos, ang, isTeleport=true) + velocidad a
+// CERO. El llamador lo repite por frame (su think) mientras dure el agarre.
+// Devuelve false = la mesa no esta -> el llamador usa su plan B
+// (TeleportEntity con velocidad cero: el mismo efecto por la via engine).
+bool Sonic_RagPhysPin(int rag, const float pos[3], const float ang[3])
+{
+    if (!Sonic_RagPhysReady()) return false;
+    if (rag <= MaxClients || !IsValidEntity(rag)) return false;
+
+    Address base = GetEntityAddress(rag);
+    if (base == Address_Null) return false;
+
+    if (g_iRagOffRoot == -1 && !Sonic_RagPhysCacheOffsets(rag))
+        return false;
+
+    Address pRoot = view_as<Address>(LoadFromAddress(base + view_as<Address>(g_iRagOffRoot), NumberType_Int32));
+    if (pRoot == Address_Null) return false;
+
+    // las MISMAS 4 sondas semanticas del launch (mesa mala -> plan B)
+    int asleep = view_as<int>(SDKCall(g_hRagPhysIsAsleep, pRoot));
+    if (asleep != 0 && asleep != 1) return false;
+    if (view_as<int>(SDKCall(g_hRagPhysMotion, pRoot)) != 1) return false;
+    if (view_as<int>(SDKCall(g_hRagPhysMoveable, pRoot)) != 1) return false;
+    float mass = view_as<float>(SDKCall(g_hRagPhysMass, pRoot));
+    if (mass < 0.05 || mass > 10000.0) return false;
+
+    // la receta literal del Lua: velocidad a CERO y CLAVARLO a la mano.
+    // El cero de velocidad es EL detalle que falta en un parent: sin el,
+    // un padre a 750 u/s (la embestida) acumula velocidad fantasma en el
+    // vphysics y el doble sale DISPARADO al soltarlo ("al fondo del mapa")
+    float zero[3];
+    SDKCall(g_hRagPhysSetVelInst, pRoot, zero, zero);
+    SDKCall(g_hRagPhysSetPos, pRoot, pos, ang, true);
+    return true;
+}
+
+// v6.38 — lectura del hueso RAIZ (pos + ang actuales del doble): el pin
+// quiere conservar la orientacion que la fisica le dio (el tilt del agarre
+// se aplica ENCIMA). false = plan B (ang del llamador tal cual).
+bool Sonic_RagPhysGet(int rag, float pos[3], float ang[3])
+{
+    if (!Sonic_RagPhysReady()) return false;
+    if (rag <= MaxClients || !IsValidEntity(rag)) return false;
+
+    Address base = GetEntityAddress(rag);
+    if (base == Address_Null) return false;
+
+    if (g_iRagOffRoot == -1 && !Sonic_RagPhysCacheOffsets(rag))
+        return false;
+
+    Address pRoot = view_as<Address>(LoadFromAddress(base + view_as<Address>(g_iRagOffRoot), NumberType_Int32));
+    if (pRoot == Address_Null) return false;
+
+    int asleep = view_as<int>(SDKCall(g_hRagPhysIsAsleep, pRoot));
+    if (asleep != 0 && asleep != 1) return false;
+
+    SDKCall(g_hRagPhysGetPos, pRoot, pos, ang);
+    return true;
 }
 
 // v6.33 PLAN B — EL MOTOR HACIENDO EL TRABAJO (cero SDKCall, cero
