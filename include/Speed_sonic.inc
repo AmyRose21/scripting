@@ -238,10 +238,11 @@
 // Speed_sonic + auto-forward del RunCmd — el MOTOR lo mueve, escalones y
 // rampas incluidos; aditivo puro: si Overdrive (+30%) está activo a la
 // vez, el objetivo de la embestida ya viene del stack total).
-#define SPEED_STACK_SLOTS      3      // Fuentes externas registrables en el stack
+#define SPEED_STACK_SLOTS      4      // Fuentes externas registrables en el stack (v3.77.94: 3 -> 4, +Kolossos)
 #define SPEED_STACK_METAL_OD   0      // SLOT 0: Overdrive de Metal (+30% real)
 #define SPEED_STACK_SONIC_SPIN 1      // SLOT 1: bola del spindash de Sonic (sonic.inc)
 #define SPEED_STACK_METAL_DASH 2      // SLOT 2: embestida de Metal v5.0 (por suelo)
+#define SPEED_STACK_KOLOSSOS   3      // SLOT 3: avalancha de Kolossos v1.0 (receta Metal_DashSpeedSet)
 
 // v2.2: ya NO hay efecto FOV (escondia el arma en primera persona)
 #if !defined TEAM_SURVIVOR
