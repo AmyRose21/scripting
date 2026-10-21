@@ -1,0 +1,30 @@
+VERIFICACION 3.77.29 — WITCH ESTATUA
+==================================
+
+COMPILACION (scripts/build_om_37729.sh, spcomp 1.11.0.6970):
+  28 WARNINGS = LINEA BASE EXACTA (misma distribucion de siempre:
+  Doll 3 / Sally 14 / Metal 2 los de siempre / OM_Stun 1 / manager x8).
+  0 ERRORES.
+  smx: 393,670 B (vs 392,718 de la .28 = +952 B del codigo nuevo)
+  sha256: 14be5f9737a29b5b2d230a37881f24ad62de319954bd98560e36cee73267deb7
+
+FORENSE (scripts/forense_37729.py, control .28 sha 4113a6ea... OK):
+  funciones-candidatas: 673 -> 674
+  NUEVAS (1): Metal_WitchFreeze  <- LA UNICA, EXACTA
+  BORRADAS (0): ninguna
+  cvars: 95 -> 95 (cero nuevos, cero borrados)
+
+  MARCADORES v5.4 PRESENTES (9/9): 3.77.29, v5.4-OM, Metal_WitchFreeze,
+    Sonic_WitchStunSlotOf, Sonic_WitchStunClear, Sonic_SpawnWitchRagdoll,
+    Sonic_WitchStun, 'ronda 4: la witch se congela DE VERDAD', 'Witch atrapada'
+
+  HEREDADOS ronda 3 PRESENTES (10/11): Metal_KillCommonsInPath,
+    Metal_FindWitchTarget, Metal_WitchDragThink, Metal_WitchRelease,
+    Metal_WitchDrop, Metal_ApplyMaxHealth, Metal_ControlImmune,
+    L4D_OnGrabWithTongue, L4D2_OnStagger, 'Witch empujada'
+    1 FALSO NEGATIVO documentado: 'estampando contra la pared' en minuscula
+    (el string real es '¡Estampando contra la pared!' con mayuscula —
+    verificado presente en el payload).
+
+INCLUDES: SOLO Metal.inc cambia vs la .28 (los otros 15 verificados
+  byte-identicos en el paquete).

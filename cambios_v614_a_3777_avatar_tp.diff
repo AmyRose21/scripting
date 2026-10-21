@@ -1,0 +1,499 @@
+=== DIFF v6.14/v97-OM -> 3.77.7 AVATAR REMOTO POR TP ===
+=== (4 archivos: Tails.inc / sonic.inc / Amy.inc / manager) ===
+
+=== include/Tails.inc (v5.24-B -> v5.25-B) ===
+--- /home/z/my-project/incoming/scripting3_v97/scripting/include/Tails.inc	2026-10-07 03:24:14.000000000 +0000
++++ /home/z/my-project/builds/OM/scripting/include/Tails.inc	2026-10-08 01:18:14.696588549 +0000
+@@ -1,8 +1,29 @@
+ /*
+  * ======================================================
+- *  [MODULO] Tails "Miles" Prower - Support & Utility v5.22
++ *  [MODULO] Tails "Miles" Prower - Support & Utility v5.25
+  *                          "OM PARITY" (Outcome Memories GMod)
+  *
++ *  v5.25 "AVATAR REMOTO POR TP" (2026-10-08, pedido del owner:
++ *  "el sistema de avatar es excelente... es posible que cuando mire
++ *  a los avatares DE OTROS usen el sistema del tails follow, o sea
++ *  modo TP? localmente que siga igual (con su pausa)... si veo a un
++ *  compañero se ve mal: la pausa no recalcula lo que YO veo de EL,
++ *  aunque en SU pantalla se vea bien"). Diagnostico: la pausa solo
++ *  re-encaja el estado del cliente DUEÑO; la copia R que viaja a los
++ *  demas llega rota de fabrica (parent + EF_NOINTERP = sin historial
++ *  de interpolacion: a tirones). FIX: la copia R de TODOS los
++ *  avatares del suite (Tails/Sonic/Amy — un solo sistema, como
++ *  tails_pausefix) pasa al modo TP probado del tails_follow: SIN
++ *  parent, TeleportEntity por tick en pose mundo (pos + yaw del
++ *  cuerpo) + reloj vivo v5.9.1 y SIN EF_NOINTERP -> cada cliente la
++ *  INTERPOLA como a cualquier entidad = suave siempre, pausa o no.
++ *  La copia L del dueño NO se toca (parentada + EF_NOINTERP + pulso:
++ *  "localmente igual"). Convar tails_avatar_tp (default 1; 0 = R
++ *  parentada como antes; el cambio en vivo recrea en <=0.1s). La
++ *  bola del spin de Sonic QUEDA PARENTADA (la mira su dueño en
++ *  pantalla propia) y durante la bola la R oculta viaja pegada por
++ *  TP para reaparecer en su sitio al terminar.
++ *
+  *  v5.22 "CONGELADO TOTAL + SALTO HERIDO" (2026-10-06, pedidos
+  *  textuales del owner: "cuando tails esta haciendo su animacion de
+  *  erido ya no usa su animacion de jump restaurasela" y "para el
+@@ -621,7 +642,7 @@
+ int   g_iTailsAnimState[MAXPLAYERS + 1];    // estado FSM actual (-1 = sin setear)
+ float g_fTailsAnimLock[MAXPLAYERS + 1];     // lock de one-shots (ShootingBurst...)
+ int   g_iTailsBodyRender[MAXPLAYERS + 1];   // render mode ORIGINAL del survivor
+-#define TAILS_INC_VERSION "v5.24-B"           // v5.24: RESTAURADO el pulso de pausa en CADA montaje del avatar (!sc, respawn, FSM: el gate "solo al iniciar la ronda" de la v5.23 se retira por pedido del owner — estaba bien como estaba) + FIX del congelado SI con las capas OM_Stun que faltaban (m_flLaggedMovementValue=0 re-afirmado por tick + tinte cyan: la witch es NPC NextBot y FL_FROZEN le apaga TODO; los especiales son bots de player y con solo el martillo su IA seguia viva). v5.23: el cañon SOLO lo cortan los STUN. v5.22: congelado de todos los SI + salto herido + rayo 5s/35dps
++#define TAILS_INC_VERSION "v5.25-B"           // v5.25: AVATAR REMOTO POR TP — la copia R (la que ven LOS DEMAS) de los TRES avatares del suite (Tails/Sonic/Amy) viaja por TeleportEntity por tick + reloj vivo SIN EF_NOINTERP (la receta del modo tails_follow): los clientes de los demas la INTERPOLAN = suave sin depender de la pausa, que solo re-encaja la vista del dueno (pedido: "los avatares de otros al modo TP; localmente igual, con su pausa"). Convar tails_avatar_tp (default 1; 0 = R parentada como antes; el cambio en vivo recrea en <=0.1s). La copia L del dueno queda INTACTA (parentada + EF_NOINTERP + pulso). La bola del spin queda parentada y la R oculta viaja pegada durante la bola. v5.24: RESTAURADO el pulso de pausa en CADA montaje del avatar (!sc, respawn, FSM: el gate "solo al iniciar la ronda" de la v5.23 se retira por pedido del owner — estaba bien como estaba) + FIX del congelado SI con las capas OM_Stun que faltaban (m_flLaggedMovementValue=0 re-afirmado por tick + tinte cyan: la witch es NPC NextBot y FL_FROZEN le apaga TODO; los especiales son bots de player y con solo el martillo su IA seguia viva). v5.23: el cañon SOLO lo cortan los STUN. v5.22: congelado de todos los SI + salto herido + rayo 5s/35dps
+ 
+ bool  g_bTailsModelOK = false;              // el tails.mdl está en el VPK
+ 
+@@ -738,6 +759,7 @@
+ ConVar g_cvTailsPauseFix;         // v5.20.6: 1 = pulso de pausa real tras montar el avatar (metodo del owner)
+ ConVar g_cvTailsPauseFixDelay;    // v5.20.6: espera tras el montaje antes de pausar (s)
+ ConVar g_cvTailsPauseFixDuration; // v5.20.6: duracion de la pausa del pulso (s)
++ConVar g_cvTailsAvatarTP;         // v5.25: 1 = la copia R (la que ven LOS DEMAS) viaja por TP: teleport por tick + interpolacion (receta tails_follow)
+ ConVar g_cvTailsSIFreeze;         // v5.22: 1 = el rayo congela a los infectados especiales (stun de la witch)
+ ConVar g_cvTailsSIFreezeDur;      // v5.22: segundos FIJOS de congelado (el rayo NO los reinicia)
+ 
+@@ -916,6 +938,17 @@
+     g_cvTailsPauseFixDelay   = CreateConVar("tails_pausefix_delay", "0.2", "Espera tras montar el avatar antes del pulso de pausa (segundos: hay que dejar que el cliente reciba el avatar primero)", _, true, 0.0, true, 5.0);
+     g_cvTailsPauseFixDuration = CreateConVar("tails_pausefix_duration", "0.1", "Duracion de la pausa del pulso (segundos; imperceptible)", _, true, 0.05, true, 2.0);
+ 
++    // v5.25 "AVATAR REMOTO POR TP": la pausa solo re-encaja la vista
++    // del DUEÑO; la copia R que ven los demas llega rota desde que
++    // nace (parent + EF_NOINTERP). La R pasa al modo TP probado del
++    // tails_follow: TeleportEntity por tick + reloj vivo y SIN
++    // EF_NOINTERP -> los clientes de los demas la INTERPOLAN (suave,
++    // sin depender de la pausa). La copia L del dueño NO cambia.
++    // Gobierna la R de TODOS los avatares del suite (Tails/Sonic/Amy,
++    // mismas reglas que tails_pausefix: UN solo sistema).
++    g_cvTailsAvatarTP = CreateConVar("tails_avatar_tp", "1.0", "La copia R del avatar (la que ven LOS DEMAS) viaja por teleport por tick con interpolacion de red (modo TP del tails_follow): 1 = suave para los demas sin depender de la pausa / 0 = parentada como antes. La copia L del dueno queda parentada+pausa SIEMPRE", _, true, 0.0, true, 1.0);
++    HookConVarChange(g_cvTailsAvatarTP, Tails_OnAvatarTPChanged);
++
+     // v5.22: CONGELADO de infectados especiales (el stun de la witch
+     // para todos). Reglas del owner: 1er toque del rayo = congelado
+     // N segundos FIJOS (el rayo NUNCA reinicia el contador), puede
+@@ -1569,7 +1602,20 @@
+     g_fTailsYawLastT[client] = GetEngineTime();
+     TeleportEntity(av, pos, ang, NULL_VECTOR);
+ 
+-    if (!g_cvTailsFollow.BoolValue)
++    // v5.17-A: estado del smoothing = valor inicial escrito (sin rampa
++    // de arranque) + snap por si acaso (primer tick pega seco). v5.25:
++    // se inicializa SIEMPRE (la semilla la usa la copia L que nace a
++    // continuacion y el fallback parentado; en R-TP no se toca el prop).
++    float loc[3];
++    Tails_AvatarLocalAngles(ang[0], ang[1], g_fTailsBodyYaw[client], loc);
++    for (int k = 0; k < 3; k++)
++    {
++        g_fTailsSmLoc[client][k]  = loc[k];
++        g_fTailsSmLead[client][k] = 0.0;
++    }
++    g_bTailsSmSnap[client] = true;
++
++    if (!g_cvTailsFollow.BoolValue && !Tails_AvatarTPOn())
+     {
+         // MODO 0 (default): parentado al survivor — la POSICIÓN queda
+         // a cargo del motor (local origin (0,0,0) = pegado al survivor,
+@@ -1578,21 +1624,9 @@
+         // (cuerpo vertical mirando al yaw inicial).
+         SetVariantString("!activator");
+         AcceptEntityInput(av, "SetParent", client);
+-
+-        float loc[3];
+-        Tails_AvatarLocalAngles(ang[0], ang[1], g_fTailsBodyYaw[client], loc);
+         if (HasEntProp(av, Prop_Send, "m_angRotation"))
+             SetEntPropVector(av, Prop_Send, "m_angRotation", loc);
+ 
+-        // v5.17-A: estado del smoothing = valor inicial escrito (sin
+-        // rampa de arranque) + snap por si acaso (primer tick pega seco)
+-        for (int k = 0; k < 3; k++)
+-        {
+-            g_fTailsSmLoc[client][k]  = loc[k];
+-            g_fTailsSmLead[client][k] = 0.0;
+-        }
+-        g_bTailsSmSnap[client] = true;
+-
+         // v5.20.5 FIX DEL "PAUSE": nacer ya ENCAJADO. El hallazgo del
+         // owner (pause cura el tilt toda la partida; !sc lo reintroduce)
+         // demostro que el estado roto nace CON la entidad: el historial
+@@ -1600,6 +1634,11 @@
+         // primer snapshot. EF_NOINTERP lo elimina de raiz (ver helper).
+         Tails_SetAvatarNoInterp(av, g_cvTailsAvInterp.BoolValue);
+     }
++    // v5.25 MODO R-TP (tails_avatar_tp 1, default): la copia R nace SIN
++    // parent y SIN EF_NOINTERP — ya quedó en pose MUNDO (pos + (0, yaw,
++    // 0)) por el TeleportEntity de arriba; Tails_AvatarFollow la mueve
++    // por tick y los clientes de los DEMAS la interpolan solos.
++    // (en tails_follow 1 la R es el avatar único TP de siempre)
+     // MODO 1 (tails_follow 1): sin parent — el follow hace
+     // TeleportEntity por tick (comportamiento v5.5, ahora en PostThink).
+     SDKHook(client, SDKHook_PostThink, Tails_AvatarFollow);
+@@ -2518,13 +2557,34 @@
+     }
+     else
+     {
++        float par[3], loc[3], lead[3], locPos[3];
++        bool snap = g_bTailsSmSnap[client];          // v5.17-A
++        GetClientAbsAngles(client, par);
++
++        if (Tails_AvatarTPOn())
++        {
++            // v5.25: LA COPIA R VIAJA POR TP. TeleportEntity por tick
++            // en pose MUNDO (pos del jugador + yaw del cuerpo;
++            // pitch/roll NUNCA) + reloj vivo de la v5.9.1, SIN
++            // EF_NOINTERP: los clientes de los demás la INTERPOLAN
++            // como a cualquier entidad del juego = suave SIEMPRE, sin
++            // depender de la pausa (que solo re-encaja la vista del
++            // dueño). El dueño jamás la recibe: TransmitAvatarR se la
++            // filtra porque tiene su copia L parentada.
++            float posTP[3], angTP[3];
++            GetClientAbsOrigin(client, posTP);
++            angTP[0] = 0.0;                      // pitch NUNCA
++            angTP[1] = g_fTailsBodyYaw[client];
++            angTP[2] = 0.0;                      // roll NUNCA
++            TeleportEntity(av, posTP, angTP, NULL_VECTOR);
++            Tails_MarkInterp(av);
++        }
++        else
++        {
+         // MODO 0 (default v5.6): parentado — la POSICIÓN la mueve el
+         // motor junto al survivor (cero delay de red); aquí SOLO se
+         // fijan los ángulos LOCALES = contra-rotación exacta del
+         // parent para que el cuerpo quede vertical mirando al yaw...
+-        float par[3], loc[3], lead[3], locPos[3];
+-        bool snap = g_bTailsSmSnap[client];          // v5.17-A
+-        GetClientAbsAngles(client, par);
+         Tails_AvatarLocalAngles(par[0], par[1], g_fTailsBodyYaw[client], loc);
+         // v5.20.4: continuidad del yaw local networked (ver helper):
+         // nunca saltar la frontera ±180 entre dos escrituras.
+@@ -2574,6 +2634,8 @@
+             if (GetVectorDistance(curPos, locPos) > 0.05)
+                 SetEntPropVector(av, Prop_Send, "m_vecOrigin", locPos);
+         }
++        }
++
+         // v5.17-A: el snap solo vale 1 tick (creación/reset del avatar)
+         g_bTailsSmSnap[client] = false;
+ 
+@@ -2690,9 +2752,14 @@
+     {
+         if (g_iTailsAvatar[i] != 0)
+         {
+-            int r = EntRefToEntIndex(g_iTailsAvatar[i]);
+-            if (r > 0 && IsValidEntity(r))
+-                Tails_SetAvatarNoInterp(r, on);
++            // v5.25: la R en modo TP conserva su interpolacion de red
++            // (es su razon de ser); el flag solo toca la R parentada
++            if (!Tails_AvatarTPOn())
++            {
++                int r = EntRefToEntIndex(g_iTailsAvatar[i]);
++                if (r > 0 && IsValidEntity(r))
++                    Tails_SetAvatarNoInterp(r, on);
++            }
+         }
+         if (g_iTailsAvatarL[i] != 0)
+         {
+@@ -2703,6 +2770,34 @@
+     }
+ }
+ 
++// v5.25: lectura compartida del modo R-TP para sonic.inc / Amy.inc
++// (se incluyen DESPUES que este archivo): una funcion con guard null
++// en vez de exponerles el ConVar directo (y cero dependencia del
++// orden de OnPluginStart entre modulos).
++bool Tails_AvatarTPOn()
++{
++    return g_cvTailsAvatarTP != null && g_cvTailsAvatarTP.BoolValue;
++}
++
++// v5.25: cambio de tails_avatar_tp EN VIVO — recreacion de los
++// avatares de los TRES modulos (mismo recreador que tails_follow:
++// kill y las FSM de 10 Hz re-montan en <=0.1s leyendo el modo nuevo;
++// puede flahear el cuerpo del survivor un instante — el costo ya
++// documentado del tails_follow). Sonic/Amy van en includes
++// posteriores: SourcePawn resuelve las llamadas igual (mismo caso
++// que Speed_sonic -> Sonic_GetAvatarEnts).
++public void Tails_OnAvatarTPChanged(ConVar convar, const char[] oldValue, const char[] newValue)
++{
++    if (StrEqual(oldValue, newValue)) return;
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (!IsClientInGame(i)) continue;
++        Tails_KillAvatar(i);       // R+L (guards internos: no-op sin avatar)
++        Sonic_KillAvatarOnly(i);   // solo R+L: la BOLA es parentada, no cambia de modo
++        Amy_OM_KillAvatar(i);      // R+L + cuerpo (la FSM lo re-monta)
++    }
++}
++
+ // v5.5: "bloq Mayús" de Roblox (sm_tailslock): fija el cuerpo del avatar
+ // a la mira SIEMPRE. Toggle por jugador, DESACTIVADO por defecto. No
+ // afecta al bloqueo automático de la carga/disparo del cañón (ese es
+@@ -4251,7 +4346,7 @@
+     ReplyToCommand(client, "[Tails] Valores VIVOS del server (lo que se usa AHORA):");
+     ReplyToCommand(client, "[Tails] CAÑÓN: %ss | %ss | %ss + %ss", f1, f2, f3, f4);
+     ReplyToCommand(client, "[Tails] VUELO: %ss | %ss | %ss", f5, f6, f7);
+-    ReplyToCommand(client, "[Tails] AVATAR: %s | %s | %ss | lerpcomp %.2f", f9, f10, f8, g_cvTailsLerpComp.FloatValue);
++    ReplyToCommand(client, "[Tails] AVATAR: %s | %s | %ss | lerpcomp %.2f | R-TP %s (tails_avatar_tp: lo que ven los demas)", f9, f10, f8, g_cvTailsLerpComp.FloatValue, Tails_AvatarTPOn() ? "1" : "0");
+     ReplyToCommand(client, "[Tails] v5.24: %s (x10 = %d/seg) | congelado SI: %ss fijos + tinte cyan (tails_sifreeze %s) | cañón SOLO lo corta un STUN (comunes NO) | pulso de pausa en CADA montaje (restaurado)",
+                    f11, RoundToNearest(g_cvTailsLaserDamage.FloatValue * 10.0), f12,
+                    g_cvTailsSIFreeze.BoolValue ? "1" : "0");
+
+=== include/sonic.inc (v6.14-OM -> v6.15-OM) ===
+--- /home/z/my-project/download/sonic_v614_om_peelcarry/include/sonic.inc	2026-10-08 00:07:57.125072539 +0000
++++ /home/z/my-project/builds/OM/scripting/include/sonic.inc	2026-10-08 01:19:34.986741651 +0000
+@@ -348,7 +348,7 @@
+     #define SONIC_INDEX 0
+ #endif
+ 
+-#define SONIC_OM_VERSION "v6.14-OM"
++#define SONIC_OM_VERSION "v6.15-OM"   // v6.15: AVATAR REMOTO POR TP — la copia R (la que ven LOS DEMAS) viaja por TeleportEntity por tick + reloj vivo SIN EF_NOINTERP cuando tails_avatar_tp 1 (default; receta Tails v5.25): los demas la interpolan = suave sin depender de la pausa. La L del dueno y la BOLA quedan parentadas; la R oculta viaja pegada durante la bola
+ 
+ // =======================
+ // RECURSOS (VPK de recursos del owner; mismas rutas que GMod OM)
+@@ -1080,7 +1080,11 @@
+ 
+ // Crea el prop base (avatar R o L o bola): parentado al survivor,
+ // sin sombras, EF_NOINTERP al nacer (v5.20.5: nace ENCAJADO).
+-int Sonic_CreateAvatarProp(int client, const char[] model, const char[] targetname)
++// v6.15: tpMode = la copia R en modo TP (tails_avatar_tp): nace SIN
++// parent y SIN EF_NOINTERP — ya queda en pose MUNDO por el
++// TeleportEntity de arriba; el follow la mueve por tick y los
++// clientes de los DEMAS la interpolan (L y BOLA siempre parentados).
++int Sonic_CreateAvatarProp(int client, const char[] model, const char[] targetname, bool tpMode = false)
+ {
+     int av = CreateEntityByName("prop_dynamic_override");
+     if (av <= 0 || !IsValidEntity(av)) return 0;
+@@ -1100,15 +1104,18 @@
+     g_fSonicYawLastT[client] = GetEngineTime();
+     TeleportEntity(av, pos, ang, NULL_VECTOR);
+ 
+-    // parentado (modo Tails default v5.6: el motor mueve la posicion,
+-    // cero delay de red, anims suaves; aqui solo se escriben angulos)
+-    SetVariantString("!activator");
+-    AcceptEntityInput(av, "SetParent", client);
+-
+     float loc[3];
+     Tails_AvatarLocalAngles(0.0, ang[1], g_fSonicBodyYaw[client], loc);
+-    if (HasEntProp(av, Prop_Send, "m_angRotation"))
+-        SetEntPropVector(av, Prop_Send, "m_angRotation", loc);
++
++    if (!tpMode)
++    {
++        // parentado (modo Tails default v5.6: el motor mueve la posicion,
++        // cero delay de red, anims suaves; aqui solo se escriben angulos)
++        SetVariantString("!activator");
++        AcceptEntityInput(av, "SetParent", client);
++        if (HasEntProp(av, Prop_Send, "m_angRotation"))
++            SetEntPropVector(av, Prop_Send, "m_angRotation", loc);
++    }
+ 
+     for (int k = 0; k < 3; k++)
+     {
+@@ -1117,7 +1124,8 @@
+     }
+     g_bSonicSmSnap[client] = true;
+ 
+-    Sonic_SetAvatarNoInterp(av, true);
++    if (!tpMode)
++        Sonic_SetAvatarNoInterp(av, true);
+     return av;
+ }
+ 
+@@ -1140,7 +1148,9 @@
+     if (g_iSonicSpinPhase[client] == SONIC_SPIN_ROLL
+         || g_iSonicSpinPhase[client] == SONIC_SPIN_WINDUP) return;
+ 
+-    int av = Sonic_CreateAvatarProp(client, SONIC_OM_MODEL, "sonic_avatar_om");
++    // v6.15: la copia R nace en modo TP si tails_avatar_tp (la que ven
++    // los DEMAS viaja por teleport por tick + interpolacion de red)
++    int av = Sonic_CreateAvatarProp(client, SONIC_OM_MODEL, "sonic_avatar_om", Tails_AvatarTPOn());
+     if (av == 0) return;
+ 
+     SetVariantString("idle");
+@@ -1578,12 +1588,49 @@
+                 SetEntPropVector(ball, Prop_Send, "m_angRotation", g_fSonicSmLoc[client]);
+             Tails_MarkInterp(ball);
+         }
++
++        // v6.15: la R OCULTA viaja pegada por TP durante la bola (la
++        // parentada se movia sola con el survivor; la TP hay que
++        // moverla aqui) para reaparecer EN SU SITIO al terminar la
++        // bola — no a 2000u atras del frenado
++        if (Tails_AvatarTPOn() && g_iSonicAvatar[client] != 0)
++        {
++            int avH = EntRefToEntIndex(g_iSonicAvatar[client]);
++            if (avH > 0 && IsValidEntity(avH))
++            {
++                float posH[3], angH[3];
++                GetClientAbsOrigin(client, posH);
++                angH[0] = 0.0;                      // pitch NUNCA
++                angH[1] = g_fSonicBodyYaw[client];
++                angH[2] = 0.0;                      // roll NUNCA
++                TeleportEntity(avH, posH, angH, NULL_VECTOR);
++                Tails_MarkInterp(avH);
++            }
++        }
+     }
+     else
+     {
+         int av = EntRefToEntIndex(g_iSonicAvatar[client]);
+         if (av > 0 && IsValidEntity(av))
+         {
++            if (Tails_AvatarTPOn())
++            {
++                // v6.15: LA COPIA R VIAJA POR TP (receta tails_follow de
++                // Tails v5.25): TeleportEntity por tick en pose mundo
++                // (pos + yaw del cuerpo) + reloj vivo, SIN EF_NOINTERP
++                // -> los clientes de los demas la INTERPOLAN = suave sin
++                // depender de la pausa. El dueno no la recibe (su L
++                // parentada se la filtra por transmit).
++                float posTP[3], angTP[3];
++                GetClientAbsOrigin(client, posTP);
++                angTP[0] = 0.0;                      // pitch NUNCA
++                angTP[1] = g_fSonicBodyYaw[client];
++                angTP[2] = 0.0;                      // roll NUNCA
++                TeleportEntity(av, posTP, angTP, NULL_VECTOR);
++                Tails_MarkInterp(av);
++            }
++            else
++            {
+             Tails_AvatarLocalAngles(par[0], par[1], g_fSonicBodyYaw[client], loc);
+             loc[1] = Tails_UnwrapYaw(g_fSonicSmLoc[client][1], loc[1]);
+             // amortiguacion fija 0.05 (default tails_angdamp: rampa ~3 ticks)
+@@ -1591,6 +1638,7 @@
+             if (HasEntProp(av, Prop_Send, "m_angRotation"))
+                 SetEntPropVector(av, Prop_Send, "m_angRotation", g_fSonicSmLoc[client]);
+             Tails_MarkInterp(av);
++            }
+         }
+ 
+         // ---- copia L: contra-rotada contra los EYE del dueno ----
+
+=== include/Amy.inc (v97-OM -> v98-OM) ===
+--- /home/z/my-project/download/sonic_v614_om_peelcarry/include/Amy.inc	2026-10-08 00:07:57.126072542 +0000
++++ /home/z/my-project/builds/OM/scripting/include/Amy.inc	2026-10-08 01:20:31.894824912 +0000
+@@ -928,7 +928,7 @@
+ #define AMY_VISION_RED_B          0
+ #define AMY_VISION_GLOWTYPE       3      // glow SOLIDO (constante, como el azul de un objetivo)
+ 
+-#define AMY_INC_VERSION          "v97-OM"   // v97-OM (manager 3.77.5): DEFENSA vs PROPS INMOVILES — veredicto del owner: "los inmoviles importan, recuerda que normalmente los props no se mueven (con excepciones, pero es mejor cubrir ambas cosas)": ELIMINADO el filtro de 60 u/s de la v96 — cualquier prop al radio de la ventana (quieto o volando) la consume y suelta el aura que lo repele (sin stun); orden del escaneo intacto (especial/tank > witch > comun > prop > piedra del tank); typo "repeledido"->"repelido". v96-OM (manager 3.77.4): CUATRO FIXES — (1) rate del runattack de la pose de defensa y del runthrow = curvas del run/walk normal (antes curva del walk = 3.6x en carrera); (2) HITBOX AEREO del martillo lanzado 35% mayor (amyom_throw_hitbox 1.35, scan 30 Hz del vuelo de ida, mismos stun+ragdoll/dano que el Touch, una vez por victima); (3) CVARS al cargar/recargar: reconciliacion de Sonic_Suite.cfg — los cvars del suite que falten se AGREGAN AL FINAL sin tocar las lineas existentes + prefijo amyom_ dentro del auto-guardado; (4) DEFENSA REWORK: la Z solo abre la POSE, el AURA sale AL IMPACTAR (especial/tank/witch -> aura + contra stun + cartas; comun -> aura; prop -> aura que lo repele, sin stun). (manager 3.77.3): v95-OM (manager 3.77.3): FIX JUMP/FALL ENMASCARADOS — la rama de AIRE viva debajo de throw armado/ventana/sin martillo desde la v92-OM (reporte: "el jump y fall no se reproducen"); ahora va justo tras incap, como el framework pills (L775-794: el aire es estado base, los alternates solo sustituyen idle/walk/run) + sentinel de fallbacks 0 -> -1 (el 0 ES AMY_OM_ST_IDLE). v94-OM: AIRE CON MARTILLO — jump/fall segun martillo (HammerJump/FallAnimHammer con el; normales sin el; Lua L1631-1640/L221-224; estados JUMPH/FALLH + fallbacks). v93-OM (manager 3.77.1): CHAINS — el martillo del MODELO (submodelo "hammer" del amy.mdl) desaparece de verdad cuando Amy no lo lleva: bodygroup "Chains" = el SetBodygroup(1,1)/(1,0) del Lua del OM (bit 0 de m_nBody), aplicado a las DOS copias del avatar en cada lanzar/recuperar y al ragdoll de muerte; FIX nombres reales del Lua sin martillo (walk_axeless/run_axeless CON guion bajo — la v92-OM buscaba "walkaxeless"/"runaxeless", que NO existen) + fallbacks AXE->base. v92-OM (manager 3.77.0): LAS 4 RANURAS — Z swing fusionado con el area + VENTANA DE DEFENSA (contra pre-sonic 3.5s+cartas, sin ragdoll), X CARTAS DEL TAROT nuevas (2 de 6: Moon/Sun/Emperor/Strength/World/Fool), V (habilidad 3) LANZAMIENTO de martillo (hammer.mdl masa 50 poder 3000, impacto = stun + ragdoll falso VOLANDO), B (habilidad 4) cartas del SUPER TANK intactas, C sigue cambiando area<->dash, + AVATAR amy.mdl patron Tails/Sonic. v91: FIX CINEMATICAS
++#define AMY_INC_VERSION          "v98-OM"   // v98-OM (manager 3.77.7): AVATAR REMOTO POR TP — pedido del owner ("los avatares DE OTROS al sistema del tails follow, modo TP; localmente igual, con su pausa"): la copia R (la que ven los demas) viaja por TeleportEntity por tick + reloj vivo SIN EF_NOINTERP (receta tails_follow / Tails v5.25; convar compartido tails_avatar_tp, default 1, 0 = R parentada como antes): los clientes de los demas la INTERPOLAN = suave sin depender de la pausa (que solo re-encaja la vista del dueno). La copia L queda INTACTA (parentada + EF_NOINTERP + pulso). v97-OM (manager 3.77.5): DEFENSA vs PROPS INMOVILES — veredicto del owner: "los inmoviles importan, recuerda que normalmente los props no se mueven (con excepciones, pero es mejor cubrir ambas cosas)": ELIMINADO el filtro de 60 u/s de la v96 — cualquier prop al radio de la ventana (quieto o volando) la consume y suelta el aura que lo repele (sin stun); orden del escaneo intacto (especial/tank > witch > comun > prop > piedra del tank); typo "repeledido"->"repelido". v96-OM (manager 3.77.4): CUATRO FIXES — (1) rate del runattack de la pose de defensa y del runthrow = curvas del run/walk normal (antes curva del walk = 3.6x en carrera); (2) HITBOX AEREO del martillo lanzado 35% mayor (amyom_throw_hitbox 1.35, scan 30 Hz del vuelo de ida, mismos stun+ragdoll/dano que el Touch, una vez por victima); (3) CVARS al cargar/recargar: reconciliacion de Sonic_Suite.cfg — los cvars del suite que falten se AGREGAN AL FINAL sin tocar las lineas existentes + prefijo amyom_ dentro del auto-guardado; (4) DEFENSA REWORK: la Z solo abre la POSE, el AURA sale AL IMPACTAR (especial/tank/witch -> aura + contra stun + cartas; comun -> aura; prop -> aura que lo repele, sin stun). (manager 3.77.3): v95-OM (manager 3.77.3): FIX JUMP/FALL ENMASCARADOS — la rama de AIRE viva debajo de throw armado/ventana/sin martillo desde la v92-OM (reporte: "el jump y fall no se reproducen"); ahora va justo tras incap, como el framework pills (L775-794: el aire es estado base, los alternates solo sustituyen idle/walk/run) + sentinel de fallbacks 0 -> -1 (el 0 ES AMY_OM_ST_IDLE). v94-OM: AIRE CON MARTILLO — jump/fall segun martillo (HammerJump/FallAnimHammer con el; normales sin el; Lua L1631-1640/L221-224; estados JUMPH/FALLH + fallbacks). v93-OM (manager 3.77.1): CHAINS — el martillo del MODELO (submodelo "hammer" del amy.mdl) desaparece de verdad cuando Amy no lo lleva: bodygroup "Chains" = el SetBodygroup(1,1)/(1,0) del Lua del OM (bit 0 de m_nBody), aplicado a las DOS copias del avatar en cada lanzar/recuperar y al ragdoll de muerte; FIX nombres reales del Lua sin martillo (walk_axeless/run_axeless CON guion bajo — la v92-OM buscaba "walkaxeless"/"runaxeless", que NO existen) + fallbacks AXE->base. v92-OM (manager 3.77.0): LAS 4 RANURAS — Z swing fusionado con el area + VENTANA DE DEFENSA (contra pre-sonic 3.5s+cartas, sin ragdoll), X CARTAS DEL TAROT nuevas (2 de 6: Moon/Sun/Emperor/Strength/World/Fool), V (habilidad 3) LANZAMIENTO de martillo (hammer.mdl masa 50 poder 3000, impacto = stun + ragdoll falso VOLANDO), B (habilidad 4) cartas del SUPER TANK intactas, C sigue cambiando area<->dash, + AVATAR amy.mdl patron Tails/Sonic. v91: FIX CINEMATICAS
+ 
+ // ============================================================
+ //  v92-OM — DECLARACIONES (constantes/globals/ConVars). Van AQUI,
+@@ -8498,7 +8498,12 @@
+ //   onda, hueco seguro y restauracion — T_SonicStunWatch vigila),
+ //   Sonic_MakeTrail (env_spritetrail), helpers del avatar de Tails
+ //   (Tails_AvatarLocalAngles / Tails_ExpDamp / Tails_UnwrapYaw /
+-//   Tails_MarkInterp / Tails_PauseFix_Trigger).
++//   Tails_MarkInterp / Tails_PauseFix_Trigger / Tails_AvatarTPOn).
++// v98-OM: la copia R (la que ven LOS DEMAS) viaja en modo TP cuando
++//   tails_avatar_tp 1 (default): SIN parent, TeleportEntity por tick
++//   en pose mundo + reloj vivo, SIN EF_NOINTERP -> los demas la
++//   INTERPOLAN (suave sin depender de la pausa). La copia L del dueno
++//   queda parentada + EF_NOINTERP + pulso como siempre.
+ // ============================================================
+ 
+ // ============================================================
+@@ -8798,7 +8803,7 @@
+     }
+ }
+ 
+-int Amy_OM_CreateAvatarProp(int client, const char[] model, const char[] targetname)
++int Amy_OM_CreateAvatarProp(int client, const char[] model, const char[] targetname, bool tpMode = false)
+ {
+     int av = CreateEntityByName("prop_dynamic_override");
+     if (av <= 0 || !IsValidEntity(av)) return 0;
+@@ -8818,15 +8823,21 @@
+     g_fAmyOMYawLastT[client] = GetEngineTime();
+     TeleportEntity(av, pos, ang, NULL_VECTOR);
+ 
+-    // parentado (modo Tails default v5.6: el motor mueve la posicion,
+-    // cero delay de red, anims suaves; aqui solo se escriben angulos)
+-    SetVariantString("!activator");
+-    AcceptEntityInput(av, "SetParent", client);
+-
+     float loc[3];
+     Tails_AvatarLocalAngles(0.0, ang[1], g_fAmyOMBodyYaw[client], loc);
+-    if (HasEntProp(av, Prop_Send, "m_angRotation"))
+-        SetEntPropVector(av, Prop_Send, "m_angRotation", loc);
++
++    if (!tpMode)
++    {
++        // parentado (modo Tails default v5.6: el motor mueve la posicion,
++        // cero delay de red, anims suaves; aqui solo se escriben angulos)
++        SetVariantString("!activator");
++        AcceptEntityInput(av, "SetParent", client);
++        if (HasEntProp(av, Prop_Send, "m_angRotation"))
++            SetEntPropVector(av, Prop_Send, "m_angRotation", loc);
++    }
++    // v98-OM tpMode (la copia R con tails_avatar_tp): nace SIN parent y
++    // SIN EF_NOINTERP — ya quedó en pose MUNDO por el TeleportEntity de
++    // arriba; el follow la mueve por tick y los demas la interpolan
+ 
+     for (int k = 0; k < 3; k++)
+     {
+@@ -8835,7 +8846,8 @@
+     }
+     g_bAmyOMSmSnap[client] = true;
+ 
+-    Amy_OM_SetAvatarNoInterp(av, true);
++    if (!tpMode)
++        Amy_OM_SetAvatarNoInterp(av, true);
+     return av;
+ }
+ 
+@@ -8845,7 +8857,9 @@
+     if (!IsClientInGame(client) || !IsPlayerAlive(client)) return;
+     if (GetClientTeam(client) != 2) return;
+ 
+-    int av = Amy_OM_CreateAvatarProp(client, g_sAmyOMModel, "amy_avatar_om");
++    // v98-OM: la copia R nace en modo TP si tails_avatar_tp (la que ven
++    // los DEMAS viaja por teleport por tick + interpolacion de red)
++    int av = Amy_OM_CreateAvatarProp(client, g_sAmyOMModel, "amy_avatar_om", Tails_AvatarTPOn());
+     if (av == 0) return;
+ 
+     // resolver las secuencias del modelo (una vez por mapa)
+@@ -9029,12 +9043,31 @@
+     int av = EntRefToEntIndex(g_iAmyOMAvatar[client]);
+     if (av > 0 && IsValidEntity(av))
+     {
++        if (Tails_AvatarTPOn())
++        {
++            // v98-OM: LA COPIA R VIAJA POR TP (receta tails_follow de
++            // Tails v5.25): TeleportEntity por tick en pose mundo (pos
++            // + yaw del cuerpo) + reloj vivo, SIN EF_NOINTERP -> los
++            // clientes de los demas la INTERPOLAN = suave sin depender
++            // de la pausa (que solo re-encaja la vista del dueno). El
++            // dueno no la recibe (TransmitAvatarR se la filtra).
++            float posTP[3], angTP[3];
++            GetClientAbsOrigin(client, posTP);
++            angTP[0] = 0.0;                      // pitch NUNCA
++            angTP[1] = g_fAmyOMBodyYaw[client];
++            angTP[2] = 0.0;                      // roll NUNCA
++            TeleportEntity(av, posTP, angTP, NULL_VECTOR);
++            Tails_MarkInterp(av);
++        }
++        else
++        {
+         Tails_AvatarLocalAngles(par[0], par[1], g_fAmyOMBodyYaw[client], loc);
+         loc[1] = Tails_UnwrapYaw(g_fAmyOMSmLoc[client][1], loc[1]);
+         Tails_ExpDamp(loc, g_fAmyOMSmLoc[client], 0.05, dt, snap);
+         if (HasEntProp(av, Prop_Send, "m_angRotation"))
+             SetEntPropVector(av, Prop_Send, "m_angRotation", g_fAmyOMSmLoc[client]);
+         Tails_MarkInterp(av);
++        }
+     }
+ 
+     // ---- copia L: contra-rotada contra los EYE de la duna ----
+
+=== Sonic_ability_manager.sp (3.77.6 -> 3.77.7) ===
+--- /home/z/my-project/download/sonic_v614_om_peelcarry/Sonic_ability_manager.sp	2026-10-08 00:07:57.124072537 +0000
++++ /home/z/my-project/builds/OM/scripting/Sonic_ability_manager.sp	2026-10-08 01:22:34.752113220 +0000
+@@ -1406,7 +1406,7 @@
+ #pragma newdecls required
+ 
+ #define PLUGIN_NAME "SonicJumpSurvivors - Universal"
+-#define PLUGIN_VERSION "3.77.6"   // v3.77.6 (con sonic.inc v6.14-OM): PEEL OUT LLEVA JUGADORES (pedido: "el peel out segun los lua de GMod puede llevar supervivientes = otros jugadores"): durante la carrera del peel, tocar a un companion SANO lo MONTA detras de Sonic (hasta 3 asientos; sonicom_peel_carry / _carry_max) — viaja pegado a su estela a la velocidad de la carrera (arrastre por frame desde el PreThink), dispara montado y salta para bajarse; desembarco al frenar, suelta de emergencia si Sonic es interrumpido o el pasajero queda atras. El rescate de incap queda INTACTO (incap = levantar, sano = llevar). Cvars nuevos auto-agregados al cfg por la reconciliacion de la 3.77.4. v3.77.5 (con Amy.inc v97-OM): DEFENSA vs PROPS INMOVILES — veredicto del owner tras la tabla de la v96 ("los inmoviles importan, recuerda que normalmente los props no se mueven, con excepciones, pero es mejor cubrir ambas cosas"): eliminado el filtro de velocidad (60 u/s) del escaneo de props de la ventana de defensa — un prop QUIETO al radio (130 u) tambien la consume y suelta el aura que lo repele (sin stun, igual que los que vuelan); orden del escaneo intacto (especial/tank > witch > comun > prop > piedra). Sin cambios de cvars ni de funciones. v3.77.4 (con Amy.inc v96-OM): CUATRO FIXES DEL OWNER — (1) rate del runattack de la pose de defensa = curva del run normal (antes corria con la del walk = 3.6x en carrera; el walk ya cuadraba; el runthrow tenia el mismo defecto y tambien se corrigio); (2) HITBOX DEL MARTILLO LANZADO 35% MAYOR: scan 30 Hz del vuelo de ida, esfera 1.35x (amyom_throw_hitbox) su bbox + casco del objetivo, mismos efectos que el Touch fisico, una vez por victima; (3) RECONCILIACION DE CVARS al cargar/recargar: Sonic_Suite.cfg recibe AGREGADOS AL FINAL los cvars del suite que falten, sin tocar las lineas existentes (pedido: "los nuevos datos cvars que no existan en el documento apareceran, añadiendose; no sobrescribira el antiguo") + el prefijo amyom_ entra al auto-guardado (16 cvars de la v92+ quedaban fuera porque amy_ no casa con amyom_); (4) DEFENSA REWORK: la Z solo abre la POSE; el AURA (VFX + swing + barrido 360) se suelta AL IMPACTAR con un infectado (especial/tank/witch ademas la contra de stun) o un PROP CON VELOCIDAD (repelido, sin stun).  (con Amy.inc v95-OM): FIX JUMP/FALL ENMASCARADOS (reporte del owner tras probar la v94). Causa raiz heredada de la v92-OM: la rama de AIRE de la FSM vivia DEBAJO de throw armado / ventana de defensa / sin martillo, y al saltar o caer en esos estados el jump/fall no se disparaba (se veia walk_axeless o runthrow flotando). El framework pills real (noodles_om_pills_base.lua L775-794) pone el aire (glide="fall") como ESTADO BASE que ningun alternate enmascara — los alternates solo sustituyen DENTRO de idle/walk/run en suelo, y el Lua de Amy dispara el salto aunque el throw este armado (L1631-1641). FIX: la rama de aire sube justo despues de incap, variantes v94 intactas (sin martillo jump/fall; con martillo HammerJump/FallAnimHammer) + FIX latente: sentinel de fallbacks 0 -> -1 (el 0 ES AMY_OM_ST_IDLE, anulaba ATKIDLE->idle). v3.77.2 (Amy.inc v94-OM): AIRE CON MARTILLO — jump/fall dependen del martillo (Lua L1631-1640/L221-224): sin martillo jump/fall normales; con martillo HammerJump/FallAnimHammer (estados JUMPH/FALLH + fallbacks). v3.77.1 (Amy.inc v93-OM): CHAINS — el martillo del amy.mdl desaparece/aparece via bodygroup (bit 0 de m_nBody = el SetBodygroup del Lua) en las 2 copias del avatar y el ragdoll de muerte + FIX walk_axeless/run_axeless. v3.77.0 (Amy.inc v92-OM): AMY LAS 4 RANURAS — Z = swing fusionado con el area + VENTANA DE DEFENSA (contra pre-sonic 3.5s+cartas sin ragdoll), X = cartas del tarot (2 de 6), V = LANZAMIENTO de martillo (stun + ragdoll falso volando), B = cartas del super tank, C = cambio area<->dash, + avatar amy.mdl patron Tails/Sonic; Sage intacto.
++#define PLUGIN_VERSION "3.77.7"   // v3.77.7 (Tails v5.25-B + sonic v6.15-OM + Amy v98-OM): AVATAR REMOTO POR TP — pedido del owner: "los avatares DE OTROS al sistema del tails follow (modo TP); localmente igual (con su pausa)". La copia R (la que ven los demas) de los 3 avatares viaja por teleport por tick + reloj vivo SIN EF_NOINTERP (tails_avatar_tp 1 default; 0 = como antes): los demas la INTERPOLAN = suave sin depender de la pausa (solo re-encaja la vista del dueno). La copia L queda INTACTA (parentada+pulso). La bola del spin queda parentada y su R oculta viaja pegada. v3.77.6 (con sonic.inc v6.14-OM): PEEL OUT LLEVA JUGADORES (pedido: "el peel out segun los lua de GMod puede llevar supervivientes = otros jugadores"): durante la carrera del peel, tocar a un companion SANO lo MONTA detras de Sonic (hasta 3 asientos; sonicom_peel_carry / _carry_max) — viaja pegado a su estela a la velocidad de la carrera (arrastre por frame desde el PreThink), dispara montado y salta para bajarse; desembarco al frenar, suelta de emergencia si Sonic es interrumpido o el pasajero queda atras. El rescate de incap queda INTACTO (incap = levantar, sano = llevar). Cvars nuevos auto-agregados al cfg por la reconciliacion de la 3.77.4. v3.77.5 (con Amy.inc v97-OM): DEFENSA vs PROPS INMOVILES — veredicto del owner tras la tabla de la v96 ("los inmoviles importan, recuerda que normalmente los props no se mueven, con excepciones, pero es mejor cubrir ambas cosas"): eliminado el filtro de velocidad (60 u/s) del escaneo de props de la ventana de defensa — un prop QUIETO al radio (130 u) tambien la consume y suelta el aura que lo repele (sin stun, igual que los que vuelan); orden del escaneo intacto (especial/tank > witch > comun > prop > piedra). Sin cambios de cvars ni de funciones. v3.77.4 (con Amy.inc v96-OM): CUATRO FIXES DEL OWNER — (1) rate del runattack de la pose de defensa = curva del run normal (antes corria con la del walk = 3.6x en carrera; el walk ya cuadraba; el runthrow tenia el mismo defecto y tambien se corrigio); (2) HITBOX DEL MARTILLO LANZADO 35% MAYOR: scan 30 Hz del vuelo de ida, esfera 1.35x (amyom_throw_hitbox) su bbox + casco del objetivo, mismos efectos que el Touch fisico, una vez por victima; (3) RECONCILIACION DE CVARS al cargar/recargar: Sonic_Suite.cfg recibe AGREGADOS AL FINAL los cvars del suite que falten, sin tocar las lineas existentes (pedido: "los nuevos datos cvars que no existan en el documento apareceran, añadiendose; no sobrescribira el antiguo") + el prefijo amyom_ entra al auto-guardado (16 cvars de la v92+ quedaban fuera porque amy_ no casa con amyom_); (4) DEFENSA REWORK: la Z solo abre la POSE; el AURA (VFX + swing + barrido 360) se suelta AL IMPACTAR con un infectado (especial/tank/witch ademas la contra de stun) o un PROP CON VELOCIDAD (repelido, sin stun).  (con Amy.inc v95-OM): FIX JUMP/FALL ENMASCARADOS (reporte del owner tras probar la v94). Causa raiz heredada de la v92-OM: la rama de AIRE de la FSM vivia DEBAJO de throw armado / ventana de defensa / sin martillo, y al saltar o caer en esos estados el jump/fall no se disparaba (se veia walk_axeless o runthrow flotando). El framework pills real (noodles_om_pills_base.lua L775-794) pone el aire (glide="fall") como ESTADO BASE que ningun alternate enmascara — los alternates solo sustituyen DENTRO de idle/walk/run en suelo, y el Lua de Amy dispara el salto aunque el throw este armado (L1631-1641). FIX: la rama de aire sube justo despues de incap, variantes v94 intactas (sin martillo jump/fall; con martillo HammerJump/FallAnimHammer) + FIX latente: sentinel de fallbacks 0 -> -1 (el 0 ES AMY_OM_ST_IDLE, anulaba ATKIDLE->idle). v3.77.2 (Amy v94-OM): aire con martillo (HammerJump/FallAnimHammer con el, jump/fall sin el; estados JUMPH/FALLH). v3.77.1 (Amy v93-OM): CHAINS (bodygroup martillo, bit 0 m_nBody, R+L+ragdoll) + fix walk_axeless/run_axeless. v3.77.0 (Amy v92-OM): Amy las 4 ranuras (Z swing+ventana defensa, X tarot, V lanzamiento, B super tank, C modo) + avatar amy.mdl; Sage intacto.
+ #define PLUGIN_VERSION_PREV_37613 "3.76.13"   // v3.76.13 (con sonic.inc v6.13-OM): el owner reenvio los Lua del GMod OM ("los lua de gmod por si acaso lo perdiste") — se releieron completos para responder de una vez por todas su pregunta "¿como mueve GMod a los ragdolls falsos? no existe algo que genere un impulso 1 vez y el motor se encargue del resto?". RESPUESTA (sonic.lua L435-485 + status.lua L85-394): GMod SI aplica un impulso UNA SOLA VEZ (SetVelocity 700 + AddAngleVelocity por hueso del prop_ragdoll) y el vphysics hace el resto — eso ya era la v5.36/v5.37 nuestra (onda env_physexplosion = mismo camino interno). LO QUE FALTO y se porto: el OM NUNCA re-aparece a la victima pegada a una pared — busca un HUECO (TraceHull) y ESPIRALA alrededor (status.lua L245-287): v6.13 Sonic_RagSafeSpot = victima/witch del ritual despiertan en el hueco valido mas cercano (fallback: el punto tal cual). v6.13: Sonic_RagSafeSpot puerto textual para la victima del golpe final y la witch del ritual — si el doble cayo contra una pared/escalera/rincon, la victima despierta en el hueco valido mas cercano en vez de atascada en la geometria. Fallback si no hay hueco en 96u: el punto tal cual (v6.12 = mismo fallback del GMod). El vuelo (onda), el rebote (-450/+500) y el fix anti-atasco (DEBRIS) quedan INTACTOS.
+ 
+ #define MAX_SOUNDS 4

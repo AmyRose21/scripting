@@ -1,0 +1,163 @@
+================================================================
+ SUITE 3.77.21 "HUMO DENSO + EL COMANDO"  (sonic.inc v6.28-OM)
+================================================================
+
+SEXTO REPORTE DEL OWNER (probando la 3.77.20, 2026-10-09):
+
+  1. "lamentablemente aunque las esferitas si aparecieron xq si se
+     notan el unico peo que queda es el humo azulado que no se ve"
+  2. "mira como se ven las botas el grafico rojo en G mod y mira
+     como se ve en L4d2" (2 videos)
+  3. "en el video de Gmod se ven un poco mas florecentes con brillo
+     o algo asi" (las esferitas)
+  4. "Ya quita la opcion de sonicom_trails_mat ahora estara por
+     defecto en 1... si no que el parche lo arreglo. osea siempre
+     usara los materiales originales (no los vanilla del l4d2)"
+  5. "si en este cambio el humo sigue sin salir ponme un comando
+     que me permita que este cambie por el Beam este nativo que
+     usa el speed para complementar la falta (necera desde el
+     torso)"
+
+================================================================
+ QUE DIJERON LOS 2 VIDEOS (4 pasadas VLM, mediciones normalizadas
+ por la altura del personaje para anular la distancia de camara)
+================================================================
+
+  GMOD (correcto): estelas rojas = cinta SOLIDA y opaca pegada al
+    suelo (0.32 de la altura del cuerpo); humo = MASA translucida
+    2-3x el cuerpo que envuelve de la cintura para abajo y derrama
+    atras (cian-blanco cerca -> azul profundo lejos); esferitas =
+    motas REDONDAS suaves cian-blanco #E0F0FF con mucho glow que
+    PULSAN en el sitio del torso.
+
+  L4D2 (la .20): estelas rojas = linea fina que flotaba al DOBLE
+    de altura (0.63) y textura degradada translucida (laserbeam);
+    humo = SOLO trazas apenas visibles (los 5 glows de 26-36u
+    eran muy pocos/chicos/tenues); esferitas = estrella crema con
+    destello en cruz que se regaba por el pasillo (a 30-80 uu/s
+    constantes, sin la friccion del air resistance 40 del Lua).
+
+================================================================
+ CAMBIOS 1-a-1 (sonic.inc v6.27-OM -> v6.28-OM)
+================================================================
+
+  1) sonicom_trails_mat ELIMINADA (orden 4) — AUTENTICO SIEMPRE:
+     los trails usan los .vmt ORIGINALES del sonicball (blue2 de
+     la carrera, Sonicred de los pies, blue_2ndlayer/blue de la
+     bola) via env_spritetrail + el fix de fbef0102 SIEMPRE que
+     los archivos existan en el server (gate FileExists interno,
+     sin palanca). El laserbeam nativo queda SOLO como fallback
+     (pack ausente o creacion fallida). Cvars: 208 -> 208
+     (-1 sonicom_trails_mat +1 sonicom_peel_nube).
+     NOTA: si tu Sonic_Suite.cfg tiene guardada una linea
+     "sonicom_trails_mat", queda huerfana — inofensiva, el juego
+     la ignora (puedes borrarla a mano si te molesta).
+
+  2) BOTAS ROJAS como el video GMod (orden 2):
+       - z+8 (tobillo) -> z+2: RAS DEL SUELO, la cuña plana de alla
+       - ancho 6->1 -> 7->3.5: cinta GRUESA tipo huella de
+         neumatico (el 6->1 dejaba casi todo el largo en 1-3u de
+         linea laser fina)
+       - fade 0 -> 1: cola suave minima (el stock del SourceMod
+         declara el fade como ENTERO; el fadeTime 0.2 del Lua no
+         es representable en un TE — documentado)
+       - el chip Sonicred SOLIDO SIEMPRE (con el pack puesto):
+         la cinta opaca del GMod, no el degradado translucido
+
+  3) HUMO DENSO — EL INTENTO DE ESTA SUIte (orden 1): la bateria
+     pasa de 5 glows tenues a 9 sprites por latido (10 Hz):
+       - 5 HUMOS om_bluesmoke de 45-62u "110 160 255" (azul
+         profundo) naciendo con sesgo HACIA ATRAS (8-55u detras):
+         la cape/wake que envuelve espalda y piernas = LA MASA
+       - 4 GLOWS de 34-46u "170 210 255" (cian-blanco brillante)
+         alrededor del cuerpo: el nucleo que en el GMod se mezcla
+         con las esferitas
+       - 1 moon + la luz azul: igual que antes
+       - Edicts: ~96 sprites vivos por Sonic peelando (el .19
+         corria 60+/s sin problema; con 4 Sonics peelando a la
+         vez ~380 — si tu server se siente raro, avisame y bajo
+         la densidad)
+
+  4) ESFERITAS mas florecentes (orden 3):
+       - textura: la estrella crema -> glow01 tintado "224 240
+         255" (el cian-blanco #E0F0FF exacto del video GMod; alla
+         NO se lee estrella — el air resistance las deja como
+         motas redondas brillantes). El fleetways queda en el zip
+         como referencia: si extrañas la estrella es cambiar 1
+         linea (DispatchKeyValue "model" de Sonic_SpawnPeelBall)
+       - alpha 150 -> 200 (mas brillo/bloom)
+       - velocidad 30-80 -> 10-28 uu/s: en el GMod el air
+         resistance 40 del Lua les mata la velocidad enseguida
+         (deriva real ~10-20u y se quedan PULSANDO en el torso);
+         a 30-80 constantes se regaban por todo el pasillo
+
+  5) EL COMANDO NUEVO (orden 5) — sonicom_peel_nube:
+         sonicom_peel_nube 0   (default) = la bateria de sprites
+                                  (el intento denso del punto 3)
+         sonicom_peel_nube 1   = EL BEAM NATIVO DEL SPEED: la
+                                  falta del humo la cubre un
+                                  BeamFollow laserbeam 0.6s
+                                  10->1 fade 3 azul "125 185
+                                  255" — LA RECETA EXACTA del
+                                  trail de colores del Speed —
+                                  naciendo del TORSO (el mismo
+                                  info_target +20z del trail
+                                  principal = el attachment
+                                  "Trail" del QC a 19.08z)
+     - CAMBIO EN VIVO: se aplica al latido siguiente (0.1s), NO
+       hace falta reiniciar el peel ni el plugin
+     - En modo 1 la bateria de sprites se APAGA (el beam la
+       reemplaza); las esferitas y el beam azul de la espalda
+       SIGUEN igual (esferitas = del torso como el Lua; beam azul
+       = el de siempre)
+
+  INTACTOS: beam azul 3 capas, aspa azul, polvo gris de la carga,
+  luz azul 170/1.1, moons, TODA la mecanica (cero gameplay).
+  Amy v101-OM / Tails v5.25-B / Sally / Cream / Eggman / Metal /
+  OM_Stun / Speed_sonic: byte a byte identicos a la .20.
+
+================================================================
+ QUE PROBAR (plan de prueba)
+================================================================
+
+  a) Instalar: smx a plugins/ + la carpeta materials/ del zip
+     (los 8 icons — el om_bluesmoke es EL que ahora pone la masa
+     del humo) + tu pack del sonicball de siempre (blue2/Sonicred
+     para los trails autenticos SIEMPRE).
+
+  b) PRIMERA CARRERA (sonicom_peel_nube 0, el default):
+     - BOTAS: las rojas ahora GROSAS y pegadas al piso, cinta
+       solida — comparar con el video GMod
+     - HUMO: masa azul alrededor de la cintura/piernas que derrama
+       atras — si ahora SI se ve, listo
+     - ESFERITAS: motas cian-blanco mas brillantes que quedan
+       flotando en el torso (no se escapan lejos)
+
+  c) SI EL HUMO SIGUE SIN VERSE:
+       en consola:  sonicom_peel_nube 1
+     y hacer el peel OTRA VEZ (o ni eso — es en vivo): la estela
+     azul del Speed sale del torso como compania. Se queda asi
+     mientras la cvar este en 1 (guardala en el Sonic_Suite.cfg
+     si te gusta mas que el humo).
+
+  d) Si algo no calza, receta de 1 linea (decir cual):
+     - botas muy gruesas/finaas -> 7.0/3.5 en Sonic_CreatePeelTrail
+     - humo muy denso/tenue -> los 5/4 de la bateria o las
+       escalas 0.45-0.62/0.34-0.46 en Sonic_PeelCloudTick
+     - esferitas muy grandes/chicas -> 0.05-0.09 en SpawnPeelBall
+     - beam del torso muy fino/ancho -> 10.0/1.0 en
+       Sonic_PeelNubeBeamStart
+
+================================================================
+ ARCHIVOS DEL ZIP
+================================================================
+
+  Sonic_ability_manager.smx   (3.77.21)
+  Sonic_ability_manager.sp    (fuente)
+  include/ (9 .inc — sonic.inc v6.28-OM + 8 intactos)
+  materials/icons/ (8 — iguales a la .20; el om_bluesmoke ahora
+    es el protagonista del humo)
+  diff_37721_v628_sonic.txt (diff completo sonic.inc vs v6.27)
+  diff_37721_sp.txt (diff del manager)
+  VERIFICACION_37721.txt (forense del binario)
+  worklog.md (el registro completo)

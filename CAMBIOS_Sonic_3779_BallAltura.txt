@@ -1,0 +1,100 @@
+SUITE 3.77.9 — "BOLA A ALTURA GMOD" (sonic.inc v6.16-OM)
+======================================================
+Pedido del owner: "empezamos con fix el modelo de la bola aparece media
+undida en el suelo (por su animacion o por el modelo no se... no estoy
+trabada ni nada, solo es algo visual, quisiera saber si eso se puede
+arreglar)".
+
+RESPUESTA CORTA: si se puede, y estaba en el Lua original. No es la
+animacion ni un bug del motor: la bola es una ESFERA CENTRADA en el
+origen de su modelo y el port la ponia EXACTAMENTE a nivel del suelo.
+GMod la levantaba +15u y la agrandaba 1.25x — eso era lo que faltaba.
+
+------------------------------------------------------
+DIAGNOSTICO (forense del modelo + del Lua de GMod)
+------------------------------------------------------
+1) sonicball.mdl (el del VPK, verificado byte a byte contra el
+   models.zip del pack GMod del owner):
+   - La MALLA es una esfera de radio ~13u CENTRADA en el origen del
+     modelo (vertices del .vvd: -13..+13 en los 3 ejes; la hitbox
+     compilada dentro del .mdl lo confirma: X -16..16, Y/Z ~-12..+13
+     alrededor del cero).
+   - El valor "hull" del .mdl (0..54) es BASURA heredada del QC (no
+     corresponde a la malla real) — por eso conviene no confiar en el
+     viewer para este modelo.
+   - 1 solo hueso ("root" en 0,0,0), 1 sola secuencia estatica de
+     1 frame: NO hay animacion que la mueva.
+2) El origen del SURVIVOR en Source esta a los PIES (el hull va de
+   0 a 72 SOBRE el origen). Por eso los avatares humanos (sonic.mdl,
+   tails.mdl, Amy.mdl... todos los personajes tienen el origen en los
+   pies) se ven perfectos parentados con offset (0,0,0).
+3) La bola se parentaba con offset local (0,0,0) => el CENTRO de la
+   esfera caia a nivel del suelo => EXACTAMENTE "media hundida".
+4) El GMod original NUNCA la puso en el origen. Lua real:
+   ent_om_hedgehog_dropballs.lua (Think, cada tick):
+     local position = ply:GetPos() + Vector(0,0,15 + ...)
+   y el spawner (noodles_om_pills_survivors_sonic.lua L1785-1789):
+     ballsonic:SetPos(ply:GetPos())
+     ballsonic:SetModelScale(1.25)
+   O sea: +15u de altura y escala 1.25 — los 2 ajustes de posicion
+   que el port v6.0 no llevo.
+
+------------------------------------------------------
+CAMBIOS (solo sonic.inc + version del manager)
+------------------------------------------------------
+1) Sonic_CreateAvatarProp gana parametro "float zOffs = 0.0": se suma
+   a la Z ANTES del SetParent (misma receta world-pos-primero que ya
+   usan los trails) => queda horneado como offset LOCAL del parent y
+   el motor mantiene la bola a los pies+zOffs por siempre. Los
+   avatares humanos R/L pasan 0.0 (cero cambio para ellos).
+2) Sonic_CreateBall: la bola nace con zOffs = sonicom_ball_z y ademas
+   se le escribe m_flModelScale = sonicom_ball_scale (netprop directo,
+   prop_dynamic_override lo soporta, es puramente visual porque solid=0).
+3) ConVars NUEVOS (2, auto-agregados a Sonic_Suite.cfg por la
+   reconciliacion de la 3.77.4 — no hay que tocar el cfg a mano):
+     sonicom_ball_z      15    (altura Z sobre los pies; GMod +15;
+                               0 = como antes, media hundida)
+     sonicom_ball_scale  1.25  (tamano del modelo; GMod 1.25;
+                               1 = tamano natural del mdl)
+   AMBOS aplican AL NACER la bola => tras cambiarlos, el siguiente
+   spin sale con el valor nuevo (no hace falta recargar el plugin,
+   pero ojo: la bola que ya esta rodando conserva su altura/escala
+   hasta que termine).
+4) Versiones: sonic.inc v6.15-OM -> v6.16-OM, manager 3.77.8 -> 3.77.9.
+   NADA MAS cambia: velocidades, dano, stun, anillos, peel, homing,
+   avatares R/L, trails (mantienen su offset relativo: viajan 30u
+   sobre el ORIGEN de la bola, igual que siempre), transmit filters,
+   TP de la copia R durante la bola — todo intacto.
+
+Resultado visual esperado (defaults GMod): bola de ~32u de diametro
+centrada 15u sobre los pies => rueda pegada al piso SIN hundirse,
+a la altura de las piernas, envolviendo al personaje como en GMod.
+
+------------------------------------------------------
+QUE NO ES ESTE FIX (descartes verificados)
+------------------------------------------------------
+- No es la animacion: el mdl tiene 1 secuencia estatica de 1 frame.
+- No es el hull del mdl: esos valores (0..54) son herencia basura del
+  QC, la malla real esta centrada en el origen.
+- No es el parent ni el spin: la esfera gira sobre su propio centro,
+  la rotacion no la traslada.
+
+------------------------------------------------------
+PLAN DE PRUEBA (A-D)
+------------------------------------------------------
+A) SPINDASH en suelo plano (Z): la bola debe rodar COMPLETA sobre el
+   piso (se ve el circulo entero, nada debajo del suelo), a la altura
+   de las piernas, algo mas grande que antes (1.25x).
+B) DROPDASH (Z en el aire + aterrizaje): misma bola, misma altura al
+   aterrizar y rodar. Probar aterrizando en pendientes/escaleras: la
+   bola sigue al cuerpo, no se queda clavada ni se hunde en rampas.
+C) AFINACION EN VIVO (sin recargar): sonicom_ball_z 25 -> la proxima
+   bola sale mas alta; sonicom_ball_scale 1.5 -> proxima bola mas
+   grande; sonicom_ball_z 0 y sonicom_ball_scale 1 -> look viejo
+   exacto (media hundida, para comparar). Verificar que el cfg
+   Sonic_Suite.cfg recibio los 2 cvars nuevos al final.
+D) REGRESION: los trails azules siguen saliendo de la bola (viajan
+   sobre su origen como siempre), el golpe/AOE/stun funcionan igual
+   (la hitbox de dano NO es la del prop, es el Touch del jugador),
+   el avatar reaparece bien al terminar la bola, y los OTROS
+   personajes (Tails/Amy) sin ningun cambio.

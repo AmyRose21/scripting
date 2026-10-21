@@ -1,0 +1,168 @@
+--- /home/z/my-project/downloads_tmp/sonic_system/scripting/Parry.sp	2026-10-05 11:37:38.000000000 +0000
++++ /home/z/my-project/download/suite_37736_parry_delegado/Parry.sp	2026-10-09 22:07:03.810456270 +0000
+@@ -6,7 +6,19 @@
+ #pragma semicolon 1
+ #pragma newdecls required
+ 
+-#define PLUGIN_VERSION "1.4"
++// v1.5 — INTERFAZ DE DELEGACION (pedido del owner 2026-10-10: "la unica
++// manera es llamar a la funcion de mi plugin existente para que este se
++// encargue"): este plugin es el port del VScript chch_parrying.nut y su
++// parry de proyectiles ES el que ya funciona en el servidor. Se expone
++// la funcion como NATIVA para que el suite Sonic/Knuckles (manager) la
++// llame y NO haga su propio parry de proyectiles:
++//   UK_ParryProjectiles(client) -> int : SOLO el parry de proyectiles
++//       (la parte que el suite delega; devuelve cuantos devolvio)
++//   UK_PerformParry(client) -> void    : parry completo (proyectiles y,
++//       si no habia ninguno, infectados/witch — igual que el shove)
++// Tambien se agrega el comando manual de prueba: sm_ukparry [userid].
++// La LOGICA DEL PARRY QUEDA INTACTA (identica a la v1.4).
++#define PLUGIN_VERSION "1.5"
+ 
+ // --- ConVars ---
+ ConVar cv_ParryRadius;
+@@ -22,11 +34,24 @@
+ {
+     name = "[L4D2] Ultrakill Parry (Fix Particle)",
+     author = "Converted by AI",
+-    description = "Parry mechanics with correct PrecacheParticle",
++    description = "Parry mechanics with correct PrecacheParticle (+ v1.5: nativas de delegacion UK_ParryProjectiles / UK_PerformParry — libreria ukparry)",
+     version = PLUGIN_VERSION,
+     url = ""
+ };
+ 
++// ------------------------------------------------------------------
++// v1.5: registro de la libreria + nativas. Se hace en AskPluginLoad2
++// (no en OnPluginStart) para que las nativas existan ANTES del
++// OnPluginStart de cualquier plugin consumidor (patron left4dhooks).
++// ------------------------------------------------------------------
++public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
++{
++    RegPluginLibrary("ukparry");
++    CreateNative("UK_PerformParry", Native_PerformParry);
++    CreateNative("UK_ParryProjectiles", Native_ParryProjectiles);
++    return APLRes_Success;
++}
++
+ public void OnPluginStart()
+ {
+     cv_ParryRadius = CreateConVar("uk_parry_radius", "200.0", "Radio del parry (Unidades)");
+@@ -37,6 +62,11 @@
+     cv_ParrySound = CreateConVar("uk_parry_sound", "1", "1 = Sonido activado");
+ 
+     AutoExecConfig(true, "l4d2_ultrakill_parry");
++
++    // v1.5: comando manual de prueba/diagnostico del owner:
++    //   sm_ukparry           (en juego: parry manual sobre uno mismo)
++    //   sm_ukparry <userid>  (consola del servidor: sobre ese jugador)
++    RegConsoleCmd("sm_ukparry", Cmd_UKParry, "Parry manual de prueba: sm_ukparry [userid] (dice cuantos proyectiles devolvio)");
+ }
+ 
+ public void OnMapStart()
+@@ -66,7 +96,11 @@
+     return Plugin_Continue;
+ }
+ 
+-void PerformParry(int client)
++// v1.5: la mitad de PROYECTILES de PerformParry, expuesta aparte
++// (nativa UK_ParryProjectiles) para que otros plugins deleguen SOLO
++// esta parte sin llevarse el parry de infectados/witch. Logica
++// IDENTICA a la v1.4 — ahora cuenta y devuelve cuantos devolvio.
++int PerformParryProjectiles(int client)
+ {
+     float pos[3], eyeAng[3], fwd[3];
+     GetClientEyePosition(client, pos);
+@@ -85,7 +119,7 @@
+         "vomitjar_projectile"
+     };
+ 
+-    bool hitSomething = false;
++    int hits = 0;
+ 
+     // 1. BUSCAR PROYECTILES ESPECÍFICOS
+     for (int i = 0; i < sizeof(targetClasses); i++)
+@@ -96,15 +130,26 @@
+             if (IsValidEntity(entity))
+             {
+                 if (CheckAndParry(client, entity, pos, radius, fwd))
+-                    hitSomething = true;
++                    hits++;
+             }
+         }
+     }
++    return hits;
++}
++
++void PerformParry(int client)
++{
++    // v1.5: misma secuencia de la v1.4, ahora sobre la mitad expuesta
++    bool hitSomething = (PerformParryProjectiles(client) > 0);
+ 
+     // 2. BUSCAR INFECTADOS / WITCH
+     if (!hitSomething)
+     {
+-        CheckEnemies(client, pos, radius, fwd);
++        float pos[3], eyeAng[3], fwd[3];
++        GetClientEyePosition(client, pos);
++        GetClientEyeAngles(client, eyeAng);
++        GetAngleVectors(eyeAng, fwd, NULL_VECTOR, NULL_VECTOR);
++        CheckEnemies(client, pos, cv_ParryRadius.FloatValue, fwd);
+     }
+ }
+ 
+@@ -268,6 +313,55 @@
+     return (client > 0 && client <= MaxClients && IsClientInGame(client));
+ }
+ 
++// ------------------------------------------------------------------
++// v1.5: NATIVAS DE DELEGACION — el suite Sonic/Knuckles llama a ESTAS
++// para que el parry de proyectiles lo haga ESTE plugin (el del owner,
++// el que ya funciona) y no su propio codigo interno.
++// ------------------------------------------------------------------
++public int Native_ParryProjectiles(Handle plugin, int numParams)
++{
++    int client = GetNativeCell(1);
++    if (client <= 0 || client > MaxClients || !IsClientInGame(client) || !IsPlayerAlive(client) || GetClientTeam(client) != 2)
++        return 0;
++    return PerformParryProjectiles(client);
++}
++
++public int Native_PerformParry(Handle plugin, int numParams)
++{
++    int client = GetNativeCell(1);
++    if (client <= 0 || client > MaxClients || !IsClientInGame(client) || !IsPlayerAlive(client) || GetClientTeam(client) != 2)
++        return 0;
++    PerformParry(client);
++    return 1;
++}
++
++// v1.5: comando manual de prueba — el owner puede verificar el plugin
++// desde consola sin depender del suite: sm_ukparry (uno mismo en juego)
++// o sm_ukparry <userid> (consola del servidor).
++public Action Cmd_UKParry(int client, int args)
++{
++    int target = client;
++    if (args >= 1)
++    {
++        char arg[16];
++        GetCmdArg(1, arg, sizeof(arg));
++        target = GetClientOfUserId(StringToInt(arg));
++        if (target <= 0)
++        {
++            ReplyToCommand(client, "[Ultrakill Parry] userid invalido (usa: sm_ukparry <userid>)");
++            return Plugin_Handled;
++        }
++    }
++    if (target <= 0 || !IsClientInGame(target) || !IsPlayerAlive(target) || GetClientTeam(target) != 2)
++    {
++        ReplyToCommand(client, "[Ultrakill Parry] sin objetivo valido (se necesita un superviviente vivo)");
++        return Plugin_Handled;
++    }
++    int hits = PerformParryProjectiles(target);
++    ReplyToCommand(client, "[Ultrakill Parry] %d proyectil(es) devueltos", hits);
++    return Plugin_Handled;
++}
++
+ // ESTA ES LA FUNCIÓN QUE FALTABA
+ void PrecacheParticle(const char[] sEffectName)
+ {

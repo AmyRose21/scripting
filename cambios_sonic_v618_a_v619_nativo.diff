@@ -1,0 +1,158 @@
+--- builds/OM37711/scripting/include/sonic.inc	2026-10-08 04:08:16.519091999 +0000
++++ builds/OM37712/scripting/include/sonic.inc	2026-10-08 05:28:40.192352390 +0000
+@@ -294,7 +294,7 @@
+  *      sonicom_peel_speed 800 / sonicom_peel_charge 3.0 / sonicom_peel_duration 8
+  *      sonicom_peel_cd_rescue 25 / sonicom_peel_cd_fail 45 / sonicom_peel_rescue 1
+  *      sonicom_peel_carry 1 / sonicom_peel_carry_max 3  (v6.14: lleva jugadores)
+- *      sonicom_trails 1 / sonicom_trails_mat 1  (v6.17: trails ON y materiales AUTENTICOS del sonicball si estan)
++ *      sonicom_trails 1 / sonicom_trails_mat 0  (v6.19: nativo por default — los mats del sonicball se ven bugeados en los beams del L4D2; 1 = autenticos opt-in)
+  *      sonicom_rings 1 / sonicom_rings_max 50
+  *    (los defaults GMod: Dropdash_cooldownSucess 27 / cooldownLand 35 /
+  *     maxhits 3 / ringgain 10 / Peelout charge 3s / duration 8s /
+@@ -354,7 +354,7 @@
+     #define SONIC_INDEX 0
+ #endif
+ 
+-#define SONIC_OM_VERSION "v6.18-OM"   // v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o autentico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migracion al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueno/demas (el beam del dueno sigue su copia L, el de los demas la R — leccion del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: unica forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseno de materiales v6.17 INTACTO: FileExists -> autenticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTENTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidio ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aqui offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximacion documentada). Deteccion por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo). v6.16: BOLA A ALTURA GMOD (fix visual del owner: "el modelo de la bola aparece media undida en el suelo") — el sonicball.mdl es una esfera de radio ~13u CENTRADA en el origen del modelo y el origen del survivor esta a los PIES: parentada con offset local (0,0,0) su centro caia EXACTAMENTE a nivel del suelo = media hundida. Se portan los 2 ajustes que el ent_om_hedgehog_dropballs de GMod SI aplicaba y la v6.0 no llevo: +15u de Z local (ply:GetPos()+Vector(0,0,15)) y SetModelScale(1.25) — convars sonicom_ball_z 15 / sonicom_ball_scale 1.25 (0/1 = look viejo). SOLO la bola: avatares humanos R/L intactos (origen en los pies = ya cuadraban). v6.15: AVATAR REMOTO POR TP — la copia R viaja por TeleportEntity por tick + reloj vivo SIN EF_NOINTERP cuando tails_avatar_tp 1 (default): los demas la interpolan = suave sin depender de la pausa
++#define SONIC_OM_VERSION "v6.19-OM"   // v6.19: TRAILS A MATERIAL NATIVO (default) — analisis del pack de materiales ORIGINALES del OM subido por el owner (2026-10-08): los .vmt del sonicball son legítimos (UnlitGeneric $translucent $vertexcolor/$vertexalpha, VTF 7.2 RGBA8888) pero diseniados para el renderer del SpriteTrail de GMod: bluetrail.vtf = barra vertical nucleo-blanco/halo-azul (perfil transversal), bluestartrail2.vtf = 98% TRANSPARENTE con destellos sueltos (la 'capa ancha' es casi aire), blue2/Sonicred = chips 2x2 shared_t/t2. En los TE beams del L4D2 la textura se mapea al reves (U a lo largo del beam) = look bugeado (reporte del owner); el laserbeam radial nativo es inmune a la orientacion. NATIVO default con la geometria 3-capas GMod completa (halo 70->40 + nucleo 40->1 + magenta 40->1, aditivas como alla) y el peel gana los 2 pies ROJOS nativos. FIX descargas: Sonic_AddMatToDownloads ahora encola el $basetexture REAL (blue.vmt->bluetrail.vtf etc.; el v6.17 encolaba un blue.vtf INEXISTENTE = damero en clientes). sonicom_trails_mat default 0 (1 = autentico opt-in). v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o autentico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migracion al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueno/demas (el beam del dueno sigue su copia L, el de los demas la R — leccion del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: unica forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseno de materiales v6.17 INTACTO: FileExists -> autenticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTENTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidio ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aqui offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximacion documentada). Deteccion por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo).
+ 
+ // =======================
+ // RECURSOS (VPK de recursos del owner; mismas rutas que GMod OM)
+@@ -746,7 +746,7 @@
+     // v6.6 (informe 1 del owner)
+     g_cvSonicSpinRadiusCommons = CreateConVar("sonicom_spin_radius_commons", "140", "Sonic OM: radio del barrido AoE de la bola contra COMUNES (0 = off). Especiales y witch siguen con el alcance del toque — el rango extra es SOLO para comunes [owner: 'sufrimos mucho con los comunes']", _, true, 0.0, true, 400.0);
+     g_cvSonicTrails = CreateConVar("sonicom_trails", "1", "Sonic OM: trails visuales (env_spritetrail) de la bola y la carrera del Peel Out — el look de los SpriteTrail del GMod", _, true, 0.0, true, 1.0);
+-    g_cvSonicTrailsMat = CreateConVar("sonicom_trails_mat", "1", "Sonic OM v6.17: usar los materiales AUTENTICOS del sonicball del GMod para los trails (blue/blue_2ndlayer/blue2/Sonicred.vmt del VPK de recursos) cuando esten en el servidor — 0 = forzar el laserbeam nativo del v6.6. Sin los archivos SIEMPRE cae al nativo", _, true, 0.0, true, 1.0);
++    g_cvSonicTrailsMat = CreateConVar("sonicom_trails_mat", "0", "Sonic OM v6.19: material de los trails — 0 (default) = laserbeam NATIVO del juego con la geometria 3-capas del GMod (halo 70->40 + nucleo 40->1 + magenta 40->1). Los .vmt del sonicball del pack OM estan disenados para el SpriteTrail de GMod y en los beams del L4D2 se ven bugeados (analisis del pack original 2026-10-08: mapeo de textura al reves + capa ancha 98% transparente) — 1 = intentarlos igual (opt-in) si estan en el servidor. Sin los archivos SIEMPRE cae al nativo", _, true, 0.0, true, 1.0);
+     g_cvSonicDodgeGraceDot = CreateConVar("sonicom_dodge_grace_dot", "0.3", "Sonic OM: segundos de gracia CORTA tras esquivar durante los que el vomito del boomer no vuelve a cobrar y el spit del spitter no entra [owner: la eva se consumia demasiado rapido]", _, true, 0.0, true, 2.0);
+ 
+     // comandos directos (ademas de Z/X/C del manager)
+@@ -1365,15 +1365,68 @@
+ // =====================================================================
+ #define SONIC_TRAIL_SPRITE "materials/sprites/laserbeam.vmt"
+ 
+-// v6.17: agrega el .vmt + su .vtf a la tabla de descargas (patron
+-// OM_Stun; inofensivo si el material vive dentro de un VPK)
++// v6.19: agrega el .vmt + su .vtf REAL a la tabla de descargas (patron
++// OM_Stun; inofensivo si el material vive dentro de un VPK). FIX del v6.17:
++// encolaba el .vtf del MISMO nombre (blue.vtf) — pero NINGUN .vmt del
++// sonicball tiene su textura al lado (analisis del pack original del OM
++// 2026-10-08): blue.vmt -> bluetrail.vtf, blue_2ndlayer.vmt ->
++// bluestartrail2.vtf, blue2.vmt -> shared/shared_t.vtf, Sonicred.vmt ->
++// shared/shared_t2.vtf. Sin la dependencia en la tabla, el cliente que no
++// la tenga instalada a mano veia el DAMERO de textura faltante. Se parsea
++// el $basetexture del propio .vmt; si no se puede leer (p.ej. dentro de un
++// VPK sin abrir) se cae al .vtf homonimo del v6.17 — y solo se encola lo
++// que EXISTE en el servidor (nada de archivos fantasma en la descarga).
++bool Sonic_GetMatBasetexture(const char[] vmt, char[] texOut, int maxLen)
++{
++    texOut[0] = 0;
++    File f = OpenFile(vmt, "r");
++    if (f == null) return false;
++    char line[512];
++    bool found = false;
++    while (!found && f.ReadLine(line, sizeof(line)))
++    {
++        int pos = StrContains(line, "$basetexture");
++        if (pos == -1) continue;
++        pos += 12;
++        if (pos < sizeof(line) && ((line[pos] >= 'a' && line[pos] <= 'z') || (line[pos] >= 'A' && line[pos] <= 'Z') || (line[pos] >= '0' && line[pos] <= '9')))
++            continue;  // $basetexture2 / $basetexturetransform: no es el
++        // rest empieza justo despues del keyword: 1a comilla = cierre del
++        // propio "$basetexture", 2a = apertura del valor, 3a = cierre
++        char rest[512];
++        strcopy(rest, sizeof(rest), line[pos]);
++        int c1 = FindCharInString(rest, '"');
++        if (c1 == -1) continue;
++        int c2 = FindCharInString(rest[c1+1], '"');
++        if (c2 == -1) continue;
++        int start = c1 + 1 + c2 + 1;
++        int c3 = FindCharInString(rest[start], '"');
++        if (c3 == -1) continue;
++        rest[start + c3] = 0;
++        strcopy(texOut, maxLen, rest[start]);
++        found = (strlen(texOut) > 0);
++    }
++    delete f;
++    return found;
++}
++
+ void Sonic_AddMatToDownloads(const char[] vmt)
+ {
+     AddFileToDownloadsTable(vmt);
++
++    // 1) dependencia REAL: el $basetexture declarado dentro del .vmt
++    char tex[PLATFORM_MAX_PATH];
+     char vtf[PLATFORM_MAX_PATH];
++    if (Sonic_GetMatBasetexture(vmt, tex, sizeof(tex)))
++    {
++        Format(vtf, sizeof(vtf), "materials/%s.vtf", tex);
++        if (FileExists(vtf, true)) AddFileToDownloadsTable(vtf);
++    }
++
++    // 2) fallback v6.17: .vtf homonimo — solo si existe (el blue.vtf del
++    //    sonicball NO existe: no encolar archivos fantasma)
+     strcopy(vtf, sizeof(vtf), vmt);
+     ReplaceString(vtf, sizeof(vtf), ".vmt", ".vtf");
+-    AddFileToDownloadsTable(vtf);
++    if (FileExists(vtf, true)) AddFileToDownloadsTable(vtf);
+ }
+ 
+ // ---------------------------------------------------------------------
+@@ -1593,13 +1646,16 @@
+     return Plugin_Continue;
+ }
+ 
+-// v6.17/v6.18: las TRES capas EXACTAS del fadeeiie del sonic.lua
+-// (L1921-1964) cuando los materiales autenticos estan: blue_2ndlayer.vmt
+-// ancha 70->40 blanca + blue.vmt 40->1 blanca + blue.vmt 40->1 con tinte
+-// MAGENTA (el Color(255,0,255) del Lua). Si no estan (o cvar 0), las
+-// dos capas laserbeam del v6.6 (fallback nativo). v6.18: BeamFollow —
+-// Width = ancho en la bola (cabecera), EndWidth = ancho de la cola: el
+-// mismo decaimiento del SpriteTrail de GMod, dibujado por el motor.
++// v6.19: NATIVO = DEFAULT. Rama autentica (opt-in, sonicom_trails_mat 1
++// + materiales en el server): las 3 capas EXACTAS del fadeeiie del
++// sonic.lua (L1921-1964) — blue_2ndlayer.vmt ancha 70->40 blanca +
++// blue.vmt 40->1 blanca + blue.vmt 40->1 con tinte MAGENTA. Rama NATIVA
++// (default): MISMA geometria 3-capas del GMod sobre el laserbeam del
++// juego con tintes — halo azul 70->40 (0.75s) + nucleo blanco-azul 40->1
++// (0.5s) + acento magenta 40->1 (0.5s); alla las 3 eran ADITIVAS
++// (additive=true en los 3 util.SpriteTrail) y el laserbeam tambien lo
++// es. v6.18: BeamFollow — Width = ancho en la bola (cabecera), EndWidth
++// = ancho de la cola: el mismo decaimiento del SpriteTrail de GMod.
+ // La bola no tiene filtro SetTransmit (la ven todos): envio a todos.
+ void Sonic_CreateBallTrails(int client)
+ {
+@@ -1620,10 +1676,13 @@
+     }
+     else
+     {
+-        int cB1[4] = {40, 90, 255, 200};
+-        int cB2[4] = {120, 180, 255, 200};
+-        g_iSonicBallTrailR[client] = Sonic_TEStartFollow(ball, g_iSonicTELaser, 0.6, 34.0, 10.0, 3, cB1);
+-        g_iSonicBallTrailW[client] = Sonic_TEStartFollow(ball, g_iSonicTELaser, 0.45, 14.0, 3.0, 3, cB2);
++        // v6.19: geometria GMod completa sobre laserbeam nativo (default)
++        int cHalo[4] = {70, 130, 255, 175};   // capa ancha 70->40 azul suave
++        int cCore[4] = {175, 220, 255, 215};  // capa fina 40->1 nucleo claro
++        int cMag[4]   = {255, 0, 255, 175};   // 3a capa magenta (Color(255,0,255))
++        g_iSonicBallTrailR[client] = Sonic_TEStartFollow(ball, g_iSonicTELaser, 0.75, 70.0, 40.0, 3, cHalo);
++        g_iSonicBallTrailW[client] = Sonic_TEStartFollow(ball, g_iSonicTELaser, 0.5, 40.0, 1.0, 3, cCore);
++        g_iSonicBallTrailM[client] = Sonic_TEStartFollow(ball, g_iSonicTELaser, 0.5, 40.0, 1.0, 3, cMag);
+     }
+ }
+ 
+@@ -1700,6 +1759,14 @@
+         {
+             g_iSonicPeelTrail[client] = Sonic_TEStartFollow(client, g_iSonicTELaser, 0.55, 16.0, 2.0, 3, cP);
+         }
++
++        // v6.19: los DOS pies rojos del GMod (Sonicred 6->1, alla en los
++        // attachments 2/3 del puppet L1232-1258) ahora TAMBIEN en el
++        // nativo: laserbeam tintado de rojo (el Sonicred.vmt autentico es
++        // un chip 2x2 con $color2 [0.9 0 0] — color plano, mismo resultado)
++        int cRed[4] = {235, 60, 60, 220};
++        g_iSonicPeelFootL[client] = Sonic_TEStartChain(userid, -1, g_iSonicTELaser, 0.5, 5.0, 5.0, 0, cRed);
++        g_iSonicPeelFootR[client] = Sonic_TEStartChain(userid, 1, g_iSonicTELaser, 0.5, 5.0, 5.0, 0, cRed);
+     }
+ }
+ 

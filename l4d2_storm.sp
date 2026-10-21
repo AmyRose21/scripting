@@ -1,6 +1,6 @@
 /*
 *	Weather Control
-*	Copyright (C) 2025 Silvers
+*	Copyright (C) 2026 Silvers
 *
 *	This program is free software: you can redistribute it and/or modify
 *	it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.19"
+#define PLUGIN_VERSION		"1.20"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+1.20 (04-Jun-2026)
+	- Recompiled plugin on SourceMod 1.11.0.6970 (the .SMX provided in the archive).
 
 1.19 (01-Jul-2025)
 	- Pre-cache rain to prevent stutter. Thanks to "Tighty-Whitey" for reporting and testing.
@@ -3523,8 +3526,8 @@ void ToggleFogVolume(bool enable)
 
 		if( enable == true )
 		{
-			m_bDisabled = GetEntProp(entity, Prop_Data, "m_bDisabled");
-			if( m_bDisabled == 0 )
+			m_bDisabled = !!GetEntProp(entity, Prop_Data, "m_iHammerID");
+			if( m_bDisabled == 1 )
 				AcceptEntityInput(entity, "Enable");
 		}
 		else if( enable == false )

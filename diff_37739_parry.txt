@@ -1,0 +1,218 @@
+--- suite_37738_boomer_amy/Parry.sp	2026-10-10 05:18:01.307032000 +0000
++++ suite_37739_rock_avatar_fix/Parry.sp	2026-10-10 06:19:13.661950914 +0000
+@@ -6,9 +6,36 @@
+ #pragma semicolon 1
+ #pragma newdecls required
+ 
+-#define PLUGIN_VERSION "2.2"
++#define PLUGIN_VERSION "2.3"
+ 
+ /* ------------------------------------------------------------------
++ *  v2.3 (suite 3.77.39 — fix del reporte del owner 2026-10-10:
++ *   "ya el vscript no bloquea auto la roca del tank" y "el counter
++ *   no hace el sonido de om/knuckles/punchstun.wav ni nada"):
++ *   - EL SMX VUELVE A ESCANEAR SIEMPRE (roca/saliva/props): la v2.1
++ *   dejaba la ventana SOLO en manos del .nut cuando el handshake
++ *     estaba en 1 — si el loop del .nut moria (plugin recargado a
++ *     mitad de mapa sin cambio de mapa, round_start que no llega)
++ *     el smx confiaba en un puente muerto y NADIE parreaba: la roca
++ *     pasaba y no sonaba nada. Ahora ambos escanean y el ANTI-ROBO
++ *     (m_hThrower) deduplica: el que agarra primero es el dueno, el
++ *     otro lo respeta. La roca se bloquea en TODAS las combinaciones
++ *     de archivos/cargas.
++ *   - WATCHDOG DEL LOOP DEL .NUT: cada 2 s llama a ::ChCh_EnsureLoop
++ *     del .nut v2.4 (lo revive si algo lo mato; en .nuts viejos es
++ *     un no-op silencioso por el guard "in getroottable()").
++ *   - UK_PARRY_AURA FORZADO A 1: la ventana ES la arquitectura del
++ *     owner ("el parry delegado al vscript") — una cfg vieja con
++ *     uk_parry_aura 0 ya no puede matar el auto-bloqueo.
++ *   - KNX_PARRY_STATUS: comando de diagnostico (versiones, handshake,
++ *     heartbeat del .nut, loop vivo, ventanas abiertas por jugador).
++ *     La proxima vez que algo falle, la consola dice QUE esta pasando
++ *     en vez de adivinar.
++ *   - EL SONIDO DE LA VENTANA: el .nut v2.4 vuelve a tocar
++ *     om/knuckles/punchstun.wav (el del counter, pedido del owner) y
++ *     este smx sigue tocando uk_parry_window_sound (punchstun) en
++ *     sus catch nativos.
++ *
+  *  v2.2 (suite 3.77.38 — reporte del owner 2026-10-10):
+  *   - UK_PARRY_WINDOW FIJO EN 8.0 SEGUNDOS ("que es lo que dura el
+  *     parry de knuckles" = knux_counter_duration). Se impone en
+@@ -111,8 +138,10 @@
+ ConVar cv_WindowMax;
+ ConVar cv_KnxAPI;     // v2.1: handshake con chch_parrying.nut v2.2 (lo marca el propio .nut)
+ ConVar cv_SmxInstant; // v2.1: apagar el parry instantáneo del smx si el del .nut ya basta
++ConVar cv_NutBeat;    // v2.3: heartbeat del .nut v2.4 (uk_parry_nut_beat = su Time() en cada EnsureLoop)
+ 
+ float g_fLastParryTime[MAXPLAYERS+1];
++float g_fNextWatchdog = 0.0;   // v2.3: cada 2 s revive el loop del .nut (ChCh_EnsureLoop)
+ 
+ // --- MODO ESTADO: la ventana de parry por jugador ---
+ float g_fWindowUntil[MAXPLAYERS+1];
+@@ -149,6 +178,7 @@
+     cv_WindowMax = CreateConVar("uk_parry_window_max", "30.0", "Tope anti-olvido si abren la ventana sin duración (hasta la orden de apagado como máximo estos segundos)");
+     cv_KnxAPI = CreateConVar("uk_parry_knx_api", "0", "FLAG INTERNO: el chch_parrying.nut v2.2 lo pone a 1 al cargar (handshake). Mientras valga 1, la ventana la ejecuta el .nut y este smx solo avisa el estado", FCVAR_DONTRECORD);
+     cv_SmxInstant = CreateConVar("uk_parry_smx_instant", "1", "1 = el smx hace SU parry instantáneo en el shove (además del .nut). 0 = el instantáneo queda solo para el chch_parrying.nut (evita el doble parry); la ventana se abre igual");
++    cv_NutBeat = CreateConVar("uk_parry_nut_beat", "0", "FLAG INTERNO: heartbeat del chch_parrying.nut v2.4+ (escribe su Time() en cada EnsureLoop). Lo lee knx_parry_status", FCVAR_DONTRECORD);
+     CreateConVar("uk_parry_version", PLUGIN_VERSION, "versión del plugin (beacon para el .nut)");
+ 
+     AutoExecConfig(true, "l4d2_ultrakill_parry");
+@@ -156,6 +186,10 @@
+     // EL PUENTE: el VScript (o la consola) avisa el estado por aquí
+     RegServerCmd("knxparry_state", Cmd_KnxParryState, "Puente VScript->plugin: knxparry_state <jugador> <1|0> [segundos]");
+ 
++    // v2.3: DIAGNÓSTICO — la próxima vez que algo no bloquee, esto dice
++    // QUÉ está pasando (handshake, .nut vivo, loop corriendo, ventanas)
++    RegServerCmd("knx_parry_status", Cmd_ParryStatus, "Diagnóstico del parry: versiones, puente, loop del .nut, ventanas abiertas");
++
+     // el ejecutor de la ventana (corre siempre, escanea solo si hay ventana)
+     CreateTimer(KNX_TICK, Timer_ParryWindow, _, TIMER_REPEAT);
+ }
+@@ -171,6 +205,20 @@
+         PrintToServer("[Parry] v%s: uk_parry_window FIJO en 8.0s (la duracion del parry de Knuckles)", PLUGIN_VERSION);
+     }
+ 
++    // v2.3: uk_parry_aura FORZADO a 1 — la ventana ES la arquitectura
++    // del owner ("parry delegado al vscript"). Una cfg vieja con 0 ya
++    // no puede matar el auto-bloqueo de la roca (fue una de las firma
++    // posibles del "ya no bloquea nada").
++    if (cv_ParryAura != null && !cv_ParryAura.BoolValue)
++    {
++        cv_ParryAura.SetInt(1);
++        PrintToServer("[Parry] v%s: uk_parry_aura FORZADO a 1 (la ventana es la arquitectura del owner; la cfg vieja se ignora)", PLUGIN_VERSION);
++    }
++
++    // v2.3: heartbeat limpio (lo marca el .nut v2.4 al cargar)
++    if (cv_NutBeat != null) cv_NutBeat.SetFloat(0.0);
++    g_fNextWatchdog = GetGameTime() + 2.0;
++
+     PrecacheSound("weapons/golf_club/hit_world_01.wav");
+ 
+     char sSound[PLATFORM_MAX_PATH];
+@@ -257,6 +305,13 @@
+     // sanea por si acaso (nunca negativo)
+     if (cv_ParryDamage != null && cv_ParryDamage.FloatValue < 0.0)
+         cv_ParryDamage.SetFloat(0.0);
++
++    // v2.3: el aura tambien se re-impone aqui (la cfg pudo pisarla)
++    if (cv_ParryAura != null && !cv_ParryAura.BoolValue)
++    {
++        cv_ParryAura.SetInt(1);
++        PrintToServer("[Parry] v%s: uk_parry_aura FORZADO a 1 (OnConfigsExecuted; la cfg vieja se ignora)", PLUGIN_VERSION);
++    }
+ }
+ 
+ public void OnClientDisconnect(int client)
+@@ -418,10 +473,28 @@
+     bool anyWindow = false;
+ 
+     // v2.1: si el chch_parrying.nut v2.2 está vivo (handshake), la
+-    // ventana la ejecuta EL (universal + cono + enemigos): este timer
+-    // solo administra el estado (expiry, orden de apagado, avisos)
++    // ventana la ejecuta EL (universal + cono + enemigos)
++    // v2.3: ... PERO ESTE SMX VUELVE A ESCANEAR SIEMPRE (roca/saliva/
++    // props nativos). Lección de la 3.77.38: si el loop del .nut
++    // moría (carga a mitad de ronda, timer matado), el handshake
++    // seguía en 1 y este plugin confiaba en un puente muerto = la
++    // roca pasaba de largo y no sonaba NADA. Con ambos escaneando,
++    // el ANTI-ROBO (m_hThrower) deduplica: el que agarra primero es
++    // el dueño y el otro lo respeta (mismo mecanismo que ya existía
++    // entre el parry instantáneo y la ventana). La roca se bloquea
++    // en TODAS las combinaciones de archivos y cargas.
+     bool bridge = (cv_KnxAPI.IntValue == 1);
+ 
++    // v2.3: WATCHDOG — cada 2 s le pide al .nut v2.4 que reviva su
++    // loop si murió (::ChCh_EnsureLoop; en .nuts viejos el guard lo
++    // hace no-op). Con el .nut vivo esto también refresca el
++    // heartbeat uk_parry_nut_beat para knx_parry_status.
++    if (now >= g_fNextWatchdog)
++    {
++        g_fNextWatchdog = now + 2.0;
++        if (bridge) Parry_NudgeNutLoop();
++    }
++
+     for (int i = 1; i <= MaxClients; i++)
+     {
+         if (g_fWindowUntil[i] <= 0.0) continue;
+@@ -435,7 +508,7 @@
+         }
+ 
+         anyWindow = true;
+-        if (!bridge) WindowScan(i);
++        WindowScan(i);   // v2.3: SIEMPRE (antes: solo sin bridge)
+     }
+ 
+     // las piedras devueltas se vigilan aunque la ventana ya cerró (4 s)
+@@ -445,6 +518,72 @@
+     return Plugin_Continue;
+ }
+ 
++// v2.3 — el watchdog del loop del .nut: RunScriptCode guardado (si el
++// .nut es viejo y no tiene ChCh_EnsureLoop, es un no-op silencioso)
++void Parry_NudgeNutLoop()
++{
++    int runner = Parry_GetScriptRunner();
++    if (runner == -1 || !IsValidEntity(runner)) return;
++
++    SetVariantString("local r = getroottable(); if(\"ChCh_EnsureLoop\" in r) r.ChCh_EnsureLoop()");
++    AcceptEntityInput(runner, "RunScriptCode");
++}
++
++// v2.3 — DIAGNÓSTICO: todo el estado del sistema en un comando. La
++// próxima vez que "no bloquea nada", esto dice QUÉ está pasando.
++public Action Cmd_ParryStatus(int args)
++{
++    PrintToServer("==================== PARRY STATUS ====================");
++    PrintToServer(" Parry.smx           : v%s", PLUGIN_VERSION);
++    PrintToServer(" uk_parry_window     : %.1f s (fijo 8.0)", cv_WindowDur.FloatValue);
++    PrintToServer(" uk_parry_aura       : %d (forzado 1)", cv_ParryAura.IntValue);
++    PrintToServer(" uk_parry_smx_instant: %d", cv_SmxInstant.IntValue);
++    PrintToServer(" uk_parry_knx_api    : %d (handshake del .nut: 1 = cargó)", cv_KnxAPI.IntValue);
++
++    // heartbeat del .nut v2.4+ (escribe su Time() en cada EnsureLoop)
++    float beat = (cv_NutBeat != null) ? cv_NutBeat.FloatValue : 0.0;
++    if (cv_KnxAPI.IntValue == 1 && beat > 0.0 && Parry_BeatFresh(beat))
++        PrintToServer(" .nut heartbeat      : VIVO (latido hace %.1f s)", GetGameTime() - beat);
++    else if (cv_KnxAPI.IntValue == 1 && beat <= 0.0)
++        PrintToServer(" .nut heartbeat      : SIN LATIDOS -> .nut VIEJO (v2.3-) sin EnsureLoop; ACTUALIZA chch_parrying.nut a v2.4");
++    else if (cv_KnxAPI.IntValue == 1)
++        PrintToServer(" .nut heartbeat      : MUERTO (ultimo latido hace %.1f s) -> el loop puede estar caido; el smx escanea nativo igual", GetGameTime() - beat);
++    else
++        PrintToServer(" .nut heartbeat      : n/a (sin handshake: no hay .nut cargado; ventana 100%% nativa)");
++
++    // el loop del .nut existe?
++    int loops = 0;
++    int ent = -1;
++    char nameBuf[32];
++    while ((ent = FindEntityByClassname(ent, "logic_timer")) != -1)
++    {
++        if (!IsValidEntity(ent)) continue;
++        GetEntPropString(ent, Prop_Data, "m_iName", nameBuf, sizeof(nameBuf));
++        if (StrEqual(nameBuf, "chch_parry_loop", false)) loops++;
++    }
++    PrintToServer(" loop chch_parry_loop: %d (1 = correcto; 0 = muerto -> revive en <=2s por el watchdog; >1 = duplicado)", loops);
++
++    int open = 0;
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_fWindowUntil[i] <= 0.0) continue;
++        if (!IsClientInGame(i)) continue;
++        char sName[MAX_NAME_LENGTH];
++        GetClientName(i, sName, sizeof(sName));
++        PrintToServer(" ventana ABIERTA     : %s (%.1f s restantes)", sName, g_fWindowUntil[i] - GetGameTime());
++        open++;
++    }
++    if (open == 0) PrintToServer(" ventanas abiertas   : ninguna (abre una con un shove)");
++    PrintToServer("=======================================================");
++    return Plugin_Handled;
++}
++
++// helper del status: latido fresco (<= 5 s de vida)
++bool Parry_BeatFresh(float beat)
++{
++    return (GetGameTime() - beat) <= 5.0;
++}
++
+ bool WatchHasAny(float now)
+ {
+     for (int i = 0; i < KNX_WATCH_MAX; i++)

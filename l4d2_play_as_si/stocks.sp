@@ -105,7 +105,7 @@ stock void Revive(int client)
     {
         ForcePlayerSuicide(infected);
     }
-    CheatCommand(client, "give", " health");
+    CheatCommand(client, "give", "health");
 }
 
 stock void PrecacheEffect(const char[] effectName)
@@ -242,7 +242,7 @@ stock void RespawnPlayer(int client)
 {
     if(!IsPlayerAlive(client))
     {
-        L4D_RespawnPlayer(client);
+        L4D_RespawnPlayer(client, false);
         RequestFrame(OnRespawnPlayerPost, client);
     }
 }
@@ -271,13 +271,14 @@ void OnRespawnPlayerPost(int client)
     return;
 }
 
-stock void KillTimerSafety(Handle& timer)
+stock void CloseHandleSafety(Handle& handle)
 {
-    if(timer != null)
+    Handle t = handle;
+    handle = null;
+    if(t != null)
     {
-        delete timer;
+        delete t;
     }
-    timer = null;
 }
 
 stock void SetVector(float target[3], float x, float y, float z) {
@@ -295,12 +296,18 @@ stock float GetAngleBetweenTwoDirections(float a[3], float b[3])
     return RadToDeg(ArcCosine(cos));
 }
 
+stock void DeleteEntity(int entity)
+{
+    if(entity <= 0 || !IsValidEntity(entity))
+        return;
+
+    AcceptEntityInput(entity, "Kill");
+}
 
 stock void AddExplosionForce(int entity, float center[3], float force)
 {
     float direction[3];
-    float entityPos[3];
-    GetAbsOrigin(entity, entityPos);
+    float entityPos[3]; GetAbsOrigin(entity, entityPos);
 
     //Set up physics movement explosion
     int explosion = CreateEntityByName("env_physexplosion");
@@ -325,4 +332,159 @@ stock void AddExplosionForce(int entity, float center[3], float force)
     TeleportEntity(entity, NULL_VECTOR, NULL_VECTOR, velocity);
     
     AcceptEntityInput(explosion, "Kill");
+}
+
+
+stock int CreateTrackTrain(int driver, float startPos[3], float endPos[3], EntityOutput onTrainArrived)
+{
+    int endEntity = CreateEntityByName("path_track");
+    if(endEntity <= 0)
+    {
+        LogError("[ERROR] path_track end 创建失败");
+        return -1;
+    }
+    char endName[32];
+    Format(endName, 32, "End-%d-%d", endEntity, driver);
+    DispatchKeyValue(endEntity, "targetname", endName);
+    if(DispatchSpawn(endEntity))
+    {   
+        ActivateEntity(endEntity);
+        AcceptEntityInput(endEntity, "EnablePath");
+        TeleportEntity(endEntity, endPos);
+    }
+    else
+    {
+        DeleteEntity(endEntity);
+        return -1;
+    }
+    HookSingleEntityOutput(endEntity, "OnPass", onTrainArrived, true);
+
+
+    int startEntity = CreateEntityByName("path_track");
+    if(startEntity <= 0)
+    {
+        LogError("[ERROR] path_track start 创建失败");
+        return -1;
+    }
+    char startName[32];
+    Format(startName, 32, "Start-%d-%d", startEntity, driver);
+    DispatchKeyValue(startEntity, "targetname", startName);
+    DispatchKeyValue(startEntity, "target", endName);
+    if(DispatchSpawn(startEntity))
+    {   
+        ActivateEntity(startEntity);
+        AcceptEntityInput(startEntity, "EnablePath");
+        TeleportEntity(startEntity, startPos);
+    }
+    else
+    {
+        DeleteEntity(endEntity);
+        DeleteEntity(startEntity);
+        return -1;
+    }
+
+    int controller = CreateEntityByName("func_tracktrain");
+    if(controller <= 0)
+    {
+        LogError("[ERROR] track_train 创建失败");
+        return -1;
+    }
+    char name[64];
+    Format(name, 64, "Controller-%d-%d-%d-%d", controller, driver, startEntity, endEntity);  // 把路径相关entity写到名字里面去
+    DispatchKeyValue(controller, "spawnflags", "24")//16 | 2 | 8 | 512);
+    DispatchKeyValue(controller, "targetname", name);
+    DispatchKeyValue(controller, "target", startName);
+    DispatchKeyValueInt(controller, "speed", 1000);
+    DispatchKeyValueInt(controller, "startspeed", 1000);
+    DispatchKeyValue(controller, "velocitytype", "2");
+    DispatchKeyValue(controller, "orientationtype", "0");
+    DispatchKeyValue(controller, "wheels", "50");
+    DispatchKeyValue(controller, "bank", "0");
+    
+    // !rcon sm plugins reload l4d2_ac130
+
+    if(DispatchSpawn(controller))
+    {
+        SetEntPropEnt(controller, Prop_Send, "m_hOwnerEntity", driver);
+        ActivateEntity(controller);
+        TeleportEntity(controller, startPos);
+    }
+    else
+    {
+        DeleteEntity(startEntity);
+        DeleteEntity(endEntity);
+        DeleteEntity(controller);
+        return -1;
+    }
+
+    return controller;
+}
+
+
+stock void DeleteTrackTrain(int train)
+{
+    // Format(name, 64, "Controller-%d-%d-%d-%d", controller, driver, startEntity, endEntity);
+    char name[64];
+    GetEntPropString(train, Prop_Data, "m_iName", name, 64);
+    char combinedName[16][5];
+    ExplodeString(name, "-", combinedName, 80, 5);
+
+    for(int i = 3; i < 5; i++)
+    {
+        int entity = StringToInt(combinedName[i]);
+        DeleteEntity(entity);
+    }
+    DeleteEntity(StringToInt(combinedName[1]));
+}
+
+
+// #define SHAKE_START            (0) // Starts the screen shake for all players within the radius
+// #define SHAKE_STOP             (1) // Stops the screen shake for all players within the radius
+// #define SHAKE_AMPLITUDE        (2) // Modifies the amplitude of an active screen shake for all players within the radius
+// #define SHAKE_FREQUENCY        (3) // Modifies the frequency of an active screen shake for all players within the radius
+// #define SHAKE_START_RUMBLEONLY (4) // Starts a shake effect that only rumbles the controller, no screen effect
+// #define SHAKE_START_NORUMBLE   (5) // Starts a shake that does NOT rumble the controller
+stock void ShakeScreen(int client, int cmd, float amplitude, float frequency, float duration)
+{
+    Handle shakeMsg = StartMessageOne("Shake", client, USERMSG_RELIABLE);
+    if(shakeMsg != INVALID_HANDLE)
+    {
+        if(GetUserMessageType() == UM_BitBuf)
+        {
+            if (cmd == 0)
+            {
+                BfWriteByte(shakeMsg, 0);
+            }
+            if (cmd == 1)
+            {
+                BfWriteByte(shakeMsg, 1);
+            }
+            BfWriteFloat(shakeMsg, amplitude);
+            BfWriteFloat(shakeMsg, frequency);
+            BfWriteFloat(shakeMsg, duration);
+            EndMessage();
+        }
+        else if(GetUserMessageType() == UM_Protobuf)
+        {
+            Protobuf pb = UserMessageToProtobuf(shakeMsg);
+            if (cmd == 0)
+            {
+                pb.SetInt("command", 0);
+            }
+            if (cmd == 1)
+            {
+                pb.SetInt("command", 1);
+            }
+
+            pb.SetFloat("local_amplitude", amplitude);
+            pb.SetFloat("frequency", frequency);
+            pb.SetFloat("duration", duration);
+            EndMessage();
+        }
+        else
+        {
+            PrintToServer("UserMessage Type Error");
+            shakeMsg.Close();
+        }
+    }
 }

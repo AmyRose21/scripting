@@ -1,0 +1,68 @@
+VERIFICACION SUITE 3.77.9 "BOLA A ALTURA GMOD" (sonic.inc v6.16-OM)
+=====================================================================
+
+FUENTES / ARBOL
+- Arbol base: builds/OM/scripting = scripting3.zip v97 del owner +
+  overlay oficial 1.11, en estado 3.77.8 entregada (Tails v5.25-B /
+  sonic v6.15-OM / Amy v98-OM / Sally v6.2 / Cream v6.1 / Eggman v3.1
+  / manager 3.77.8), verificada contra download/suite_3778_cfg_unica.
+- Modificados: include/sonic.inc (v6.15-OM -> v6.16-OM) y
+  Sonic_ability_manager.sp (3.77.8 -> 3.77.9, solo la linea de
+  version). Tails/Amy/Sally/Cream/Eggman INCABADOS: diff -q byte a
+  byte contra suite_3778_cfg_unica/include/*.inc = identicos (5/5).
+
+FORENSE DEL MODELO (evidencia del diagnostico)
+- sonicball.mdl del VPK (sha256 a983e048d9b9cde346737dab69787be6
+  cdd6a1c895987ac21f5823a3914e7240) IDENTICO al models.zip del pack
+  GMod del owner (verificado en ambas copias del workspace).
+- .vvd (436 vertices, stride 48 confirmado: 64 + 436*48 = 20992 =
+  tangentDataStart): malla esfera ~+-13u CENTRADA en el origen.
+- .mdl hitbox compilada: min(-15.97,-11.86,-13.14) max(15.97,11.72,
+  12.77) alrededor del cero -> confirma esfera centrada.
+- .mdl: 1 hueso "root" pos (0,0,0), 1 secuencia 1 frame -> ninguna
+  animacion mueve la malla.
+- Lua GMod original: ent_om_hedgehog_dropballs.lua L26
+  (ply:GetPos()+Vector(0,0,15)) + sonic.lua L1785-1789
+  (SetModelScale(1.25)).
+
+COMPILACION
+- spcomp64 1.11.0.6970, script scripts/build_om_current.sh.
+- 28 warnings = TODAS preexistentes (misma lista exacta que 3.77.7 y
+  3.77.8: Doll_* de Sally, OM_Stun, tag mismatches del manager).
+  CERO warnings de sonic.inc / codigo nuevo.
+- smx: 364,224 bytes
+  sha256 f93b4030d3b1b9ce2de9945e59a889c411526199b2464f259c46691e68723d49
+
+FORENSE ARTEFACTO VS ARTEFACTO (scripts/smx_diff_3779.py, contra el
+smx de suite_3778_cfg_unica entregada)
+- funciones: 576 -> 576 (delta +0, NUEVAS: ninguna, BORRADAS: ninguna)
+  = solo firma interna de Sonic_CreateAvatarProp + cuerpo de
+  Sonic_CreateBall, ninguna funcion nueva ni perdida.
+- cvars: 206 -> 208 (delta +2, NUEVOS: sonicom_ball_scale,
+  sonicom_ball_z; BORRADOS: ninguno).
+- marcadores verificados dentro del smx: "3.77.9" PRESENTE,
+  "v6.16-OM" PRESENTE, "sonicom_ball_z" PRESENTE,
+  "sonicom_ball_scale" PRESENTE, "v5.25-B" PRESENTE, "v98-OM"
+  PRESENTE. "3.77.8" PRESENTE = esperado (mensajes de log del
+  saneador v3.77.8). "v6.15-OM" ausente = esperado (el comentario de
+  version viejo no compila al smx).
+- linea PLUGIN_VERSION del manager: 3,388 chars < 4096 (margen
+  spcomp error 075 respetado; historia recortada por la cola
+  v3.77.6+ como en entregas anteriores).
+
+DIFTS DEL PAQUETE
+- cambios_sonic_v615_a_v616_ball.diff: 56 lineas +/- (version, docs,
+  2 cvars + registro, firma zOffs de Sonic_CreateAvatarProp, bloque
+  v6.16 + escala en Sonic_CreateBall; comentario v6.3 re-incluido).
+- cambios_manager_3778_a_3779.diff: 1 linea (solo la de version).
+
+INSTALACION
+1) addons/sourcemod/plugins/Sonic_ability_manager.smx (reemplazar)
+2) addons/sourcemod/scripting/ include/sonic.inc y
+   Sonic_ability_manager.sp (solo si guardas fuentes; .smx ya trae
+   todo compilado)
+3) Recargar el plugin (sm plugins reload Sonic_ability_manager o
+   cambiar de mapa). El Sonic_Suite.cfg recibe los 2 cvars nuevos al
+   final automaticamente (reconciliacion 3.77.4, no tocar a mano).
+4) No hay dependencias nuevas ni VPK nuevos: el sonicball.mdl del
+   VPK de recursos del owner se queda tal cual.

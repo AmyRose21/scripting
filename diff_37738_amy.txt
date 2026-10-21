@@ -1,0 +1,143 @@
+--- suite_37737_parry_vscript/include/Amy.inc	2026-10-10 02:46:31.414284585 +0000
++++ suite_37738_boomer_amy/include/Amy.inc	2026-10-10 05:19:06.959259996 +0000
+@@ -1,6 +1,26 @@
+ /*
+  * ======================================================
+- *  [MODULO] Amy Rose Ability - v91 "FIX CINEMATICAS (clones del aura)"
++ *  [MODULO] Amy Rose Ability - v102 "PARRY DELEGADO DE AMY (pose de defensa)"
++ *
++ *  v102-OM (suite 3.77.38 — pedido del owner 2026-10-10): "Amy usara el
++ *  mismo sistema de parry pero usara un CONTADOR APARTE, al igual que
++ *  pasa con Knuckles; solo que la diferencia es que si el proyectil
++ *  esta en rango activara la DEFENSA DE MARTILLO (el ataque mas el
++ *  aura). Si Amy no esta en pose de defensa (ya uso su ataque, sea en
++ *  parry o como uso normal) el contador la cuenta como NO parryeando;
++ *  si usa su habilidad vuelve a activarse el parry (defensa activa =
++ *  parry activo; deja de estar en defensa = parry desactivado)".
++ *   - FLANCO DE SUBIDA/BAJADA en Amy_OM_PhaseThink: la ventana de
++ *     defensa (g_fAmyOMCounterUntil) abre/cierra la ventana de parry
++ *     de Amy en el chch_parrying.nut v2.3 via ChCh_KnxNotify (SU
++ *     propio contador por entidx — el de Knuckles no se toca).
++ *   - PUENTE INVERSO amyparry_strike <entidx> (RegServerCmd): el .nut
++ *     lo manda por SendToServerConsole cuando un PROYECTIL entra al
++ *     rango de su ventana -> Amy_OM_CounterTriggerProp = consume la
++ *     pose + suelta el ATAQUE (barrido 360) + el AURA. La consumicion
++ *     de la ventana cierra el parry en el siguiente flanco de bajada.
++ *
++ *  v91 "FIX CINEMATICAS (clones del aura)"
+  *
+  *  v91 - FIX CINEMATICAS (pedido del owner: "hay algo en mi plugin
+  *  que rompe quizas las cinematicas de las campanas... cuando hay un
+@@ -940,7 +960,7 @@
+ //   motor nuevo de sonic.inc (Sonic_TEStartFollow: laserbeam 25->2,
+ //   vida 0.3, blanco alpha 200 — el mismo look de la v92, ahora SI
+ //   visible). Historial v99-OM y anteriores: en la linea de abajo.
+-#define AMY_INC_VERSION          "v101-OM"
++#define AMY_INC_VERSION          "v102-OM"
+ // v99-OM (manager 3.77.10): MIGRACION MECANICA de firma del Sonic_MakeTrail compartido (v6.17 del sonic.inc: ahora recibe sprite + offset[3] + alpha) — el trail del martillo lanzado mantiene EXACTAMENTE su look (laserbeam nativo, blanco, 25->2, vida 0.3, Z+8). CERO cambio de comportamiento. El GMod original usa models/noodles/om/amy/white.vmt para ese trail — si el owner confirma que lo tiene, se cablea autentico con fallback en una futura version. v98-OM (manager 3.77.7): AVATAR REMOTO POR TP — pedido del owner ("los avatares DE OTROS al sistema del tails follow, modo TP; localmente igual, con su pausa"): la copia R (la que ven los demas) viaja por TeleportEntity por tick + reloj vivo SIN EF_NOINTERP (receta tails_follow / Tails v5.25; convar compartido tails_avatar_tp, default 1, 0 = R parentada como antes): los clientes de los demas la INTERPOLAN = suave sin depender de la pausa (que solo re-encaja la vista del dueno). La copia L queda INTACTA (parentada + EF_NOINTERP + pulso). v97-OM (manager 3.77.5): DEFENSA vs PROPS INMOVILES — veredicto del owner: "los inmoviles importan, recuerda que normalmente los props no se mueven (con excepciones, pero es mejor cubrir ambas cosas)": ELIMINADO el filtro de 60 u/s de la v96 — cualquier prop al radio de la ventana (quieto o volando) la consume y suelta el aura que lo repele (sin stun); orden del escaneo intacto (especial/tank > witch > comun > prop > piedra del tank); typo "repeledido"->"repelido". v96-OM (manager 3.77.4): CUATRO FIXES — (1) rate del runattack de la pose de defensa y del runthrow = curvas del run/walk normal (antes curva del walk = 3.6x en carrera); (2) HITBOX AEREO del martillo lanzado 35% mayor (amyom_throw_hitbox 1.35, scan 30 Hz del vuelo de ida, mismos stun+ragdoll/dano que el Touch, una vez por victima); (3) CVARS al cargar/recargar: reconciliacion de Sonic_Suite.cfg — los cvars del suite que falten se AGREGAN AL FINAL sin tocar las lineas existentes + prefijo amyom_ dentro del auto-guardado; (4) DEFENSA REWORK: la Z solo abre la POSE, el AURA sale AL IMPACTAR (especial/tank/witch -> aura + contra stun + cartas; comun -> aura; prop -> aura que lo repele, sin stun). (manager 3.77.3): v95-OM (manager 3.77.3): FIX JUMP/FALL ENMASCARADOS — la rama de AIRE viva debajo de throw armado/ventana/sin martillo desde la v92-OM (reporte: "el jump y fall no se reproducen"); ahora va justo tras incap, como el framework pills (L775-794: el aire es estado base, los alternates solo sustituyen idle/walk/run) + sentinel de fallbacks 0 -> -1 (el 0 ES AMY_OM_ST_IDLE). v94-OM: AIRE CON MARTILLO — jump/fall segun martillo (HammerJump/FallAnimHammer con el; normales sin el; Lua L1631-1640/L221-224; estados JUMPH/FALLH + fallbacks). v93-OM (manager 3.77.1): CHAINS — el martillo del MODELO (submodelo "hammer" del amy.mdl) desaparece de verdad cuando Amy no lo lleva: bodygroup "Chains" = el SetBodygroup(1,1)/(1,0) del Lua del OM (bit 0 de m_nBody), aplicado a las DOS copias del avatar en cada lanzar/recuperar y al ragdoll de muerte; FIX nombres reales del Lua sin martillo (walk_axeless/run_axeless CON guion bajo — la v92-OM buscaba "walkaxeless"/"runaxeless", que NO existen) + fallbacks AXE->base. v92-OM (manager 3.77.0): LAS 4 RANURAS — Z swing fusionado con el area + VENTANA DE DEFENSA (contra pre-sonic 3.5s+cartas, sin ragdoll), X CARTAS DEL TAROT nuevas (2 de 6: Moon/Sun/Emperor/Strength/World/Fool), V (habilidad 3) LANZAMIENTO de martillo (hammer.mdl masa 50 poder 3000, impacto = stun + ragdoll falso VOLANDO), B (habilidad 4) cartas del SUPER TANK intactas, C sigue cambiando area<->dash, + AVATAR amy.mdl patron Tails/Sonic. v91: FIX CINEMATICAS
+ 
+ // ============================================================
+@@ -1053,6 +1073,7 @@
+ 
+ // --- contra de la Z (ventana de defensa)
+ float   g_fAmyOMCounterUntil[MAXPLAYERS + 1];    // fin de la ventana (0 = cerrada)
++bool    g_bAmyParryOpen[MAXPLAYERS + 1];         // v102: espejo del parry delegado (lo mueve SOLO el PhaseThink)
+ bool    g_bAmyOMCounterMissed[MAXPLAYERS + 1];   // aviso de vencimiento 1 vez
+ 
+ // --- lanzamiento (V)
+@@ -1571,6 +1592,9 @@
+     RegConsoleCmd("sm_amymodo", Amy_CommandAbilityMode, "Alterna el estilo de la habilidad de Amy: impulso (embestida) o golpe en area (AOE)");
+     RegConsoleCmd("sm_amymode", Amy_CommandAbilityMode, "Alias de sm_amymodo (impulso | aoe)");
+     RegConsoleCmd("sm_amypropinfo", Amy_CmdPropInfo, "v79: que es esto que miro? (clase/modelo/movetype/masa + veredicto)");
++
++    // v102: puente inverso del parry delegado (lo llama el chch_parrying.nut)
++    RegServerCmd("amyparry_strike", Amy_CmdParryStrike, "v102: un proyectil entro al rango de la defensa de Amy (dispara el martillazo + aura)");
+     RegConsoleCmd("sm_amyprop", Amy_CmdPropInfo, "Alias de sm_amypropinfo");
+     RegConsoleCmd("sm_amyfisica", Amy_CmdFisica, "v82: inyectar FISICA al decorativo que miras (UNICA via desde v82; masa opcional en kg, defecto 100)");
+     RegConsoleCmd("sm_amyfis", Amy_CmdFisica, "Alias corto de sm_amyfisica");
+@@ -3157,6 +3181,61 @@
+     AcceptEntityInput(runner, "RunScriptCode");
+ }
+ 
++// ============================================================
++//  v102 - PARRY DELEGADO DE AMY: el puente SMX -> .nut
++//  (patron Amy_PublishScriptIdx / Parry.smx v2.1): RunScriptCode en
++//  el root avisando a ChCh_KnxNotify. on = "Amy esta en pose de
++//  defensa" (la ventana del .nut dura lo que le quede de pose);
++//  off = "Amy ya no esta en defensa" (LA ORDEN DE APAGADO).
++// ============================================================
++void Amy_ParryNotifyNut(int client, bool on, float now)
++{
++    if (client <= 0 || client > MaxClients || !IsClientInGame(client)) return;
++
++    int runner = Amy_FindScriptRunner();
++    if (runner == -1 || !IsValidEntity(runner)) return;
++
++    float dur = 0.0;
++    if (on)
++    {
++        dur = g_fAmyOMCounterUntil[client] - now;
++        if (dur <= 0.0) return;
++        if (dur > 10.0) dur = 10.0;
++    }
++
++    char code[192];
++    Format(code, sizeof(code),
++        "local r = getroottable(); if(\"ChCh_KnxNotify\" in r) r.ChCh_KnxNotify(%d, %d, %.2f)",
++        client, on ? 1 : 0, dur);
++
++    SetVariantString(code);
++    AcceptEntityInput(runner, "RunScriptCode");
++}
++
++// v102 - EL PUENTE INVERSO .nut -> SMX: el chch_parrying.nut v2.3
++// avisa por SendToServerConsole("amyparry_strike <entidx>") cuando un
++// PROYECTIL entra al rango de la ventana de defensa de Amy ("si el
++// proyectil esta en rango activara la defensa de martillo — el ataque
++// mas el aura"). Se consume la pose con el MISMO paquete del trigger
++// por prop: Amy_OM_CounterTriggerProp (barrido 360 + VFX + gesto).
++public Action Amy_CmdParryStrike(int args)
++{
++    if (args < 1) return Plugin_Handled;
++    char s[16];
++    GetCmdArg(1, s, sizeof(s));
++    int client = StringToInt(s);
++    if (client <= 0 || client > MaxClients || !IsClientInGame(client)) return Plugin_Handled;
++    if (g_iPlayerCharIdx[client] != AMY_INDEX) return Plugin_Handled;
++    if (!IsPlayerAlive(client) || GetClientTeam(client) != 2) return Plugin_Handled;
++
++    // sin ventana de defensa abierta: nada que disparar (el flanco de
++    // bajada del PhaseThink ya mando la orden de apagado del parry)
++    if (g_fAmyOMCounterUntil[client] <= GetEngineTime()) return Plugin_Handled;
++
++    Amy_OM_CounterTriggerProp(client);   // consume la pose + ATAQUE + AURA
++    return Plugin_Handled;
++}
++
+ // Trace filter para no golpearse a sí mismo
+ public bool Amy_TraceFilter_NoSelf(int entity, int mask, int self) {
+     return entity != self;
+@@ -9877,6 +9956,23 @@
+ // ============================================================
+ void Amy_OM_PhaseThink(int client, float now)
+ {
++    // ============================================================
++    // v102: PARRY DELEGADO — la VENTANA DE DEFENSA de Amy abre/cierra
++    // SU ventana de parry en el chch_parrying.nut (contador APARTE del
++    // de Knuckles, misma API ChCh_KnxNotify). "Si esta con la defensa
++    // activa el parry se activa; si deja de estar en defensiva el
++    // parry se desactiva": flanco de subida = pose ON -> notify(1);
++    // flanco de bajada (impacto que consume la ventana — parry o
++    // normal —, vencimiento, stun, incap) = notify(0). Si Amy muere,
++    // el .nut limpia su ventana solo (checks de validez + dur corta).
++    // ============================================================
++    bool parryOpen = (g_fAmyOMCounterUntil[client] > now);
++    if (parryOpen != g_bAmyParryOpen[client])
++    {
++        g_bAmyParryOpen[client] = parryOpen;
++        Amy_ParryNotifyNut(client, parryOpen, now);
++    }
++
+     // aturdida o incap: cortar lo activo (GMod OM_Stun_Blockfunction /
+     // CustomFunctionForDowned_OM: HammerDuration 0 + ThrowShould 0)
+     if (OM_IsStunned(client) || GetEntProp(client, Prop_Send, "m_isIncapacitated") > 0)

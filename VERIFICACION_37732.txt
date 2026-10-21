@@ -1,0 +1,65 @@
+================================================================================
+ VERIFICACION — SUITE 3.77.32 (LATCH ORIENTADO + FUEGO EN LOS PUÑOS + FIX CRASH)
+================================================================================
+Fecha: 2026-10-10 | Arbol: builds/OM37730 (manager 3.77.32 / Knuckles v67-OM)
+
+BUILD
+  Compiler: SourcePawn Compiler 1.11.0.6970 (spcomp64)
+  Script:   Sonic_ability_manager.sp + 15 includes
+  Warnings: 28 = LINEA BASE EXACTA de la .31 (Doll 3 / Sally 14 / Metal 2 /
+            OM_Stun 1 / manager x8 tag-mismatch L3236-3239 por el changelog)
+            CERO warnings del codigo nuevo (Knuckles.inc v67 limpio).
+  smx:      412,130 B
+  sha256:   fb42b610ecd45184c394fb89208116217bf61585049727916d64a7782c21b791
+
+FORENSE (scripts/forense_37732.py, control .31 = sha 423a1974... VERIFICADO)
+  Payload:  .32 = 2,101,774 B vs .31 = 2,085,371 B (delta +16,403 — el fuego
+            TE + el evento + la lista + el latch suman; el parry viejo se va)
+  Funciones NUEVAS v67 (8/8): Knux_FindWall / Knux_ParryWatchRock /
+            Knux_FindParriedSpit / Knux_MarkParriedSpit / Knux_Event_SpitBurst /
+            Knux_ParryExplosion / Knux_FireRing / Knux_HandPos
+  Funciones VIEJAS del parry v66 FUERA (4/4 — el fix del crash):
+            Knux_ParryTouch / T_KnuxParryBoom / Knux_ParryDetonate /
+            Knux_IsNearWall (renombrada -> Knux_FindWall con normal)
+  Control .31 sigue (14/14): ParryScan / ParryReflect / ParryConeOK /
+            T_KnuxParryWatch / T_KnuxKillEnt / FireOrbs / KillFireOrbs /
+            SpawnFireOrb / HandleSmokerCounter / CounterBlockFx /
+            AvatarOneShot / ApplyPunchHit / PerformGroundSlam / AvatarFollow
+  Marcadores v67 (8/8): v67-OM / knux_fist_fire / om_knux_flame.vmt /
+            spit_burst / ambient/explosions/explode_ / subject / tank_rock /
+            spitter_projectile
+  Marcadores v66 siguen (9/9): knux_charge_t1/t2 / knux_parry_spit/rocks/
+            radius / GolfClub.ImpactWorld / counter_hit / phase3.wav /
+            m_hThrower
+  Version:  "3.77.32" presente como current, "3.77.31" FUERA del payload
+  cvars knux_*: .31 = 32 -> .32 = 33 (+1 = knux_fist_fire, 0 fuera)
+
+DIFERENCIALES DE CODIGO (v66 -> v67, solo Knuckles.inc + manager)
+  + Latch: Knux_FindWall (normal + gate |z|<0.5 del lua l.761), orientacion
+    del avatar a la normal (l.767-792) y salida por la normal (l.700).
+  + Fuego: espiral TE exacta del effects lua (35->0, 2 vueltas, 0.9s, onda
+    18Hz/4, alpha fade) + nucleo om_knux_flame + firering al nivel 3 +
+    cvar knux_fist_fire + fallback glow01 + 2 materiales NUEVOS al download.
+  + Parry: BORRADOS SDKHook_Touch/T_KnuxParryBoom/Knux_ParryDetonate y el
+    watchdog del spit (la causa del crash); spit devuelto = velocidad +
+    m_hThrower + lista de 8 slots (TTL 10s); detonacion via EVENTO
+    spit_burst (subject -> spit a <=16u -> explosion 250/150 solo
+    infectados + props); roca = watchdog vel<=100/5s + Kill (nut parity);
+    sonido explode_1-3 del nut.
+
+EMPAQUETADO
+  Includes heredados: los 14 (Amy/Cream/Eggman/Metal/OM_Stun/Pin_Release/
+    SI_Stagger/Sage/Sally/Shadow/sonic/Speed_sonic/Tails/Witch_Flight +
+    Rouge... verificado por cmp byte a byte contra la .31 — SOLO Knuckles.inc
+    y el .sp cambian.
+  Materials: 10 = los 8 de siempre + om_knux_flame.vmt (132 B) +
+    om_knux_flame.vtf (87,632 B, VTF 7.5 header 0x60 — compatible L4D2,
+    copia del blaze flame del pack OM del owner).
+  zip: suite_37732_latch_fuego_crashfix.zip (sha al subir) — re-descarga
+    del filebin verificada byte a byte antes de entregar.
+
+CHECKLIST ANTI-REGRESION (cero cambio fuera de Knuckles)
+  sonic.inc / Tails.inc / Amy.inc / Metal.inc / OM_Stun.inc / Rouge.inc /
+    Sally.inc / Sage.inc / Cream.inc / Eggman.inc / Shadow.inc /
+    Speed_sonic.inc / Witch_Flight.inc / SI_Stagger.inc / Pin_Release.inc:
+    BYTE-IDENTICOS a la .31 (cmp -s en el empaquetado, aborta si no).

@@ -1,0 +1,200 @@
+--- /home/z/my-project/download/suite_37741_bloqueo_manda/Parry.sp	2026-10-10 06:19:13.661950914 +0000
++++ /home/z/my-project/download/suite_37742_counter_exclusivo/Parry.sp	2026-10-10 09:28:10.788540771 +0000
+@@ -6,7 +6,33 @@
+ #pragma semicolon 1
+ #pragma newdecls required
+ 
+-#define PLUGIN_VERSION "2.3"
++#define PLUGIN_VERSION "2.4"
++
++/* ------------------------------------------------------------------
++ *  v2.4 (suite 3.77.42 — orden del owner 2026-10-10: "el Vscript aun
++ *  se activa es con un Shove... Y NO DEBERIA SER GENERAL! ... Puso
++ *  esa mrd para que cualquiera que haga una shove pueda repeler y no
++ *  La cosa no es asi los unicos es amy y knuckles por el momento"):
++ *   - EL SHOVE-PARRY ES EXCLUSIVO DE AMY Y KNUCKLES. El jugador NO
++ *     lleva el modelo OM (el avatar es un prop), asi que este plugin
++ *     no puede adivinar el personaje: el MANAGER (fuente de verdad)
++ *     se lo publica por el puente nuevo
++ *         knxparry_chars <jugador> <0|1|2>   (0=nadie 1=knuckles 2=amy)
++ *     al seleccionar personaje, al restaurar la cookie, en cada spawn
++ *     y al limpiar (cambio de personaje / "sin personaje" /
++ *     disconnect / freechars). Aqui vive en g_iShoveParryChar[] y se
++ *     espeja en los convars uk_parry_chars (Amy+Knuckles) y
++ *     uk_amy_chars (solo Amy) que el chch_parrying.nut v2.6 lee
++ *     directo (el gate del .nut tambien los usa: defense en
++ *     profundidad — hasta un Parry.smx viejo no puede colar a nadie).
++ *   - GATES: el shove (IN_ATTACK2) sin personaje = shove NORMAL (ni
++ *     parry instantaneo ni ventana); la apertura por knxparry_state
++ *     tambien exige personaje (el apagado queda LIBRE para no colgar
++ *     estados); las ventanas de quien perdio el personaje en caliente
++ *     se cierran solas en el escaneo.
++ *   - knx_parry_status ahora muestra quienes tienen el shove-parry.
++ * ------------------------------------------------------------------
++ */
+ 
+ /* ------------------------------------------------------------------
+  *  v2.3 (suite 3.77.39 — fix del reporte del owner 2026-10-10:
+@@ -154,6 +180,15 @@
+ 
+ bool g_bStateScriptReady = false;    // knuckles_parry_state.nut cargado (solo API externa)
+ 
++// v2.4 — QUIEN PUEDE HACER SHOVE-PARRY (owner: "los unicos es amy y
++// knuckles por el momento"): el manager publica el personaje por el
++// puente knxparry_chars y este plugin lo traduce a estos flags + los
++// convars-espejo que el chch_parrying.nut v2.6 lee (uk_parry_chars /
++// uk_amy_chars). 0 = nadie, 1 = knuckles, 2 = amy.
++int   g_iShoveParryChar[MAXPLAYERS+1];
++ConVar cv_CharsList;                   // uk_parry_chars (Amy + Knuckles)
++ConVar cv_AmyList;                     // uk_amy_chars   (solo Amy)
++
+ public Plugin myinfo =
+ {
+     name = "[L4D2] Ultrakill Parry (Fix Particle)",
+@@ -179,6 +214,8 @@
+     cv_KnxAPI = CreateConVar("uk_parry_knx_api", "0", "FLAG INTERNO: el chch_parrying.nut v2.2 lo pone a 1 al cargar (handshake). Mientras valga 1, la ventana la ejecuta el .nut y este smx solo avisa el estado", FCVAR_DONTRECORD);
+     cv_SmxInstant = CreateConVar("uk_parry_smx_instant", "1", "1 = el smx hace SU parry instantáneo en el shove (además del .nut). 0 = el instantáneo queda solo para el chch_parrying.nut (evita el doble parry); la ventana se abre igual");
+     cv_NutBeat = CreateConVar("uk_parry_nut_beat", "0", "FLAG INTERNO: heartbeat del chch_parrying.nut v2.4+ (escribe su Time() en cada EnsureLoop). Lo lee knx_parry_status", FCVAR_DONTRECORD);
++    cv_CharsList = CreateConVar("uk_parry_chars", "", "INTERNO: ent-index con shove-parry (Amy + Knuckles), publicados por el manager; el chch_parrying.nut v2.6 lo lee", FCVAR_DONTRECORD);
++    cv_AmyList = CreateConVar("uk_amy_chars", "", "INTERNO: ent-index que son Amy (SU contador aparte en el .nut v2.6); publicado por el manager", FCVAR_DONTRECORD);
+     CreateConVar("uk_parry_version", PLUGIN_VERSION, "versión del plugin (beacon para el .nut)");
+ 
+     AutoExecConfig(true, "l4d2_ultrakill_parry");
+@@ -186,6 +223,11 @@
+     // EL PUENTE: el VScript (o la consola) avisa el estado por aquí
+     RegServerCmd("knxparry_state", Cmd_KnxParryState, "Puente VScript->plugin: knxparry_state <jugador> <1|0> [segundos]");
+ 
++    // v2.4: EL PUENTE DEL PERSONAJE — el manager (fuente de verdad)
++    // dice quien es Amy/Knuckles y quien dejo de serlo. Se publica al
++    // seleccionar, al restaurar la cookie, en cada spawn y al limpiar.
++    RegServerCmd("knxparry_chars", Cmd_KnxParryChars, "Puente manager->plugin: knxparry_chars <jugador> <0|1|2> (0=nadie, 1=knuckles, 2=amy) — los unicos con shove-parry");
++
+     // v2.3: DIAGNÓSTICO — la próxima vez que algo no bloquee, esto dice
+     // QUÉ está pasando (handshake, .nut vivo, loop corriendo, ventanas)
+     RegServerCmd("knx_parry_status", Cmd_ParryStatus, "Diagnóstico del parry: versiones, puente, loop del .nut, ventanas abiertas");
+@@ -232,6 +274,12 @@
+     // estado limpio por mapa
+     for (int i = 1; i <= MaxClients; i++)
+         g_fWindowUntil[i] = 0.0;
++    // v2.4: personajes fuera (el manager re-publica en el spawn de cada
++    // Amy/Knuckles — el gate reabre solito con el primer spawn)
++    for (int i = 1; i <= MaxClients; i++)
++        g_iShoveParryChar[i] = 0;
++    if (cv_CharsList != null) cv_CharsList.SetString("");
++    if (cv_AmyList != null) cv_AmyList.SetString("");
+     for (int i = 0; i < KNX_WATCH_MAX; i++)
+     {
+         g_fWatchUntil[i] = 0.0;
+@@ -318,6 +366,13 @@
+ {
+     Parry_CloseWindow(client);   // v2.1: también manda el OFF al .nut
+     g_fLastParryTime[client] = 0.0;
++    // v2.4: el slot se va -> su shove-parry tambien (rebuild de las
++    // listas-espejo que lee el .nut)
++    if (g_iShoveParryChar[client] != 0)
++    {
++        g_iShoveParryChar[client] = 0;
++        Parry_RebuildCharConvars();
++    }
+ }
+ 
+ // encuentra (o crea) un logic_script para ejecutar VScript.
+@@ -405,6 +460,42 @@
+     return -1;
+ }
+ 
++// v2.4 — knxparry_chars <idx|userid|nombre> <0|1|2>: el manager
++// publica el personaje. Mantiene los flags Y los convars-espejo que
++// el .nut v2.6 lee (uk_parry_chars / uk_amy_chars).
++public Action Cmd_KnxParryChars(int args)
++{
++    if (args < 2) return Plugin_Handled;
++    char sWho[32], sCode[8];
++    GetCmdArg(1, sWho, sizeof(sWho));
++    GetCmdArg(2, sCode, sizeof(sCode));
++    int client = Parry_ParseClient(sWho);
++    if (client <= 0) return Plugin_Handled;
++    int code = StringToInt(sCode);
++    if (code < 0 || code > 2) code = 0;
++    g_iShoveParryChar[client] = code;
++    Parry_RebuildCharConvars();
++    return Plugin_Handled;
++}
++
++// reconstruye las listas-espejo para el .nut (solo corre al cambiar)
++void Parry_RebuildCharConvars()
++{
++    char all[192], amy[192], buf[8];
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_iShoveParryChar[i] <= 0) continue;
++        if (all[0] != '\0') StrCat(all, sizeof(all), " ");
++        IntToString(i, buf, sizeof(buf));
++        StrCat(all, sizeof(all), buf);
++        if (g_iShoveParryChar[i] != 2) continue;   // 2 = amy
++        if (amy[0] != '\0') StrCat(amy, sizeof(amy), " ");
++        StrCat(amy, sizeof(amy), buf);
++    }
++    if (cv_CharsList != null) cv_CharsList.SetString(all);
++    if (cv_AmyList != null) cv_AmyList.SetString(amy);
++}
++
+ // abre la ventana de parry de un jugador (dur <= 0 = hasta la orden
+ // de apagado, con el tope anti-olvido del convar)
+ void Parry_SetWindow(int client, float dur)
+@@ -412,6 +503,13 @@
+     if (!IsValidClient(client) || !IsPlayerAlive(client) || GetClientTeam(client) != 2)
+         return;
+ 
++    // v2.4 — LA APERTURA TAMBIEN ES EXCLUSIVA: sin personaje publicado
++    // por el manager no hay ventana (defense en profundidad: el .nut
++    // v2.6 rechaza igual por su lado). El APAGADO (Parry_CloseWindow)
++    // queda LIBRE para que ningun estado quede colgado.
++    if (g_iShoveParryChar[client] <= 0)
++        return;
++
+     if (dur <= 0.0)
+     {
+         dur = (cv_WindowMax.FloatValue > 0.0) ? cv_WindowMax.FloatValue : 3600.0;
+@@ -507,6 +605,15 @@
+             continue;
+         }
+ 
++        // v2.4: ...y si perdio el personaje en caliente (cambio de
++        // clase con la ventana abierta): la ventana es de Amy/Knuckles
++        // o de nadie
++        if (g_iShoveParryChar[i] <= 0)
++        {
++            Parry_CloseWindow(i);
++            continue;
++        }
++
+         anyWindow = true;
+         WindowScan(i);   // v2.3: SIEMPRE (antes: solo sin bridge)
+     }
+@@ -539,6 +646,11 @@
+     PrintToServer(" uk_parry_aura       : %d (forzado 1)", cv_ParryAura.IntValue);
+     PrintToServer(" uk_parry_smx_instant: %d", cv_SmxInstant.IntValue);
+     PrintToServer(" uk_parry_knx_api    : %d (handshake del .nut: 1 = cargó)", cv_KnxAPI.IntValue);
++    // v2.4: quienes tienen el shove-parry (publicados por el manager)
++    char charsBuf[192];
++    cv_CharsList.GetString(charsBuf, sizeof(charsBuf));
++    if (charsBuf[0] == '\0') strcopy(charsBuf, sizeof(charsBuf), "(nadie publicado aun — el spawn de cada Amy/Knuckles re-publica)");
++    PrintToServer(" shove-parry solo de : %s (ent-index publicados por el manager)", charsBuf);
+ 
+     // heartbeat del .nut v2.4+ (escribe su Time() en cada EnsureLoop)
+     float beat = (cv_NutBeat != null) ? cv_NutBeat.FloatValue : 0.0;
+@@ -866,6 +978,13 @@
+         float gameTime = GetGameTime();
+         float nextShove = GetEntPropFloat(client, Prop_Send, "m_flNextShoveTime");
+ 
++        // v2.4 (owner: "Puso esa mrd para que cualquiera que haga una
++        // shove pueda repeler y no") — EL SHOVE-PARRY ES EXCLUSIVO DE
++        // AMY Y KNUCKLES: el resto de sobrevivientes hace un shove
++        // NORMAL (ni parry instantaneo ni ventana ni aviso al .nut).
++        if (g_iShoveParryChar[client] <= 0)
++            return Plugin_Continue;
++
+         // Margen de tolerancia para detectar el shove
+         if (gameTime >= nextShove - 0.1 && gameTime > g_fLastParryTime[client] + 0.5)
+         {

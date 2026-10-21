@@ -1,0 +1,602 @@
+--- /home/z/my-project/download/suite_37723/include/Tails.inc	2026-10-08 23:59:39.015069441 +0000
++++ /home/z/my-project/download/suite_37724/include/Tails.inc	2026-10-09 00:31:11.710319172 +0000
+@@ -1,8 +1,23 @@
+ /*
+  * ======================================================
+- *  [MODULO] Tails "Miles" Prower - Support & Utility v5.25
++ *  [MODULO] Tails "Miles" Prower - Support & Utility v5.27
+  *                          "OM PARITY" (Outcome Memories GMod)
+  *
++ *  v5.27 "STUN UNIFICADO" (2026-10-09, pedido del owner: "no es
++ *  mejor unificar ambos stun en un solo documento? ... en si tenemos
++ *  ragdoll y el stun de congelamiento y empuje (tails) pero lo que no
++ *  tiene el stun de tails es las estrellas ... mejor unifiquemos ese
++ *  sistema para ir simplificando todo y no gastemos tanto codigo en
++ *  la misma cosa"). El sistema de congelado del rayo (Tails_SIFreeze*:
++ *  ~400 lineas paralelas desde el v5.22) SE FUSIONA con el OM_Stun
++ *  v2.0 — el MISMO documento del stun de Sonic/Amy/Metal: freeze
++ *  estatua (martillo + lagged + pausa de animacion) + ESTRELLAS (lo
++ *  que le faltaba al rayo) + chispas + zap + arrastre por el haz
++ *  (OM_Stun_Push, fisica Witch_Flight) + stagger al liberar. Flags
++ *  del rayo: CYAN/PUSH/STAGGER/FIXED (el contador NUNCA se
++ *  reinicia)/NOIFRAME. Comportamiento identico, un solo sistema para
++ *  todo el suite.
++ *
+  *  v5.25 "AVATAR REMOTO POR TP" (2026-10-08, pedido del owner:
+  *  "el sistema de avatar es excelente... es posible que cuando mire
+  *  a los avatares DE OTROS usen el sistema del tails follow, o sea
+@@ -642,7 +657,7 @@
+ int   g_iTailsAnimState[MAXPLAYERS + 1];    // estado FSM actual (-1 = sin setear)
+ float g_fTailsAnimLock[MAXPLAYERS + 1];     // lock de one-shots (ShootingBurst...)
+ int   g_iTailsBodyRender[MAXPLAYERS + 1];   // render mode ORIGINAL del survivor
+-#define TAILS_INC_VERSION "v5.26-B"           // v5.26: ESTATUA DE VERDAD — pausa de ANIMACION del SI congelado (pedido del owner 2026-10-09: "si podemos hacer algo pausar la animacion del infectado especial... literalmente es como poner una pausa en su animacion obligandole a que quede congelado (como pasaria con el FL_Frozen)"): el rayo congela la fisica pero el bot de player seguia ANIMANDO en el sitio; ahora la pose del momento del congelado queda CLAVADA con la capa compartida del OM_Stun v1.3 (OM_Stun_AnimPause al congelar / AnimTick re-afirmado por el ticker / AnimResume al liberar — ANTES del stagger, para que el tambaleo del descongelado se vea a full). v5.25: AVATAR REMOTO POR TP — la copia R (la que ven LOS DEMAS) de los TRES avatares del suite (Tails/Sonic/Amy) viaja por TeleportEntity por tick + reloj vivo SIN EF_NOINTERP (la receta del modo tails_follow): los clientes de los demas la INTERPOLAN = suave sin depender de la pausa, que solo re-encaja la vista del dueno (pedido: "los avatares de otros al modo TP; localmente igual, con su pausa"). Convar tails_avatar_tp (default 1; 0 = R parentada como antes; el cambio en vivo recrea en <=0.1s). La copia L del dueno queda INTACTA (parentada + EF_NOINTERP + pulso). La bola del spin queda parentada y la R oculta viaja pegada durante la bola. v5.24: RESTAURADO el pulso de pausa en CADA montaje del avatar (!sc, respawn, FSM: el gate "solo al iniciar la ronda" de la v5.23 se retira por pedido del owner — estaba bien como estaba) + FIX del congelado SI con las capas OM_Stun que faltaban (m_flLaggedMovementValue=0 re-afirmado por tick + tinte cyan: la witch es NPC NextBot y FL_FROZEN le apaga TODO; los especiales son bots de player y con solo el martillo su IA seguia viva). v5.23: el cañon SOLO lo cortan los STUN. v5.22: congelado de todos los SI + salto herido + rayo 5s/35dps
++#define TAILS_INC_VERSION "v5.27-B"           // v5.27: STUN UNIFICADO (pedido del owner 2026-10-09: "no es mejor unificar ambos stun en un solo documento? ... en si tenemos ragdoll y el stun de congelamiento y empuje (tails) pero lo que no tiene el stun de tails es las estrellas"): TODO el congelado del rayo (Tails_SIFreezeStart/Push/Release + ticker + 10 arrays, las ~400 lineas paralelas del v5.22-v5.26) SE BORRA y el rayo llama al OM_Stun v2.0 con flags (CYAN|PUSH|STAGGER|FIXED|NOIFRAME): freeze estatua + ESTRELLAS (lo que le faltaba) + arrastre por el haz + stagger al liberar — identico, pero en el mismo documento que Sonic/Amy/Metal. v5.26: ESTATUA DE VERDAD — pausa de ANIMACION del SI congelado (pedido del owner 2026-10-09: "si podemos hacer algo pausar la animacion del infectado especial... literalmente es como poner una pausa en su animacion obligandole a que quede congelado (como pasaria con el FL_Frozen)"): el rayo congela la fisica pero el bot de player seguia ANIMANDO en el sitio; ahora la pose del momento del congelado queda CLAVADA con la capa compartida del OM_Stun v1.3 (OM_Stun_AnimPause al congelar / AnimTick re-afirmado por el ticker / AnimResume al liberar — ANTES del stagger, para que el tambaleo del descongelado se vea a full). v5.25: AVATAR REMOTO POR TP — la copia R (la que ven LOS DEMAS) de los TRES avatares del suite (Tails/Sonic/Amy) viaja por TeleportEntity por tick + reloj vivo SIN EF_NOINTERP (la receta del modo tails_follow): los clientes de los demas la INTERPOLAN = suave sin depender de la pausa, que solo re-encaja la vista del dueno (pedido: "los avatares de otros al modo TP; localmente igual, con su pausa"). Convar tails_avatar_tp (default 1; 0 = R parentada como antes; el cambio en vivo recrea en <=0.1s). La copia L del dueno queda INTACTA (parentada + EF_NOINTERP + pulso). La bola del spin queda parentada y la R oculta viaja pegada durante la bola. v5.24: RESTAURADO el pulso de pausa en CADA montaje del avatar (!sc, respawn, FSM: el gate "solo al iniciar la ronda" de la v5.23 se retira por pedido del owner — estaba bien como estaba) + FIX del congelado SI con las capas OM_Stun que faltaban (m_flLaggedMovementValue=0 re-afirmado por tick + tinte cyan: la witch es NPC NextBot y FL_FROZEN le apaga TODO; los especiales son bots de player y con solo el martillo su IA seguia viva). v5.23: el cañon SOLO lo cortan los STUN. v5.22: congelado de todos los SI + salto herido + rayo 5s/35dps
+ 
+ bool  g_bTailsModelOK = false;              // el tails.mdl está en el VPK
+ 
+@@ -679,30 +694,15 @@
+ float g_fTailsSwBoostBase[MAXPLAYERS + 1];  // maxspeed snapshot del aliado
+ #define TAILS_RAYGUN_FAN_DEGREES 12.0   // apertura del abanico (grados por rayo lateral)
+ 
+-// --- v5.22: CONGELADO de infectados especiales (el stun de la witch
+-// para TODOS los SI). El acumulador de stagger 1.5s/2.5s (v4.3) se
+-// retiro: ahora el PRIMER toque del rayo congela 6s FIJOS (el rayo
+-// JAMAS reinicia el contador), puede seguir empujando al congelado
+-// (velocidad manual integrada por el ticker, receta Witch_Flight) y
+-// al descongelar SIEMPRE cae un stagger (SIStagger_Auto). ---
+-#define TAILS_SIFRZ_TICK       0.05    // integracion a 20 Hz (suficiente: el rayo re-puja a 10 Hz)
+-#define TAILS_SIFRZ_GRAVITY    800.0   // = sv_gravity default (la witch usa lo mismo)
+-#define TAILS_SIFRZ_TERMINAL   1600.0  // velocidad de caida maxima (idem witch)
+-#define TAILS_SIFRZ_LIFT       32.0    // colocacion sobre el suelo al aterrizar congelado
++// --- v5.27: STUN UNIFICADO — el congelado del rayo vive en el OM_Stun
++// v2.0 (el MISMO documento del stun de Sonic/Amy/Metal). Solo quedan
++// aqui las DOS constantes del EMPUJE DEL HAZ (la matematica witch del
++// hold: 450/z60 = clavado al haz a ras de suelo). La fisica del
++// arrastre (gravedad/terminal/deslizamiento/reposo) ahora es del
++// OM_Stun (OM_STUN_PUSH_*). ---
+ #define TAILS_SIFRZ_BEAM_CARRY 450.0   // empuje sostenido del rayo sobre el congelado (= witch)
+ #define TAILS_SIFRZ_BEAM_Z     60.0    // hover exacto al haz: dz por ciclo de 0.1s
+                                        // (X-40)*0.05 + (X-80)*0.05 = 0 con X=60 (matematica witch)
+-bool   g_bTailsSIFrz[MAXPLAYERS + 1];       // congelado por el rayo?
+-float  g_fTailsSIFrzUntil[MAXPLAYERS + 1];  // fin del congelado (NUNCA se reinicia: 1er toque = 6s)
+-float  g_vTailsSIFrzVel[MAXPLAYERS + 1][3]; // velocidad MANUAL (la integramos nosotros: NONE no integra)
+-float  g_fTailsSIFrzLast[MAXPLAYERS + 1];   // reloj del tick (dt real anti lag-spike)
+-bool   g_bTailsSIFrzRest[MAXPLAYERS + 1];   // asentado en el suelo congelado (sin fisica: anti hundimiento)
+-int    g_iTailsSIFrzMT[MAXPLAYERS + 1];     // movetype ORIGINAL (0 = sin captura; restauracion exacta)
+-bool   g_bTailsSIFrzHadFrz[MAXPLAYERS + 1]; // ya tenia FL_FROZEN al caer el congelado?
+-int    g_iTailsSIFrzAtk[MAXPLAYERS + 1];    // quien congelo (credito del stagger al descongelar)
+-int    g_iTailsSIFrzUsr[MAXPLAYERS + 1];    // userid del slot congelado (anti herencia)
+-float  g_vTailsSIFrzSrc[MAXPLAYERS + 1][3]; // origen del rayo (direccion del stagger final)
+-Handle g_hTailsSIFrzTick = INVALID_HANDLE;  // ticker compartido (muere solo con active==0)
+ float  g_fTailsLaserSndNext[MAXPLAYERS + 1];// v5.22: re-emision del loop del rayo (WAV 3.75s < rayo 5s)
+ float  g_fTailsTongueAt[MAXPLAYERS + 1];    // v5.23: cuando vieron los loops el agarre del smoker (0 = libre)
+ bool   g_bTailsTongueFiring[MAXPLAYERS + 1];// v5.23: estaba DISPARANDO al ser agarrado -> inmune
+@@ -1025,11 +1025,9 @@
+     // el mapa nuevo) -> liberarlos todos aqui.
+     Tails_WitchAccClearAll();
+ 
+-    // v5.22: igual con los CONGELADOS: ningun infectado cruza el mapa
+-    // congelado (el ticker del congelado muere aqui SIEMPRE; cualquier
+-    // cliente vivo que llegara con nuestro FL_FROZEN/MOVETYPE_NONE se
+-    // restaura antes de que el motor del mapa nuevo lo note).
+-    Tails_SIFreezeClearAll(true);
++    // v5.27: el congelado ya no tiene estado propio — la limpieza de
++    // mapa (restore de martillo/lagged/tint + slots) la hace el
++    // OM_Stun v2.0 del manager (OM_Stun_OnMapEnd).
+ 
+     // v5.4: igual con los avatars: las EntRef del mapa anterior son
+     // invalidas aqui (el prop murio con el mapa) y el render guardado
+@@ -1224,7 +1222,8 @@
+     g_fTailsLaserSndNext[client] = 0.0;   // v5.22: re-emit del loop del rayo
+     g_fTailsTongueAt[client]      = 0.0;   // v5.23: estado del agarre del smoker
+     g_bTailsTongueFiring[client]  = false;
+-    Tails_SIFrzClearSlot(client);        // v5.22: un ocupante nuevo del slot NUNCA hereda el congelado
++    // v5.27: el slot del congelado lo limpia el OM_Stun del manager
++    // (OM_Stun_OnClientDisconnect + validacion por userid anti-herencia)
+ 
+     SDKUnhook(client, SDKHook_PreThink, Tails_FlyThink);
+ }
+@@ -3609,22 +3608,51 @@
+             MakeVectorFromPoints(start, targetPos, pushDir);
+             NormalizeVector(pushDir, pushDir);
+ 
+-            // v5.22: CONGELADO (pedido owner: "para el stun que se usa en
+-            // la witch aplicasela a todos los infectados especiales").
+-            // El ghost del limbo de spawn NO se congela (spawnea limpio);
+-            // con el sistema apagado (tails_sifreeze 0) todo cae al empuje
+-            // clasico de siempre.
++            // v5.27: STUN UNIFICADO (pedido del owner: "no es mejor
++            // unificar ambos stun en un solo documento?") — el
++            // congelado del rayo es el OM_Stun v2.0, el MISMO
++            // documento del stun de Sonic/Amy/Metal: freeze estatua +
++            // ESTRELLAS (lo que le faltaba) + chispas + zap, con las
++            // flags del rayo: hielo cyan, empujable por el haz,
++            // stagger al liberar, duracion FIJA ("el rayo JAMAS
++            // reinicia el contador") y sin iframes (re-congelable en
++            // caliente). El ghost del limbo de spawn NO se congela
++            // (spawnea limpio); con el sistema apagado (tails_sifreeze
++            // 0) todo cae al empuje clasico de siempre.
+             bool isGhost = (HasEntProp(i, Prop_Send, "m_isGhost")
+                             && GetEntProp(i, Prop_Send, "m_isGhost") > 0);
+             bool freezeOK = g_cvTailsSIFreeze.BoolValue && !isGhost;
+ 
+             if (freezeOK)
+             {
+-                // PRIMER toque = congelado 6s FIJOS. Los toques siguientes
+-                // solo empujan: el rayo JAMAS reinicia el contador ("aun
+-                // si solo le pego por un instante nada mas").
+-                if (!g_bTailsSIFrz[i])
+-                    Tails_SIFreezeStart(i, attacker, start);
++                // PRIMER toque = congelado FIJO (tails_sifreeze_duration).
++                // Los toques siguientes solo empujan: el contador NO se
++                // reinicia NUNCA ("aun si solo le pego por un instante
++                // nada mas"). OM_IsStunned cubre tambien el caso raro de
++                // un congelado por OTRO personaje: el rayo no lo roba, lo
++                // respeta (Push es no-op en slots no empujables).
++                if (!OM_IsStunned(i))
++                {
++                    if (OM_Stun(i, g_cvTailsSIFreezeDur.FloatValue, attacker,
++                                0.0, DMG_OM_CLUB, false,
++                                OM_STUN_F_CYAN|OM_STUN_F_PUSH|OM_STUN_F_STAGGER
++                                |OM_STUN_F_FIXED|OM_STUN_F_NOIFRAME))
++                    {
++                        // hint de congelado (caller-side: el OM_Stun no
++                        // sabe que su stunner es un rayo — el texto es
++                        // del rayo). El de DESCONGELADO lo tira el
++                        // OM_Stun con el flag STAGGER.
++                        if (Tails_IsValidClient(attacker))
++                        {
++                            char hint[200];
++                            Format(hint, sizeof(hint),
++                                "<font color='#00FFFF' size='20'>>> INFECTADO CONGELADO! <<</font>\n\
++<font color='#FFFFFF'>%.1fs fijos - el rayo lo empuja, el contador NO se reinicia</font>",
++                                g_cvTailsSIFreezeDur.FloatValue);
++                            PrintHintText(attacker, hint);
++                        }
++                    }
++                }
+ 
+                 // El rayo PUEDE seguir empujando al congelado: misma
+                 // matematica del hold de la witch (450/z60 = clavado al
+@@ -3633,7 +3661,7 @@
+                 carry = pushDir;
+                 ScaleVector(carry, TAILS_SIFRZ_BEAM_CARRY);
+                 carry[2] = TAILS_SIFRZ_BEAM_Z;
+-                Tails_SIFreezePush(i, carry, start);
++                OM_Stun_Push(i, carry, start);
+             }
+             else
+             {
+@@ -3646,9 +3674,9 @@
+                 TeleportEntity(i, NULL_VECTOR, NULL_VECTOR, vel);
+             }
+             // v5.22: el acumulador de stagger 1.5s/2.5s (v4.3) se RETIRO:
+-            // el stagger ahora cae SIEMPRE al terminar el congelado
+-            // (Tails_SIFrzRelease -> SIStagger_Auto), que es el ciclo
+-            // que pidio el owner.
++            // el stagger ahora cae SIEMPRE al terminar el congelado (lo
++            // tira el OM_Stun v2.0 con OM_STUN_F_STAGGER), que es el
++            // ciclo que pidio el owner.
+         }
+     }
+ 
+@@ -3880,406 +3908,21 @@
+ }
+ 
+ // ============================================================
+-//  v5.22: CONGELADO de infectados especiales
+-//  (el stun de la witch — FL_FROZEN + MOVETYPE_NONE + empuje
+-//   manual integrado por ticker — para TODOS los especiales)
+-// ============================================================
+-//  Reglas del owner, tal cual las pidió:
+-//   1. PRIMER toque del rayo = congelado tails_sifreeze_duration
+-//      segundos FIJOS (6). El rayo NUNCA reinicia el contador:
+-//      "es decir la 1 vez que este le pegue estara stuneado por
+-//      6 seg aun si solo le pego por un instante nada mas".
+-//   2. "Puede seguir empujando si pero el tiempo de stun no se
+-//      reiniciara": el rayo actualiza la velocidad MANUAL que
+-//      integra el ticker (se lo lleva por el haz igual que a la
+-//      witch: 450/z60 = clavado al rayo a ras de suelo).
+-//   3. "siempre al terminar el congelamiento el infectado sera
+-//      stagger al descongelarse": SIStagger_Auto (con la red de
+-//      seguridad del módulo SI_Stagger para que los bots SI se
+-//      levanten: L4D_CancelStagger a 1.8s SI / 3.0s Tank).
+-//   4. Muerto congelado = restauración limpia SIN stagger.
+-//   5. v5.24 FIX (pedido owner: "dime xq el stun frozen especial
+-//      de la witch no funciona con los otros especiales"): la
+-//      witch es un NPC NEXtBot — FL_FROZEN le corta el Update
+-//      COMPLETO (ver header de Witch_Flight). Los especiales son
+-//      bots de PLAYER (CTerrorPlayer): el martillo solo congela su
+-//      física, su simulación/IA sigue corriendo (se les ve decidir
+-//      ataques). Se portan las capas de OM_Stun — el stun PROBADO
+-//      del suite contra SI bots, lo usa Metal sobre infectados:
+-//      m_flLaggedMovementValue = 0 (timescale de simulación del
+-//      player a CERO) re-afirmado cada tick, + tinte cyan de hielo
+-//      con restauración exacta al liberar (el stun común va rojo).
+-//
+-//  SEGURIDAD (recetas del suite, nada inventado):
+-//   - El martillo (FL_FROZEN + MOVETYPE_NONE) se RE-AFIRMA cada
+-//     tick por si algo externo lo limpia (patrón Witch_Flight v2.0).
+-//   - Restauración EXACTA: solo se devuelve lo que pusimos nosotros
+-//     (movetype original capturado UNA vez + FL_FROZEN solo si el
+-//     original no lo tenía) — patrón OM_Stun v1.2 / Rouge_WaveRelease.
+-//   - Slots por USERID: un ocupante nuevo del slot nunca hereda el
+-//     congelado (Tails_OnClientPutInServer -> Tails_SIFrzClearSlot).
+-//   - SIN TIMER_FLAG_NO_MAPCHANGE (misma decisión que WF/OM_Stun/
+-//     SI_Stagger): el timer siempre dispara, se valida por userid
+-//     y se apaga solo (active == 0). OnMapStart lo mata igual.
+-//   - Movimiento con trace world-only + margen anti-túnel + rama
+-//     "incrustado" (fracción < 0.05) que libera YA (patrón WF v2.4:
+-//     nunca se teletransporta a nadie DENTRO de geometría).
++//  v5.27: STUN UNIFICADO — este bloque (Tails_SIFreezeStart /
++//  Tails_SIFreezePush / Tails_SIFrzRelease / Tails_SIFrzClearSlot /
++//  Tails_SIFreezeClearAll / T_TailsSIFreezeTick + las 10 arrays de
++//  estado del congelado) SE FUSIONO CON OM_Stun.inc v2.0 (el stun
++//  de Sonic/Amy/Metal) por pedido del owner: "no es mejor unificar
++//  ambos stun en un solo documento? ... para ir simplificando todo
++//  y no gastemos tanto codigo en la misma cosa".
++//  El rayo ahora llama: OM_Stun(..., OM_STUN_F_CYAN|PUSH|STAGGER|
++//  FIXED|NOIFRAME) al primer toque y OM_Stun_Push(...) en cada tick
++//  que lo sigue golpeando. TODO el comportamiento queda identico
++//  (congelado 6s fijos + arrastre por el haz + stagger al liberar,
++//  fisica Witch_Flight integra ahora en OM_Stun_PushTick) y ADEMAS
++//  el congelado gana las ESTRELLAS del stun comun (lo que le faltaba).
+ // ============================================================
+ 
+-// PRIMER toque del rayo: congela. Devuelve true si lo congeló.
+-// Los toques siguientes NO entran aquí (el caller mira g_bTailsSIFrz):
+-// el contador jamás se reinicia.
+-bool Tails_SIFreezeStart(int victim, int attacker, const float src[3])
+-{
+-    if (victim < 1 || victim > MaxClients) return false;
+-    if (!IsClientInGame(victim) || !IsPlayerAlive(victim)) return false;
+-    if (GetClientTeam(victim) != TEAM_INFECTED) return false;
+-    if (g_bTailsSIFrz[victim]) return false;
+-    if (HasEntProp(victim, Prop_Send, "m_isGhost")
+-        && GetEntProp(victim, Prop_Send, "m_isGhost") > 0) return false;
+-
+-    float now = GetEngineTime();
+-    g_bTailsSIFrz[victim]       = true;
+-    g_fTailsSIFrzUntil[victim]  = now + g_cvTailsSIFreezeDur.FloatValue;
+-    g_iTailsSIFrzUsr[victim]    = GetClientUserId(victim);
+-    g_iTailsSIFrzAtk[victim]    = Tails_IsValidClient(attacker) ? attacker : 0;
+-    g_vTailsSIFrzSrc[victim]    = src;
+-    g_fTailsSIFrzLast[victim]   = now;
+-    g_bTailsSIFrzRest[victim]   = false;
+-    float zero[3] = {0.0, 0.0, 0.0};
+-    g_vTailsSIFrzVel[victim]    = zero;
+-
+-    // Capturar el estado ORIGINAL (una sola vez) para restaurar EXACTO
+-    g_iTailsSIFrzMT[victim]     = view_as<int>(GetEntityMoveType(victim));
+-    g_bTailsSIFrzHadFrz[victim] = (GetEntityFlags(victim) & FL_FROZEN) != 0;
+-
+-    // EL MARTILLO (receta witch): IA apagada + física congelada
+-    SetEntityMoveType(victim, MOVETYPE_NONE);
+-    SetEntityFlags(victim, GetEntityFlags(victim) | FL_FROZEN);
+-    TeleportEntity(victim, NULL_VECTOR, NULL_VECTOR, zero);
+-
+-    // v5.24: LA CAPA QUE FALTABA (receta OM_Stun, la que usa Metal
+-    // contra los SI): m_flLaggedMovementValue = 0 — pone el timescale
+-    // de simulación DEL PLAYER a cero. Sin esto el martillo solo
+-    // congela la física: el bot de player sigue vivo por dentro
+-    // (animación, decisiones de ataque). Con lagged 0 es estatua de
+-    // verdad — solo lo mueve el ticker de abajo (TeleportEntity
+-    // funciona igual: no pasa por la simulación del player).
+-    SetEntPropFloat(victim, Prop_Send, "m_flLaggedMovementValue", 0.0);
+-
+-    // v5.26: y la ANIMACION (capa compartida OM_Stun v1.3): el bot de
+-    // player seguia animando aunque el martillo congelara su fisica
+-    // — ahora la pose del momento del congelado queda CLAVADA (la
+-    // estatua que se ve con la witch). El ticker de abajo la
+-    // re-afirma; Release la devuelve ANTES del stagger.
+-    OM_Stun_AnimPause(victim);
+-
+-    // v5.24: tinte de HIELO (cyan) — señal visual inequívoca de que
+-    // el congelado está activo (y de que el build nuevo está cargado).
+-    // El stun común de OM_Stun tiñe ROJO: este va AZUL para no
+-    // confundirlos. Restauración exacta al liberar (patrón OM_Stun).
+-    SetEntityRenderColor(victim, 150, 220, 255, 255);
+-
+-    // Ticker compartido (se apaga solo cuando no queda nadie)
+-    if (g_hTailsSIFrzTick == INVALID_HANDLE)
+-        g_hTailsSIFrzTick = CreateTimer(TAILS_SIFRZ_TICK, T_TailsSIFreezeTick, _, TIMER_REPEAT);
+-
+-    if (g_iTailsSIFrzAtk[victim] > 0)
+-    {
+-        char hint[200];
+-        Format(hint, sizeof(hint),
+-            "<font color='#00FFFF' size='20'>>> INFECTADO CONGELADO! <<</font>\n\
+-<font color='#FFFFFF'>%.1fs fijos - el rayo lo empuja, el contador NO se reinicia</font>",
+-            g_cvTailsSIFreezeDur.FloatValue);
+-        PrintHintText(g_iTailsSIFrzAtk[victim], hint);
+-    }
+-    return true;
+-}
+-
+-// El rayo sigue empujando al congelado (SIN tocar el contador).
+-void Tails_SIFreezePush(int victim, const float vel[3], const float src[3])
+-{
+-    if (victim < 1 || victim > MaxClients || !g_bTailsSIFrz[victim]) return;
+-    g_vTailsSIFrzVel[victim] = vel;    // SET: el haz lo CARGA (como a la witch)
+-    g_vTailsSIFrzSrc[victim] = src;    // el stagger final sale de la última dirección del rayo
+-    g_bTailsSIFrzRest[victim] = false; // despierta del reposo en el suelo
+-}
+-
+-// Reset del slot SIN tocar la entidad (ocupante nuevo del slot).
+-void Tails_SIFrzClearSlot(int victim)
+-{
+-    if (victim < 1 || victim > MaxClients) return;
+-    g_bTailsSIFrz[victim]       = false;
+-    g_fTailsSIFrzUntil[victim]  = 0.0;
+-    g_iTailsSIFrzUsr[victim]    = 0;
+-    g_iTailsSIFrzAtk[victim]    = 0;
+-    g_iTailsSIFrzMT[victim]     = 0;
+-    g_bTailsSIFrzHadFrz[victim] = false;
+-    g_bTailsSIFrzRest[victim]   = false;
+-}
+-
+-// Liberación: restaura SOLO lo nuestro y (si toca) SIEMPRE stagger.
+-// doStagger = false para muertes/limpiezas (nunca se tambalea a un
+-// cadáver ni a un slot reciclado).
+-void Tails_SIFrzRelease(int victim, bool doStagger)
+-{
+-    if (victim < 1 || victim > MaxClients) return;
+-    if (!g_bTailsSIFrz[victim]) return;
+-
+-    // Restauración EXACTA primero (el stagger necesita movetype vivo)
+-    if (IsClientInGame(victim))
+-    {
+-        if (g_iTailsSIFrzMT[victim] > 0
+-            && GetEntityMoveType(victim) == MOVETYPE_NONE)
+-        {
+-            SetEntityMoveType(victim, view_as<MoveType>(g_iTailsSIFrzMT[victim]));
+-        }
+-        if (!g_bTailsSIFrzHadFrz[victim] && (GetEntityFlags(victim) & FL_FROZEN))
+-        {
+-            SetEntityFlags(victim, GetEntityFlags(victim) & ~FL_FROZEN);
+-        }
+-
+-        // v5.24: devolver el timescale de simulación (patrón OM_Stun:
+-        // solo si vive — un cadáver no simula) y el color del tinte
+-        if (IsPlayerAlive(victim))
+-            SetEntPropFloat(victim, Prop_Send, "m_flLaggedMovementValue", 1.0);
+-        SetEntityRenderColor(victim, 255, 255, 255, 255);
+-
+-        // v5.26: devolver la ANIMACION ANTES del stagger de abajo (si
+-        // quedara en pausa, el tambaleo del descongelado se veria
+-        // congelado tambien) — rate original, la IA retoma sola
+-        OM_Stun_AnimResume(victim);
+-
+-        float zero[3] = {0.0, 0.0, 0.0};
+-        if (IsPlayerAlive(victim))
+-            TeleportEntity(victim, NULL_VECTOR, NULL_VECTOR, zero);
+-    }
+-
+-    int atk = g_iTailsSIFrzAtk[victim];
+-
+-    // "siempre al terminar el congelamiento el infectado sera stagger
+-    // al descongelarse"
+-    if (doStagger && IsClientInGame(victim) && IsPlayerAlive(victim))
+-    {
+-        float src[3];
+-        src = g_vTailsSIFrzSrc[victim];
+-        SIStagger_Auto(victim, atk, src);
+-
+-        float pos[3]; GetClientAbsOrigin(victim, pos); pos[2] += 30.0;
+-        TE_SetupExplosion(pos, g_iSpriteHalo, 10.0, 1, 0, 0, 0);
+-        TE_SendToAll();
+-
+-        if (Tails_IsValidClient(atk))
+-        {
+-            PrintHintText(atk,
+-                "<font color='#00FFFF' size='20'>>> DESCONGELADO: STAGGER! <<</font>");
+-        }
+-    }
+-    Tails_SIFrzClearSlot(victim);
+-}
+-
+-// Limpieza total (OnMapStart): restaura a cualquier vivo que llegue
+-// congelado del mapa anterior (no debería pasar) y mata el ticker.
+-void Tails_SIFreezeClearAll(bool restore)
+-{
+-    for (int i = 1; i <= MaxClients; i++)
+-    {
+-        if (!g_bTailsSIFrz[i]) continue;
+-        if (restore && IsClientInGame(i) && IsPlayerAlive(i))
+-        {
+-            if (g_iTailsSIFrzMT[i] > 0 && GetEntityMoveType(i) == MOVETYPE_NONE)
+-                SetEntityMoveType(i, view_as<MoveType>(g_iTailsSIFrzMT[i]));
+-            if (!g_bTailsSIFrzHadFrz[i] && (GetEntityFlags(i) & FL_FROZEN))
+-                SetEntityFlags(i, GetEntityFlags(i) & ~FL_FROZEN);
+-            // v5.24: timescale + tinte (limpieza de mapa)
+-            SetEntPropFloat(i, Prop_Send, "m_flLaggedMovementValue", 1.0);
+-            SetEntityRenderColor(i, 255, 255, 255, 255);
+-            OM_Stun_AnimResume(i);   // v5.26: y la animacion (no-op sin captura)
+-        }
+-        Tails_SIFrzClearSlot(i);
+-    }
+-    // Solo se llama fuera del tick (OnMapStart): Kill directo seguro.
+-    if (g_hTailsSIFrzTick != INVALID_HANDLE)
+-    {
+-        KillTimer(g_hTailsSIFrzTick);
+-        g_hTailsSIFrzTick = INVALID_HANDLE;
+-    }
+-}
+-
+-// El ticker (20 Hz): integración del empuje + fin del congelado.
+-public Action T_TailsSIFreezeTick(Handle timer)
+-{
+-    int active = 0;
+-    float now = GetEngineTime();
+-
+-    for (int i = 1; i <= MaxClients; i++)
+-    {
+-        if (!g_bTailsSIFrz[i]) continue;
+-
+-        // El slot cambió de ocupante (disconnect + entrada nueva):
+-        // NUNCA tocar la entidad (ya es otra persona)
+-        if (GetClientOfUserId(g_iTailsSIFrzUsr[i]) != i || !IsClientInGame(i))
+-        {
+-            Tails_SIFrzClearSlot(i);
+-            continue;
+-        }
+-
+-        // Murió congelado -> restauración limpia SIN stagger
+-        if (!IsPlayerAlive(i))
+-        {
+-            Tails_SIFrzRelease(i, false);
+-            continue;
+-        }
+-
+-        // Cambio de equipo en pleno congelado (rarísimo): liberar
+-        // SIN stagger (nunca se tambalea a un sobreviviente)
+-        if (GetClientTeam(i) != TEAM_INFECTED)
+-        {
+-            Tails_SIFrzRelease(i, false);
+-            continue;
+-        }
+-
+-        // FIN del congelado: SIEMPRE stagger al descongelarse
+-        if (now >= g_fTailsSIFrzUntil[i])
+-        {
+-            Tails_SIFrzRelease(i, true);
+-            continue;
+-        }
+-
+-        // Re-afirmar el martillo (patrón WF v2.0: algo externo pudo
+-        // limpiar el movetype o el flag en pleno congelado)
+-        if (GetEntityMoveType(i) != MOVETYPE_NONE)
+-            SetEntityMoveType(i, MOVETYPE_NONE);
+-        if ((GetEntityFlags(i) & FL_FROZEN) == 0)
+-            SetEntityFlags(i, GetEntityFlags(i) | FL_FROZEN);
+-
+-        // v5.24: re-afirmar TAMBIÉN el lagged 0 (patrón OM_Stun: es
+-        // la capa que de verdad congela al bot de player)
+-        SetEntPropFloat(i, Prop_Send, "m_flLaggedMovementValue", 0.0);
+-
+-        // v5.26: re-afirmar la PAUSA DE ANIMACION (no-op sin captura:
+-        // el motor pelea las anims igual que pelea el movetype)
+-        OM_Stun_AnimTick(i);
+-
+-        // Reposo sobre el suelo (aterrizó congelado y el rayo lo
+-        // soltó): cero física — evita el ciclo hundimiento-snap del
+-        // LIFT. El próximo Push del rayo lo despierta.
+-        if (g_bTailsSIFrzRest[i])
+-        {
+-            active++;
+-            continue;
+-        }
+-
+-        // dt real protegido contra lag spikes
+-        float dt = now - g_fTailsSIFrzLast[i];
+-        if (dt <= 0.0) dt = TAILS_SIFRZ_TICK;
+-        if (dt > 0.25) dt = 0.25;
+-        g_fTailsSIFrzLast[i] = now;
+-
+-        // Gravedad manual (NONE no integra física) + terminal
+-        float vel[3];
+-        vel = g_vTailsSIFrzVel[i];
+-        vel[2] -= TAILS_SIFRZ_GRAVITY * dt;
+-        if (vel[2] < -TAILS_SIFRZ_TERMINAL) vel[2] = -TAILS_SIFRZ_TERMINAL;
+-
+-        float origin[3];
+-        GetEntPropVector(i, Prop_Data, "m_vecAbsOrigin", origin);
+-
+-        // Desplazamiento real del tick
+-        float move[3];
+-        move = vel;
+-        ScaleVector(move, dt);
+-
+-        // Extremo del trace con margen anti-túnel (el margen SOLO
+-        // alarga el trace, NO mueve al congelado)
+-        float traceEnd[3];
+-        traceEnd = move;
+-        float len = GetVectorLength(move);
+-        if (len > 1.0)
+-        {
+-            float pad[3];
+-            pad = move;
+-            NormalizeVector(pad, pad);
+-            ScaleVector(pad, 4.0);
+-            AddVectors(traceEnd, pad, traceEnd);
+-        }
+-        AddVectors(origin, traceEnd, traceEnd);
+-
+-        // Colisión SOLO contra el mundo (mismo filtro del Witch_Flight)
+-        Handle trace = TR_TraceRayFilterEx(origin, traceEnd, MASK_SOLID,
+-                                           RayType_EndPoint,
+-                                           WitchFlight_WorldOnly, 0);
+-
+-        if (TR_DidHit(trace) && TR_GetFraction(trace) < 0.05)
+-        {
+-            // INCRUSTADO en geometría (patrón WF v2.4): liberar YA con
+-            // stagger — nunca congelado dentro de un muro.
+-            delete trace;
+-            Tails_SIFrzRelease(i, true);
+-            continue;
+-        }
+-
+-        if (TR_DidHit(trace))
+-        {
+-            float hitPos[3], normal[3];
+-            TR_GetEndPosition(hitPos, trace);
+-            TR_GetPlaneNormal(trace, normal);
+-            delete trace;
+-
+-            if (normal[2] >= 0.65)
+-            {
+-                // SUELO: asentarlo congelado y a reposo (vel 0)
+-                float land[3];
+-                land = hitPos;
+-                land[2] += TAILS_SIFRZ_LIFT;
+-                TeleportEntity(i, land, NULL_VECTOR, NULL_VECTOR);
+-                float zeroV[3] = {0.0, 0.0, 0.0};
+-                g_vTailsSIFrzVel[i] = zeroV;
+-                g_bTailsSIFrzRest[i] = true;
+-            }
+-            else
+-            {
+-                // PARED/TECHO -> deslizar: quitar la componente que
+-                // ENTRA en la superficie + amortiguar (patrón WF)
+-                float dot = GetVectorDotProduct(vel, normal);
+-                if (dot < 0.0)
+-                {
+-                    float proj[3];
+-                    proj = normal;
+-                    ScaleVector(proj, dot);
+-                    SubtractVectors(vel, proj, vel);
+-                }
+-                ScaleVector(vel, 0.85);
+-                g_vTailsSIFrzVel[i] = vel;
+-
+-                // Recolocar pegado al impacto, sin incrustarse
+-                float nudge[3], safe[3];
+-                nudge = normal;
+-                ScaleVector(nudge, 16.0);
+-                AddVectors(hitPos, nudge, safe);
+-                TeleportEntity(i, safe, NULL_VECTOR, NULL_VECTOR);
+-            }
+-        }
+-        else
+-        {
+-            // Vuelo libre: avanzar (origin + move, SIN el pad del trace)
+-            delete trace;
+-            g_vTailsSIFrzVel[i] = vel;
+-            float newOrigin[3];
+-            AddVectors(origin, move, newOrigin);
+-            TeleportEntity(i, newOrigin, NULL_VECTOR, NULL_VECTOR);
+-        }
+-        active++;
+-    }
+-
+-    if (active == 0)
+-    {
+-        g_hTailsSIFrzTick = INVALID_HANDLE;   // nadie congelado: apagar
+-        return Plugin_Stop;
+-    }
+-    return Plugin_Continue;
+-}
+-
+ 
+ public bool TraceEntityFilterPlayer(int entity, int contentsMask, int data)
+ {

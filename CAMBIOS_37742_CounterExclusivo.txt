@@ -1,0 +1,99 @@
+==========================================================================
+ SUITE 3.77.42 — "COUNTER TOTAL + SHOVE-PARRY SOLO DE AMY Y KNUCKLES"
+ Fix del reporte del owner 2026-10-10 tras la 3.77.41
+==========================================================================
+
+QUE SE ARREGLO (las 3 cosas que faltaban del reporte):
+
+1) LOS BASICOS DE LOS ESPECIALES YA NO SE "BLOQUEAN"... SE
+   CONTRAATACAN (Knuckles.inc v74-OM)
+   - Orden literal: "Osea si detecta un ataque debe counterearlo. Ya
+     lo haces con los coomons xq no con los SI con el resto? ya lo
+     haces con el tank en si."
+   - La garra de cualquier especial (smoker/boomer/hunter/spitter/
+     jockey/charger) que toca la postura recibe EL COUNTER COMPLETO
+     del suite — la misma receta de los agarres: enderezado en seco +
+     stagger seguro + empuje de 800 + 200 de dano + 5s sin habilidad.
+     El propio stagger (1.8s) marca el ritmo: no vuelve a garbear tan
+     rapido. Con sonido punchstun + gesto de bloqueo + hint.
+   - LA GARRA DE LA WITCH: contraataque de boss (como el del tank, sin
+     dano): queda ESTATUA CONGELADA 2s (receta del wall-slam, con
+     estrellas) + empujon. "¡WITCH CONGELADA EN SECO!"
+   - Las ABILIDADES ya tenian SU counter por forwards (lengua/carga/
+     slam/vomito/embroin del hunter en vuelo + pounce por daño) — el
+     hueco eran los basicos, y ya esta tapado.
+
+2) EL SHOVE-PARRY YA NO ES GENERAL — SOLO AMY Y KNUCKLES
+   - Orden literal: "esa mrd para que cualquiera que haga una shove
+     pueda repeler y no La cosa no es asi los unicos es amy y knuckles
+     por el momento"
+   - DESCUBRIMIENTO (por eso el modelo no servia de gate): el jugador
+     NUNCA lleva el modelo OM — el avatar es un PROP pegado al player;
+     el modelo del player sigue siendo el vanilla. El chequeo por
+     modelo que traia el .nut (KnxIsAmy) NUNCA matcheo.
+   - ARQUITECTURA NUEVA: EL MANAGER ES LA FUENTE DE VERDAD del
+     personaje y lo publica por un puente nuevo de consola:
+         knxparry_chars <jugador> <0|1|2>   (0=nadie 1=knuckles 2=amy)
+     Lo publica: al seleccionar personaje, al restaurar la cookie, en
+     CADA spawn (idempotente: revive los satelites aunque recargues
+     Parry.smx en caliente), al poner "sin personaje", al cambiar de
+     personaje, al desconectar y con freechars.
+   - Parry.smx v2.4 lo traduce a flags + 2 convars ESPEJO que el
+     chch_parrying.nut lee directo: uk_parry_chars (Amy+Knuckles) y
+     uk_amy_chars (solo Amy).
+   - GATES (4 capas): el shove del .nut (CheckIfShoving), el shove del
+     smx (IN_ATTACK2), la apertura de ventana (KnxNotify del .nut +
+     Parry_SetWindow del smx) y la vigilia (si perdiste el personaje en
+     caliente, tu ventana muere sola). El shove de todos los demas es
+     UN SHOVE NORMAL — ni repele ni abre nada.
+   - Hasta un Parry.smx VIEJO (que abra ventanas para cualquiera) ya
+     no puede colar a nadie: el .nut v2.6 rechaza la ventana en su
+     propio gate.
+
+3) AMY POR FIN ES AMY DE VERDAD (bug latente de la 3.77.47 corregido)
+   - Como el KnxIsAmy del .nut leia el MODELO del player (que nunca es
+     amy.mdl), la DEFENSA DE MARTILLO (amyparry_strike) y el contador
+     aparte de Amy (su sonido OM/Amy/HammerHit.wav + "DEFENSA DE
+     MARTILLO!") JAMAS disparaban desde la Task 47.
+   - Ahora su identidad la dicta uk_amy_chars (publicado por el
+     manager): su proyectil en rango SI dispara el martillazo 360 +
+     aura, y su ventana suena con SU sonido.
+
+LO QUE NO CAMBIA:
+ - El parry de PROYECTILES sigue en el VScript (roca/saliva/granadas/
+   props) — 1 de 2 que ya estaba bien.
+ - La postura sigue abriendo la ventana SOLA (sin shove previo).
+ - Cada bloqueo del .nut sigue avisando al SMX (knx_parry_blocked ->
+   animacion de bloqueo del avatar).
+ - El sonido del bloqueo sigue siendo om/knuckles/punchstun.wav en
+   TODO (agarres, tank, VScript, basicos).
+ - La mecha del boomer, el puro empuje del shove-parry, el watchdog
+   del loop, knx_parry_status: todo intacto.
+
+INSTALACION (LOS 4 ARCHIVOS JUNTOS — son un trio de puente):
+ 1. addons/sourcemod/plugins/Sonic_ability_manager.smx   (3.77.42)
+ 2. addons/sourcemod/plugins/Parry.smx                   (v2.4)
+ 3. addons/sourcemod/scripts/chch_parrying.nut           (v2.6)
+ 4. (fuente) include/Knuckles.inc v74-OM — solo referencia
+ Y CAMBIO DE MAPA. Los tres primeros van SIEMPRE juntos: el manager
+ publica el personaje, Parry.smx lo traduce y el .nut lo respeta.
+
+PRUEBAS RAPIDAS:
+ - Con un sobreviviente SIN personaje: shove contra una roca del tank
+   -> NO la repele (shove normal). Antes la repelia cualquiera.
+ - Con Knuckles: X (postura) y sin tocar nada -> que un hunter lo
+   garree: sale volando con stagger + punchstun. Que la witch lo
+   garree: queda congelada en seco 2s.
+ - Con Amy: pose de defensa (Z) + que el tank tire la roca cuando ya
+   este en rango -> "DEFENSA DE MARTILLO!" con SU sonido (antes
+   sonaba el de Knuckles y NO salia el martillazo).
+ - knx_parry_status en consola: nueva linea "shove-parry solo de:"
+   con los ent-index publicados por el manager.
+ - sm_sjsver: Manager 3.77.42 ... Knuckles v74-OM ...
+
+CALIBRACION (si algo no gusta):
+ - Dano del counter de basicos: son los 200 del T_KnuxHardStopAttacker
+   (compartido con los agarres — cambiarlo cambia ambos).
+ - Estatua de la witch: el "2.0" del Sonic_WitchStun en la rama witch
+   del Knux_OnTakeDamage (mas tiempo = mas control).
+ - Empujon de la witch: 600/250 (fuerza/elevacion) en la misma rama.

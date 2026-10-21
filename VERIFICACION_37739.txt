@@ -1,0 +1,60 @@
+=====================================================================
+ VERIFICACION 3.77.39 (evidencia completa del build)
+=====================================================================
+
+COMPILACION (spcomp64 1.11.0.6970, arbol builds/SCRIPT37734)
+- Sonic_ability_manager 3.77.39: 28 warnings = LINEA BASE EXACTA de la
+  3.77.38 (0 errores). smx 417,230 B.
+- Parry 2.3: 2 warnings = LINEA BASE EXACTA (cv_ParryMinSpeed 204 +
+  fwd 203, ambos preexistentes de la 2.2; 0 errores). smx 19,896 B.
+
+CHCH_PARRYING.NUT v2.4
+- 1115 lineas. Balance: llaves 186/186, parentesis 734/734,
+  corchetes 15/15. 0 desbalances.
+- Funciones ChCh_Parrying: 32 (las 31 de la v2.3 + EnsureLoop nueva).
+- Marcadores presentes 16/16: v2.4, EnsureLoop, ChCh_EnsureLoop,
+  om/knuckles/punchstun.wav (Settings.Knx_Window_Sound), 
+  uk_parry_nut_beat, chch_parry_loop, KnxWindowSound, BOOMER FUERA,
+  amyparry_strike, DEFENSA DE MARTILLO, KnxIsAmy, Amy_Window_Sound,
+  ChCh_KnxNotify, uk_parry_knx_api,
+  DirectorScript.ChCh_Parrying.CheckIfShoving, hulk_punch SOLO en
+  comentario (el settings ya no lo usa).
+- Estructura: tabla guardada (if !("ChCh_Parrying" in root)) + las 32
+  funciones FUERA del guard (se re-vinculan en cada carga -> una
+  recarga a mitad de mapa tambien actualiza EnsureLoop en la tabla
+  viva) + bootstrap al final (try/catch).
+- La ruta critica del timer usa el MISMO codigo OnTimer original
+  probado desde la v2.2 (DirectorScript.ChCh_Parrying.CheckIfShoving).
+
+FORENSE DE LOS SMX (payload zlib tras la tabla de secciones, offset 482)
+- MANAGER 3.77.39: 8/8 presentes ("3.77.39", el PrintToServer nuevo
+  del barrido ref-aware, sonic_ball_om, tails_avatar_om_l,
+  "chch_parrying.nut v2.4", "Parry.smx v2.3", "knx_parry_status",
+  la descripcion REF-AWARE del sm_sjsver) y 1/1 ausente (el
+  PrintToServer "[Suite 3.77.38]" viejo: FUERA).
+  Versiones cruzadas: el smx .38 contiene 3.77.38 y NO 3.77.39; el
+  .39 contiene 3.77.39 y NO 3.77.38 — swap limpio.
+- PARRY 2.3: 10/10 presentes ("2.3", uk_parry_nut_beat,
+  knx_parry_status, ChCh_EnsureLoop, PARRY STATUS, el aviso de
+  uk_parry_aura FORZADO, uk_parry_smx_instant,
+  om/knuckles/punchstun.wav, "loop chch_parry_loop",
+  "ventana ABIERTA").
+
+INCLUDES: los 16 IDENTICOS a la 3.77.38 (Knuckles v71-OM, Amy v102-OM,
+Metal v5.5, OM_Stun v2.1 — cero cambios en personajes esta vez; solo
+se tocaron manager/Parry/.nut). Verificado byte a byte contra el
+paquete .38.
+
+DIFFS INCLUIDOS: diff_37739_nut.txt (127 lineas), diff_37739_parry.txt
+(218), diff_37739_manager.txt (188) — todos contra la 3.77.38.
+
+ARQUITECTURA FINAL DE LA VENTANA (recuento de capas de seguridad):
+  1. .nut v2.4: loop con bootstrap al cargar + revive-si-falta
+  2. Parry.smx v2.3: watchdog que llama a ChCh_EnsureLoop cada 2 s
+  3. Parry.smx v2.3: escaneo NATIVO siempre (roca/saliva/props) —
+     el .nut puede estar MUERTO y la roca se devuelve igual
+  4. Anti-robo m_hThrower en ambos lados: cero doble-parry
+  5. uk_parry_aura forzado a 1: ninguna cfg lo apaga
+  6. knx_parry_status: telemetria completa si algo vuelve a fallar
+  La roca del tank se bloquea en TODAS las combinaciones posibles de
+  archivos y cargas. Ese era el requisito.

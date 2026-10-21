@@ -1,0 +1,116 @@
+--- suite_37739_rock_avatar_fix/include/sonic.inc	2026-10-10 06:16:24.624360979 +0000
++++ suite_37740_adopcion_avatar/include/sonic.inc	2026-10-10 07:30:18.125095932 +0000
+@@ -744,7 +744,7 @@
+ //   algo lo piso, se RE-DISPARA en el acto en R y L. La eva corre
+ //   ENTERA y encima de cualquier estado (peelout incluido: al acabar
+ //   la FSM devuelve la animacion que toque).
+-#define SONIC_OM_VERSION "v6.30-OM"   // v6.30: ESTATUA SI + TANK NO ATURDE A SONIC   // v6.19: TRAILS A MATERIAL NATIVO (default) — analisis del pack de materiales ORIGINALES del OM subido por el owner (2026-10-08): los .vmt del sonicball son legítimos (UnlitGeneric $translucent $vertexcolor/$vertexalpha, VTF 7.2 RGBA8888) pero diseniados para el renderer del SpriteTrail de GMod: bluetrail.vtf = barra vertical nucleo-blanco/halo-azul (perfil transversal), bluestartrail2.vtf = 98% TRANSPARENTE con destellos sueltos (la 'capa ancha' es casi aire), blue2/Sonicred = chips 2x2 shared_t/t2. En los TE beams del L4D2 la textura se mapea al reves (U a lo largo del beam) = look bugeado (reporte del owner); el laserbeam radial nativo es inmune a la orientacion. NATIVO default con la geometria 3-capas GMod completa (halo 70->40 + nucleo 40->1 + magenta 40->1, aditivas como alla) y el peel gana los 2 pies ROJOS nativos. FIX descargas: Sonic_AddMatToDownloads ahora encola el $basetexture REAL (blue.vmt->bluetrail.vtf etc.; el v6.17 encolaba un blue.vtf INEXISTENTE = damero en clientes). sonicom_trails_mat default 0 (1 = autentico opt-in). v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o autentico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migracion al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueno/demas (el beam del dueno sigue su copia L, el de los demas la R — leccion del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: unica forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseno de materiales v6.17 INTACTO: FileExists -> autenticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTENTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidio ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aqui offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximacion documentada). Deteccion por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo).
++#define SONIC_OM_VERSION "v6.31-OM"   // v6.31: ADOPCION EN EL MONTAJE + reemplazo limpio del avatar (manager 3.77.40: fin del barrido en caliente). v6.30: ESTATUA SI + TANK NO ATURDE A SONIC   // v6.19: TRAILS A MATERIAL NATIVO (default) — analisis del pack de materiales ORIGINALES del OM subido por el owner (2026-10-08): los .vmt del sonicball son legítimos (UnlitGeneric $translucent $vertexcolor/$vertexalpha, VTF 7.2 RGBA8888) pero diseniados para el renderer del SpriteTrail de GMod: bluetrail.vtf = barra vertical nucleo-blanco/halo-azul (perfil transversal), bluestartrail2.vtf = 98% TRANSPARENTE con destellos sueltos (la 'capa ancha' es casi aire), blue2/Sonicred = chips 2x2 shared_t/t2. En los TE beams del L4D2 la textura se mapea al reves (U a lo largo del beam) = look bugeado (reporte del owner); el laserbeam radial nativo es inmune a la orientacion. NATIVO default con la geometria 3-capas GMod completa (halo 70->40 + nucleo 40->1 + magenta 40->1, aditivas como alla) y el peel gana los 2 pies ROJOS nativos. FIX descargas: Sonic_AddMatToDownloads ahora encola el $basetexture REAL (blue.vmt->bluetrail.vtf etc.; el v6.17 encolaba un blue.vtf INEXISTENTE = damero en clientes). sonicom_trails_mat default 0 (1 = autentico opt-in). v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o autentico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migracion al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueno/demas (el beam del dueno sigue su copia L, el de los demas la R — leccion del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: unica forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseno de materiales v6.17 INTACTO: FileExists -> autenticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTENTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidio ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aqui offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximacion documentada). Deteccion por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo).
+ 
+ // =======================
+ // RECURSOS (VPK de recursos del owner; mismas rutas que GMod OM)
+@@ -1695,6 +1695,69 @@
+ // false: un pulso por cada spindash en pleno combate era el "broma
+ // de pausa" que reporto el owner; el swap bola->avatar ya nace
+ // encajado (EF_NOINTERP + snap de smoothing) y no lo necesita.
++// =====================================================================
++// v6.31-OM (manager 3.77.40): ADOPCION EN EL MONTAJE — el reemplazo del
++// barrido en caliente (orden del owner 2026-10-10: "tu barrido de
++// avatares esta haciendo reiniciar mi avatar a cada rato... BUSCA OTRA
++// MANERA"). Esta FSM es la UNICA creadora de props con los nombres de
++// abajo: un prop asi que ELLA no rastrea es un huerfano por definicion
++// (lo fabrico una vida anterior, un montaje doble del pasado o una
++// version vieja del suite) y muere en el instante exacto del montaje.
++// Un avatar rastreado es INTOCABLE: no existe ningun timer que lo mire.
++// =====================================================================
++bool Sonic_IsMyAvatarRef(int ref)
++{
++    // v3.77.40: el 0 es "sin avatar"; un ref NEGATIVO puede ser
++    // perfectamente legitimo (bit alto del serial del handle).
++    if (ref == 0 || ref == INVALID_ENT_REFERENCE) return false;
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_iSonicAvatar[i] == ref) return true;
++        if (g_iSonicAvatarL[i] == ref) return true;
++        if (g_iSonicBall[i] == ref) return true;
++    }
++    return false;
++}
++
++void Sonic_KillGhostAvatarProps()
++{
++    static const char sGhostNames[][] = { "sonic_avatar_om", "sonic_avatar_om_l", "sonic_ball_om", "sonicom_avatar" };
++    static const char sClasses[][] = { "prop_dynamic_override", "prop_dynamic" };
++    int ghosts[8];
++    int ng = 0;
++    char nameBuf[64];
++
++    // primero se recolecta, luego se mata — el FindEntityByClassname
++    // tras un Kill a mitad de loop es tierra de nadie en L4D2
++    for (int c = 0; c < sizeof(sClasses); c++)
++    {
++        int ent = -1;
++        while ((ent = FindEntityByClassname(ent, sClasses[c])) != -1)
++        {
++            if (!IsValidEntity(ent)) continue;
++            GetEntPropString(ent, Prop_Data, "m_iName", nameBuf, sizeof(nameBuf));
++            if (nameBuf[0] == '\0') continue;
++
++            for (int n = 0; n < sizeof(sGhostNames); n++)
++            {
++                if (!StrEqual(nameBuf, sGhostNames[n], false)) continue;
++                if (Sonic_IsMyAvatarRef(EntIndexToEntRef(ent))) break;
++                if (ng < sizeof(ghosts)) ghosts[ng++] = EntIndexToEntRef(ent);
++                break;
++            }
++        }
++    }
++
++    for (int g = 0; g < ng; g++)
++    {
++        int e = EntRefToEntIndex(ghosts[g]);
++        if (e > 0 && IsValidEntity(e)) AcceptEntityInput(e, "Kill");
++    }
++
++    if (ng > 0)
++        PrintToServer("[Sonic v6.31-OM] Adopcion del montaje: %d huerfano(s) del avatar eliminado(s).", ng);
++}
++
+ void Sonic_CreateAvatar(int client, bool pulsePause = true)
+ {
+     if (!g_bSonicModelOK) return;
+@@ -1708,6 +1771,34 @@
+ 
+     // v6.15: la copia R nace en modo TP si tails_avatar_tp (la que ven
+     // los DEMAS viaja por teleport por tick + interpolacion de red)
++    // v6.31-OM (manager 3.77.40): REEMPLAZO LIMPIO — orden del owner
++    // 2026-10-10: en caliente YA NO EXISTE barrido. Si este cliente ya
++    // tenia un R o L vivo (montaje doble por orden raro de eventos),
++    // muere AQUI enterito: jamas vuelve a quedar un prop sin dueno (la
++    // fabrica de huerfanos del "= 0" sin Kill queda cerrada).
++    {
++        int oldR = EntRefToEntIndex(g_iSonicAvatar[client]);
++        if (g_iSonicAvatar[client] != 0 && oldR > 0 && IsValidEntity(oldR))
++        {
++            SDKUnhook(oldR, SDKHook_SetTransmit, Sonic_TransmitAvatarR);
++            AcceptEntityInput(oldR, "Kill");
++        }
++        g_iSonicAvatar[client] = 0;
++
++        int oldL = EntRefToEntIndex(g_iSonicAvatarL[client]);
++        if (g_iSonicAvatarL[client] != 0 && oldL > 0 && IsValidEntity(oldL))
++        {
++            SDKUnhook(oldL, SDKHook_SetTransmit, Sonic_TransmitAvatarL);
++            AcceptEntityInput(oldL, "Kill");
++        }
++        g_iSonicAvatarL[client] = 0;
++    }
++
++    // v6.31-OM: ADOPCION — todo prop de ESTE modulo que la FSM no rastrea
++    // es un huerfano: muere en este instante del montaje, no en un
++    // timer a ciegas.
++    Sonic_KillGhostAvatarProps();
++
+     int av = Sonic_CreateAvatarProp(client, SONIC_OM_MODEL, "sonic_avatar_om", Tails_AvatarTPOn());
+     if (av == 0) return;
+ 

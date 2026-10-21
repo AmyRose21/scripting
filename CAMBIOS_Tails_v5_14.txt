@@ -1,0 +1,104 @@
+# CAMBIOS Tails v5.14 - "CARRIER DESPIERTO" (Manager 3.78.0)
+
+## EL DESCUBRIMIENTO DEL OWNER (2026-10-06, literal)
+"cuando el sonido deja de sonar (osea cuando ya no esta impactando en
+el suelo deja de hacer ruidito) tails vuelve denuevo a tener ese micro
+desfase... mientras choca en el suelo esta despierto osea el motor lo
+desperto... y eso hacia que se viera fluido cuando dejo de oirse
+supongo que paso a estar inactivo y entonses se nota el desfase
+(teleport)"
+
+Ese diagnostico es EXACTO y es la clave de todo el problema desde la
+v5.8: mientras la botella del carrier rebotaba en el suelo, el cuerpo
+vphysics estaba DESPIERTO (cada impacto lo despertaba) -> simulacion
+real -> m_flSimulationTime avanza -> el cliente INTERPOLA al avatar
+(FLUIDO, a nivel de cliente). Cuando la botella dejaba de rebotar, el
+cuerpo se DORMIA (asentado) -> cero simulacion -> el cliente pierde la
+linea de interpolacion -> el servo deja de converger -> snaps y el
+fallback teleport -> EL MICRO-DESFASE.
+
+"pensar != simular": el think del molotov_projectile corre SIEMPRE
+(proyectil), pero su CUERPO fisico se duerme igual que el de cualquier
+prop. La teoria de la v5.12 ("los proyectiles no duermen") era media
+verdad: piensan siempre, SIMULAN solo despiertos.
+
+## EL FIX (el truco de la habilidad de Amy, pedido del owner)
+"como esto tiene V (osea movimiento fisico) y solo despierta o
+requiere que se despierte podriamos hacer el truco que hicimos con la
+habilidad amy en si. y mantenerlo despierto no?"
+
+Exacto: se mantiene despierto, en 5 capas:
+
+1) WAKE AL NACER (idiom Amy R11): EnableMotion + EnablePhysics + Wake
+   sobre el carrier recien spawneado, ANTES de moverlo.
+
+2) IMPULSO FISICO POR TICK (la receta del addon de Workshop "Tank
+   Throws Cars" que ya funciona en L4D2): el servo no solo escribe el
+   m_vecVelocity de la entidad (TeleportEntity, idiom del pet F18,
+   INTACTO) sino que aterriza la velocidad EN EL OBJETO FISICO con
+   self.ApplyAbsVelocityImpulse(Vector(dv)) via RunScriptCode, con
+   DoEntFire("!self","Wake") en la MISMA llamada. El impulso es
+   aditivo y se calcula dv = vel_objetivo - vel_actual: el cuerpo
+   queda EXACTO en la velocidad del servo. Cuerpo en movimiento =
+   cuerpo despierto = simulacion real = interpolacion del cliente
+   SUAVE (el estado "rebotando" que viste fluido, SIN necesitar el
+   rebote). Valvula: convar tails_carrier_impulse (1 = on default;
+   0 = comportamiento v5.12 exacto).
+
+3) INSISTENCIA (receta Amy del martillo): si el carrier falla 2 ticks
+   seguidos sin converger, DESPERTADOR env_physexplosion minimo
+   sobre el carrier (receta Amy v76+ "despertador nativo", calibrado
+   para un proyectil ligero): es el CONTACTO SINTETICO que descubriste
+   (el impacto es lo que despierta al dormido) sin esperar a que la
+   botella aterrice.
+
+4) AUTO-REPARACION: el fallback permanente ("caida a modo teleport")
+   ya no es para siempre: cada 1s dispara el despertador + una sonda
+   del motor (miss=4: una falla lo devuelve, un acierto lo RESTAURA).
+   Nunca peor que la v5.12.
+
+5) LA BOTELLA YA NO SUENA: el vidrio tocando el piso "muchas muchas
+   veces" era el exceso. Doble capa: m_bSuppressPhysicsSounds (flag
+   nativo, si la build lo trae) + filtro AddNormalSoundHook que
+   silencia TODO sonido emitido por la entidad carrier. Las botellas
+   y frascos del RESTO del juego suenan normal (solo se filtra la
+   entidad exacta del casco motor).
+
+## QUE NO CAMBIA (byte a byte)
+- El servo TeleportEntity(VEL) del pet (F18), el catch-up >128, el
+  autochequeo de 5 ticks y el fallback: INTACTOS de la v5.12.
+- Laser v5.7, las 3 reglas del yaw, vuelo y canon 4 modos: INTACTOS.
+- El ORB del modo ORBS sigue siendo el pipebomb del rar (tuyo).
+- El resto del suite (1311 archivos del rar): byte-identico.
+
+## NUMERACION
+La version salta v5.13/3.77.0 a proposito: esa numeracion es de la
+linea alternativa "parentado suave + bomba de bilis" (avatar colgado
+directo del survivor, sin carrier) que se entrego aparte. Este
+paquete sigue TU linea del rar (carrier) con el fix del descubrimiento.
+
+## INSTALACION
+1. Descomprime el zip: es TU carpeta scripting/ completa con la
+   solucion ya puesta dentro de tu estructura exacta.
+2. Copia scripting/compiled/Sonic_ability_manager.smx a
+   addons/sourcemod/plugins/ y recarga (sm plugins reload
+   Sonic_ability_manager) o cambia de mapa.
+3. Verifica: sm_sjsver -> "Manager 3.78.0 ... Tails v5.14 ...
+   (OM: vuelo + canon 4 modos; H3 = modo; cuerpo SIEMPRE vertical,
+   carrier DESPIERTO + vidrio silenciado)".
+
+## COMO PROBARLO (el experimento del descubrimiento, al reves)
+1. Revive a un jugador: el Tails debe verse FLUIDO desde el primer
+   tick (ya no depende de que la botella "tome contacto").
+2. Espera quieto hasta que antes aparecia el micro-desfase al volver
+   a caminar: con el impulso fisico el cuerpo nunca se queda dormido
+   en transicion -> arranque suave.
+3. El vidrio del piso: SILENCIO. Si extraanas el sonidito, avisame y
+   lo dejamos sutil en vez de apagado.
+4. Si algo raro: tails_carrier_impulse 0 = comportamiento v5.12
+   exacto (valvula de emergencia), y el log de consola avisa solo
+   UNA vez si el server no integrara el motor.
+
+Archivos que cambian vs tu scripting2.rar: Sonic_ability_manager.sp
+(3.76.0 -> 3.78.0) e include/Tails.inc (v5.12 -> v5.14). Anadidos:
+compiled/Sonic_ability_manager.smx (compilado, listo) y este txt.

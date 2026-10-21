@@ -1,0 +1,419 @@
+--- scripting3/scripting/include/sonic.inc	2026-10-11 07:12:00.000000000 +0000
++++ build/OM37752/include/sonic.inc	2026-10-12 01:58:41.776865546 +0000
+@@ -3,6 +3,51 @@
+  *  [MODULO] Sonic The Hedgehog - OM PORT v6.6
+  *  (antes v5.4 "Lore & Gameplay Overhaul" custom)
+  *
++ *  v6.33-OM - EL IMPULSO QUE NUNCA LLEGO (manager 3.77.52, reporte del
++ *          owner: "el ragdoll falso no hereda ningun impulso, ni en el
++ *          aire ni en el piso — la fuerza del golpe final de Sonic, el
++ *          martillo de Amy y la autodestruccion de Metal deberian
++ *          empujarlo COMO EMPUJAN LOS AUTOS, con fisica de verdad").
++ *          Autopsia con el fuente del MOTOR en la mano (hl2sdk branch
++ *          l4d2: physics_prop_ragdoll.cpp + physobj.cpp + baseentity.cpp
++ *          + takedamageinfo.cpp) — el veredicto es comico:
++ *            (a) Escribirle velocidad a la ENTIDAD con las PROPS
++ *                (m_vecVelocity, m_angVelocity) no mueve NADA: los huesos
++ *                sobreescriben la velocidad de la entidad cada tick (v6.9
++ *                lo probo a las malas). TeleportEntity-vel es distinto:
++ *                el motor lo reenvia al hueso RAIZ (baseentity.cpp L4296
++ *                pPhys->SetVelocity) — eso vuela, pero sin giro por hueso
++ *                y sin control. Por eso es el PLAN B, no la receta.
++ *            (b) La ONDA env_physexplosion de la v6.11 aplica su fuerza
++ *                via CBaseEntity::VPhysicsTakeDamage -> ApplyForceOffset
++ *                SOLO al hueso RAIZ, y esa fuerza pasa antes por la
++ *                licuadora de CalculateExplosiveDamageForce: clamp a
++ *                30000, x phys_pushscale, x Damage_NoPhysicsForce de las
++ *                reglas del juego — un embudo de condiciones que en este
++ *                server termina en CERO. Por eso el doble nace y cae en
++ *                seco mientras los autos (CPhysicsProp, otro camino)
++ *                si vuelan. Tres versiones cebando el mismo pollo.
++ *          EL FIX es la receta GMod LITERAL (alla es una linea de Lua:
++ *          ragdoll:GetPhysicsObjectNum(i):SetVelocity(dir*700)): con el
++ *          puntero IPhysicsObject de CADA hueso — que el propio motor
++ *          deja expuesto en el DATAMAP ("m_pPhysicsObject" = hueso 0 y
++ *          "m_ragdoll.list[i].pObject" = huesos 1..23, DEFINE_PHYSPTR
++ *          del CRagdollProp publico) — le llamamos directo por SDKCall
++ *          SetVelocity(lineal, angular) POR HUESO. El impulso entra AL
++ *          SIMULADOR vphysics, no a la entidad: arco, tumbado y rebotes
++ *          los hace el motor, determinista, como la granada del GMod.
++ *          Ver Sonic_RagPhysLaunch para el blindaje (4 sondas semanticas
++ *          + L4D_GetServerOS para el +1 de vtable de Linux + plan B
++ *          motor puro si algo no cuadra — el peor dia de esta funcion
++ *          es el comportamiento de la v6.32).
++ *          La onda v6.11 se RETIRO completa (Sonic_RagBlast + serial +
++ *          targetname + env_physexplosion): su fuerza jamas llego al
++ *          doble en este server. Plan B nuevo = Sonic_RagFlingEngine
++ *          (TeleportEntity-vel = SetVelocity del hueso raiz, la ruta
++ *          Rouge probada aqui). Los tres embudos (golpe final de Sonic,
++ *          martillo de Amy, self-destruct de Metal) + el ritual de la
++ *          witch pasan por la cascada sin tocar una linea de sus callers.
++ *
+  *  v6.32-OM - PATCH DE BALANCE + FIX DEL AGARRE (manager 3.77.50, pedido
+  *          literal del owner 2026-10-11: "Su spindash ahora causara 35%
+  *          mas de dano (en todas sus fases) El Peelout Reducira su
+@@ -776,7 +821,7 @@
+ //   algo lo piso, se RE-DISPARA en el acto en R y L. La eva corre
+ //   ENTERA y encima de cualquier estado (peelout incluido: al acabar
+ //   la FSM devuelve la animacion que toque).
+-#define SONIC_OM_VERSION "v6.32-OM"   // v6.32: PATCH DE BALANCE (spin +35% en TODAS sus fases 121.5/141.75, peel cd -8s 17/37) + FIX DEL AGARRE del carry (salto heredado + hueco bloqueado)   // v6.31: ADOPCION EN EL MONTAJE + reemplazo limpio del avatar (manager 3.77.40: fin del barrido en caliente). v6.30: ESTATUA SI + TANK NO ATURDE A SONIC   // v6.19: TRAILS A MATERIAL NATIVO (default) — analisis del pack de materiales ORIGINALES del OM subido por el owner (2026-10-08): los .vmt del sonicball son legítimos (UnlitGeneric $translucent $vertexcolor/$vertexalpha, VTF 7.2 RGBA8888) pero diseniados para el renderer del SpriteTrail de GMod: bluetrail.vtf = barra vertical nucleo-blanco/halo-azul (perfil transversal), bluestartrail2.vtf = 98% TRANSPARENTE con destellos sueltos (la 'capa ancha' es casi aire), blue2/Sonicred = chips 2x2 shared_t/t2. En los TE beams del L4D2 la textura se mapea al reves (U a lo largo del beam) = look bugeado (reporte del owner); el laserbeam radial nativo es inmune a la orientacion. NATIVO default con la geometria 3-capas GMod completa (halo 70->40 + nucleo 40->1 + magenta 40->1, aditivas como alla) y el peel gana los 2 pies ROJOS nativos. FIX descargas: Sonic_AddMatToDownloads ahora encola el $basetexture REAL (blue.vmt->bluetrail.vtf etc.; el v6.17 encolaba un blue.vtf INEXISTENTE = damero en clientes). sonicom_trails_mat default 0 (1 = autentico opt-in). v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o autentico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migracion al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueno/demas (el beam del dueno sigue su copia L, el de los demas la R — leccion del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: unica forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseno de materiales v6.17 INTACTO: FileExists -> autenticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTENTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidio ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aqui offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximacion documentada). Deteccion por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo).
++#define SONIC_OM_VERSION "v6.33-OM"   // v6.33: IMPULSO VPHYSICS DIRECTO POR HUESO (SetVelocity por SDKCall al IPhysicsObject de cada hueso leido del datamap — la receta GMod literal; la onda v6.11 queda de fallback) — fix del "doble que nace y cae en seco"   // v6.32: PATCH DE BALANCE (spin +35% en TODAS sus fases 121.5/141.75, peel cd -8s 17/37) + FIX DEL AGARRE del carry (salto heredado + hueco bloqueado)   // v6.31: ADOPCION EN EL MONTAJE + reemplazo limpio del avatar (manager 3.77.40: fin del barrido en caliente). v6.30: ESTATUA SI + TANK NO ATURDE A SONIC   // v6.19: TRAILS A MATERIAL NATIVO (default) — analisis del pack de materiales ORIGINALES del OM subido por el owner (2026-10-08): los .vmt del sonicball son legítimos (UnlitGeneric $translucent $vertexcolor/$vertexalpha, VTF 7.2 RGBA8888) pero diseniados para el renderer del SpriteTrail de GMod: bluetrail.vtf = barra vertical nucleo-blanco/halo-azul (perfil transversal), bluestartrail2.vtf = 98% TRANSPARENTE con destellos sueltos (la 'capa ancha' es casi aire), blue2/Sonicred = chips 2x2 shared_t/t2. En los TE beams del L4D2 la textura se mapea al reves (U a lo largo del beam) = look bugeado (reporte del owner); el laserbeam radial nativo es inmune a la orientacion. NATIVO default con la geometria 3-capas GMod completa (halo 70->40 + nucleo 40->1 + magenta 40->1, aditivas como alla) y el peel gana los 2 pies ROJOS nativos. FIX descargas: Sonic_AddMatToDownloads ahora encola el $basetexture REAL (blue.vmt->bluetrail.vtf etc.; el v6.17 encolaba un blue.vtf INEXISTENTE = damero en clientes). sonicom_trails_mat default 0 (1 = autentico opt-in). v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o autentico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migracion al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueno/demas (el beam del dueno sigue su copia L, el de los demas la R — leccion del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: unica forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseno de materiales v6.17 INTACTO: FileExists -> autenticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTENTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidio ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aqui offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximacion documentada). Deteccion por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo).
+ 
+ // =======================
+ // RECURSOS (VPK de recursos del owner; mismas rutas que GMod OM)
+@@ -1086,7 +1131,7 @@
+ ConVar g_cvSonicSpinStunStack;   // re-aturdir suma tiempo (GMod stunstack)
+ ConVar g_cvSonicSpinLockTime;    // s pegado a la cara en el final [GMod 1]
+ ConVar g_cvSonicSpinRagdoll;     // ragdoll falso del final (CreateRagdolLCharacter_OM)
+-ConVar g_cvSonicRagBlast;        // v6.11: magnitud base de la ONDA que lanza al doble
++ConVar g_cvSonicRagBlast;        // v6.33: velocidad de LANZAMIENTO del doble (u/s, GMod SetVelocity 700); de fallback: magnitud de la onda v6.11
+ ConVar g_cvSonicSpinStunWitch;   // la witch recibe stun en el final
+ 
+ // v6.5: numeros del owner + inmunidad de la bola
+@@ -1120,11 +1165,18 @@
+ int   g_iSonicSpinRagRef[MAXPLAYERS + 1];        // EntRef del prop_ragdoll
+ int   g_iSonicSpinRagRender[MAXPLAYERS + 1];     // render ORIGINAL de la victima
+ 
+-// v6.11: el vuelo ya NO tiene estado propio — el doble sale volando con
+-// FISICA REAL (onda env_physexplosion) y el vphysics hace todo. Solo
+-// hace falta un serial para los targetnames unicos de cada doble
+-// (el filtro "solo al ragdoll" de la onda).
+-int g_iSonicRagSerial = 0;
++// v6.33 — IMPULSO VPHYSICS DIRECTO POR HUESO (ver bloque grande abajo):
++// llamadas SDKCall_Raw contra la interfaz publica IPhysicsObject y los
++// offsets del datamap donde el motor guarda los punteros de cada hueso.
++Handle g_hRagPhysIsAsleep;     // bool  IsAsleep()          [sonda]
++Handle g_hRagPhysMotion;       // bool  IsMotionEnabled()  [sonda]
++Handle g_hRagPhysMoveable;     // bool  IsMoveable()       [sonda]
++Handle g_hRagPhysMass;         // float GetMass()          [sonda]
++Handle g_hRagPhysSetVel;       // void  SetVelocity(const Vector*, const AngularImpulse*)  [LA HABILIDAD]
++int    g_iRagPhysState = 0;    // 0=sin init, 1=listo, -1=mesa mala -> onda
++int    g_iRagOffRoot = -1;     // datamap "m_pPhysicsObject" (hueso 0)
++int    g_iRagOffCount = -1;    // datamap "m_ragdoll.listCount"
++int    g_iRagOffBone[24];      // datamap "m_ragdoll.list[i].pObject" (1..23)
+ // v6.7 (informe 2): la victima REAL invisible deja de ser un MURO —
+ // su grupo de colision pasa a DEBRIS mientras vuela el doble (receta
+ // Amy v64 "nada la frena fisicamente" + Sonic homing v6.5).
+@@ -1211,7 +1263,7 @@
+     g_cvSonicSpinStunStack  = CreateConVar("sonicom_spin_stun_stack", "1", "Sonic OM: re-aturdir a alguien ya aturdido SUMA tiempo (GMod stunstack)", _, true, 0.0, true, 1.0);
+     g_cvSonicSpinLockTime   = CreateConVar("sonicom_spin_locktime", "1.0", "Sonic OM: segundos PEGADO a la cara del enemigo en el golpe final [GMod: 1]", _, true, 0.0, true, 3.0);
+     g_cvSonicSpinRagdoll    = CreateConVar("sonicom_spin_ragdoll", "1", "Sonic OM: ragdoll falso del golpe final — sale volando y vive hasta que se pasa el stun (GMod CreateRagdolLCharacter_OM)", _, true, 0.0, true, 1.0);
+-    g_cvSonicRagBlast       = CreateConVar("sonicom_ragblast", "700", "Sonic OM v6.11: magnitud de la ONDA fisica que lanza al doble (receta Amy v76/v79: env_physexplosion escalado por masa; 700 = calibrado al hitdirection*700 del GMod)", _, true, 50.0, true, 5000.0);
++    g_cvSonicRagBlast       = CreateConVar("sonicom_ragblast", "700", "Sonic OM v6.33: velocidad de lanzamiento del ragdoll falso en u/s (la receta GMod: SetVelocity dir*700 POR HUESO, directo al vphysics — independiente de la masa). Si el camino directo no esta disponible (sin left4dhooks o sondas falladas), el plan B motor puro (TeleportEntity al hueso raiz, ruta Rouge) usa el mismo numero como u/s", _, true, 50.0, true, 5000.0);
+     g_cvSonicSpinStunWitch  = CreateConVar("sonicom_spin_stun_witch", "1", "Sonic OM: la witch recibe el STUN del golpe final (estatua + estrellas)", _, true, 0.0, true, 1.0);
+ 
+     // v6.5: numeros del owner + inmunidad de la bola
+@@ -5288,12 +5340,11 @@
+ // muro/piso, el giro y el CAP — el vphysics arco+tumba+choca solo, y
+ // el "reaparece donde cayo su doble" (que lee m_vecOrigin al fin del
+ // stun) sigue igual. El spawn +24u adelantado se mantiene (no nace
+-// solapado) y la onda nace 30u DETRAS y 20 abajo del doble (receta
+-// "levantarlo del suelo y luego aventarlo").
++// solapado). v6.33: la ONDA env_physexplosion que vivia aqui abajo
++// se RETIRO (ver el bloque v6.33): su fuerza nunca llego al ragdoll
++// en este server — la reemplaza la cascada Sonic_RagPhysLaunch ->
++// Sonic_RagFlingEngine.
+ #define SONIC_RAG_SPAWNFWD 24.0   // u de adelanto del spawn en el rumbo (no nace solapado a la victima)
+-#define SONIC_RAG_BLASTBACK 30.0  // u DETRAS del doble donde nace la onda (receta Amy)
+-#define SONIC_RAG_BLASTDOWN 20.0  // u DEBAJO de la onda ("levantarlo del suelo y aventarlo")
+-#define SONIC_RAG_BLASTRAD 100.0  // radio de la onda (solo pasa la puerta de distancia; el aislamiento real es el targetname)
+ 
+ // v6.7 (informe 2): la victima real invisible DEJA DE SER UN MURO. Su
+ // grupo de colision pasa a DEBRIS (2) mientras vuela el doble — misma
+@@ -5438,6 +5489,181 @@
+     return false;
+ }
+ 
++// ============================================================================
++// v6.33 - IMPULSO VPHYSICS DIRECTO POR HUESO (el bloque que cierra la saga)
++// ============================================================================
++// Receta: GMod ragdoll:GetPhysicsObjectNum(i):SetVelocity(dir*700) — aca la
++// interfaz IPhysicsObject es publica (vphysics_interface.h, estable desde
++// 2004 en TODOS los Source) y los punteros de los huesos estan en el DATAMAP
++// del CRagdollProp (DEFINE_PHYSPTR los publica uno por uno). Los indices de
++// vtable salen del header del BRANCH L4D2 contado a mano — y como el
++// destructor virtual ocupa 1 slot en Windows y 2 en Linux (Itanium), el +1
++// lo decide L4D_GetServerOS (left4dhooks, que este suite YA requiere).
++//   IsAsleep win=2/lin=3 | IsMotionEnabled win=9/lin=10 | IsMoveable
++//   win=10/lin=11 | GetMass win=29/lin=30 | SetVelocity win=50/lin=51.
++// BLINDAJE (ningun camino termina en crash):
++//   1) Sin left4dhooks o sin datamap -> g_iRagPhysState=-1 -> plan B
++//      motor puro (Sonic_RagFlingEngine: TeleportEntity-vel al raiz).
++//   2) CUATRO sondas semanticas sobre el hueso raiz ANTES de tocar nada:
++//      IsMotionEnabled==1 (acabamos de mandar EnableMotion), IsMoveable==1,
++//      IsAsleep en {0,1} y GetMass en [0.05, 10000]. Si UNA falla, la mesa
++//      esta mala -> plan B motor puro. (Los vecinos de las sondas son
++//      getters bool puros: hasta un desfase hipotetico caeria en lectura
++//      inocua — y los vecinos de SetVelocity son GetPositionMatrix y
++//      SetVelocityInstantaneous, igual de inofensivos.)
++//   3) Velocidad por hueso = INDEPENDIENTE DE LA MASA (GMod no pesa nada:
++//      SetVelocity es SetVelocity) — TODO cuerpo vuela IGUAL.
++//      Nota funebre: el "escalado por masa" de la onda v6.11 leia m_iMass,
++//      un campo que prop_ragdoll NO TIENE (es de prop_physics) — o sea que
++//      el "peso GMod" de la v6.11 era un cuento que jamas funciono. RIP.
++//   4) L4D2 servers son 32-bit en ambos OS: los punteros se leen como
++//      Int32 y las sondas validan la lectura antes de usarla.
++// ============================================================================
++#define SONIC_RAG_PHYSLIFT 0.30   // fraccion de la velocidad sumada en Z ("levantarlo del suelo y luego aventarlo", receta de la onda v6.11)
++#define SONIC_RAG_TUMBLE  900.0  // giro random max por hueso (el AddAngleVelocity del GMod, mismo numero del barrido de Rouge)
++
++// Prep de una llamada virtual cruda contra IPhysicsObject (this = puntero del hueso)
++Handle Sonic_RagPhysPrep(int vtblIdx, SDKType retType)
++{
++    StartPrepSDKCall(SDKCall_Raw);
++    PrepSDKCall_SetVirtual(vtblIdx);
++    PrepSDKCall_SetReturnInfo(retType, SDKPass_Plain);
++    return EndPrepSDKCall();
++}
++
++// Init perezoso, UNA vez por carga de plugin (la vtable no cambia entre
++// mapas: es la del binario del servidor). Fallar aqui = plan B para siempre.
++bool Sonic_RagPhysReady()
++{
++    if (g_iRagPhysState != 0) return (g_iRagPhysState == 1);
++    g_iRagPhysState = -1;   // pesimista: solo sale vivo si TODO cuadra
++
++    // (1) OS: 0=Windows 1=Linux — sin el native (left4dhooks viejo/no
++    // cargado) no hay forma segura de elegir la vtable -> plan B
++    if (GetFeatureStatus(FeatureType_Native, "L4D_GetServerOS") != FeatureStatus_Available)
++        return false;
++    int shift = (L4D_GetServerOS() == 1) ? 1 : 0;
++
++    // (2) las llamadas (indices contados del vphysics_interface.h l4d2)
++    g_hRagPhysIsAsleep = Sonic_RagPhysPrep(2  + shift, SDKType_Bool);
++    g_hRagPhysMotion   = Sonic_RagPhysPrep(9  + shift, SDKType_Bool);
++    g_hRagPhysMoveable = Sonic_RagPhysPrep(10 + shift, SDKType_Bool);
++    g_hRagPhysMass     = Sonic_RagPhysPrep(29 + shift, SDKType_Float);
++
++    StartPrepSDKCall(SDKCall_Raw);
++    PrepSDKCall_SetVirtual(50 + shift);   // SetVelocity(const Vector*, const AngularImpulse*)
++    PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_Pointer);   // velocidad lineal
++    PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_Pointer);   // impulso angular (3 floats, misma maleta que Vector)
++    g_hRagPhysSetVel = EndPrepSDKCall();
++
++    if (g_hRagPhysIsAsleep == null || g_hRagPhysMotion == null
++        || g_hRagPhysMoveable == null || g_hRagPhysMass == null
++        || g_hRagPhysSetVel == null)
++        return false;
++
++    g_iRagPhysState = 1;
++    return true;
++}
++
++// Cachea los offsets del datamap del ragdoll (una sola vez en la vida;
++// los nombres son los que el DEFINE_PHYSPTR/DEFINE_FIELD del CRagdollProp
++// publico compila DENTRO del binario: m_pPhysicsObject = hueso 0,
++// m_ragdoll.list[i].pObject = huesos 1..23, m_ragdoll.listCount = cuenta)
++bool Sonic_RagPhysCacheOffsets(int rag)
++{
++    g_iRagOffRoot  = FindDataMapInfo(rag, "m_pPhysicsObject");
++    g_iRagOffCount = FindDataMapInfo(rag, "m_ragdoll.listCount");
++    if (g_iRagOffRoot <= 0 || g_iRagOffCount <= 0)
++    {
++        g_iRagOffRoot = -1; g_iRagOffCount = -1;
++        return false;
++    }
++    char fld[48];
++    for (int i = 1; i < 24; i++)
++    {
++        Format(fld, sizeof(fld), "m_ragdoll.list[%d].pObject", i);
++        g_iRagOffBone[i] = FindDataMapInfo(rag, fld);   // -1 = hueso sin datamap: se salta
++    }
++    return true;
++}
++
++// LANZA el doble: SetVelocity(lineal, angular) por hueso, directo al
++// simulador vphysics. La lineal es la MISMA para todos los huesos (asi
++// vuela compacto, como el ragdoll del GMod) y el giro es random POR HUESO
++// (el AddAngleVelocity del lua). Devuelve true si al menos un hueso
++// recibio el impulso; false = el llamador usa el plan B motor puro.
++bool Sonic_RagPhysLaunch(int rag, const float fDir[3], float speed, float liftUp, float tumbleMax)
++{
++    if (!Sonic_RagPhysReady()) return false;
++    if (rag <= MaxClients || !IsValidEntity(rag)) return false;
++
++    Address base = GetEntityAddress(rag);
++    if (base == Address_Null) return false;
++
++    if (g_iRagOffRoot == -1 && !Sonic_RagPhysCacheOffsets(rag))
++        return false;
++
++    // hueso raiz = m_pPhysicsObject (el InitRagdoll del motor hace
++    // VPhysicsSetObject(m_ragdoll.list[0].pObject) — es el mismo)
++    Address pRoot = view_as<Address>(LoadFromAddress(base + view_as<Address>(g_iRagOffRoot), NumberType_Int32));
++    if (pRoot == Address_Null) return false;
++
++    // ---- SONDA SEMANTICA: la mesa esta buena? (ver blindaje en el header)
++    int asleep = view_as<int>(SDKCall(g_hRagPhysIsAsleep, pRoot));
++    if (asleep != 0 && asleep != 1) return false;
++    if (view_as<int>(SDKCall(g_hRagPhysMotion, pRoot)) != 1) return false;   // acabamos de EnableMotion
++    if (view_as<int>(SDKCall(g_hRagPhysMoveable, pRoot)) != 1) return false;
++    float mass = view_as<float>(SDKCall(g_hRagPhysMass, pRoot));
++    if (mass < 0.05 || mass > 10000.0) return false;
++
++    // ---- cuenta de huesos y el impulso
++    int nBones = LoadFromAddress(base + view_as<Address>(g_iRagOffCount), NumberType_Int32);
++    if (nBones < 1) nBones = 1;
++    if (nBones > 24) nBones = 24;
++
++    float lin[3], ang[3];
++    lin[0] = fDir[0] * speed;
++    lin[1] = fDir[1] * speed;
++    lin[2] = fDir[2] * speed + liftUp;   // "levantarlo del suelo y luego aventarlo"
++
++    int launched = 0;
++    for (int i = 0; i < nBones; i++)
++    {
++        Address pBone = pRoot;
++        if (i > 0)
++        {
++            if (g_iRagOffBone[i] <= 0) continue;   // hueso sin campo: fuera
++            pBone = view_as<Address>(LoadFromAddress(base + view_as<Address>(g_iRagOffBone[i]), NumberType_Int32));
++            if (pBone == Address_Null) continue;
++        }
++        ang[0] = GetRandomFloat(-tumbleMax, tumbleMax);
++        ang[1] = GetRandomFloat(-tumbleMax, tumbleMax);
++        ang[2] = GetRandomFloat(-tumbleMax, tumbleMax) * 0.5;
++        SDKCall(g_hRagPhysSetVel, pBone, lin, ang);
++        launched++;
++    }
++    return (launched > 0);
++}
++
++// v6.33 PLAN B — EL MOTOR HACIENDO EL TRABAJO (cero SDKCall, cero
++// left4dhooks: no hay puerta que se pueda cerrar). CBaseEntity::Teleport
++// con velocidad llama pPhys->SetVelocity(vel, NULL) SOBRE EL HUESO RAIZ
++// del ragdoll (evidencia hl2sdk l4d2 baseentity.cpp L4296: static void
++// TeleportEntity -> pPhys->SetVelocity(newVelocity, NULL); y
++// CRagdollProp::Teleport L951 le pasa la velocidad intacta). Es la MISMA
++// ruta que ya hace volar los cuerpos del Barrido de Rouge en este server
++// desde hace semanas — la unica version que jamas fallo. El raiz vuela y
++// las restricciones del ragdoll arrastran al resto (tumbado natural).
++void Sonic_RagFlingEngine(int rag, const float fDir[3], float speed, float liftUp)
++{
++    if (rag <= MaxClients || !IsValidEntity(rag)) return;
++    float vel[3];
++    vel[0] = fDir[0] * speed;
++    vel[1] = fDir[1] * speed;
++    vel[2] = fDir[2] * speed + liftUp;
++    TeleportEntity(rag, NULL_VECTOR, NULL_VECTOR, vel);
++}
++
+ void Sonic_SpawnFlingRagdoll(int victim, const float fDir[3])
+ {
+     Sonic_KillSpinRagdoll(victim, true);   // si habia uno viejo, liberar
+@@ -5473,13 +5699,16 @@
+     // nacer dentro de un solido, pase por donde pase el spindash.
+     Sonic_RagMakePassable(rag);
+ 
+-    // v6.11: LA ONDA — no hay vuelo manual que inicializar: el doble
+-    // recibe targetname unico y la onda fisica lo lanza (receta Amy).
+-    g_iSonicRagSerial++;
+-    char tn[32];
+-    Format(tn, sizeof(tn), "sonicrag%d", g_iSonicRagSerial);
+-    SetEntPropString(rag, Prop_Data, "m_iName", tn);
+-    Sonic_RagBlast(rag, fDir, pos, tn);
++    // v6.33: LA CASCADA — (1) impulso DIRECTO por hueso (la receta GMod
++    // completa: lineal + giro random POR HUESO, directo al simulador);
++    // (2) si la mesa del SDKCall no se pudo armar (sin left4dhooks,
++    // datamap raro, sondas desacordadas) -> el plan B motor puro
++    // (Sonic_RagFlingEngine: TeleportEntity-vel = SetVelocity del hueso
++    // raiz, la ruta Rouge probada en este server). La onda v6.11 se
++    // RETIRO: su fuerza nunca llego al doble aqui.
++    float speed = g_cvSonicRagBlast.FloatValue;
++    if (!Sonic_RagPhysLaunch(rag, fDir, speed, speed * SONIC_RAG_PHYSLIFT, SONIC_RAG_TUMBLE))
++        Sonic_RagFlingEngine(rag, fDir, speed, speed * SONIC_RAG_PHYSLIFT);
+ 
+     g_iSonicSpinRagRender[victim] = view_as<int>(GetEntityRenderMode(victim));
+     SetEntityRenderMode(victim, RENDER_NONE);
+@@ -5493,71 +5722,6 @@
+     Sonic_StunWatchEnsure();
+ }
+ 
+-// ============================================================================
+-// v6.11 - LA ONDA (idea del owner: "hace una onda tipo amy para empujar
+-// SOLO al ragdoll"). Receta Amy v76/v79 (Amy_PropBlastWake, probada en este
+-// mismo server empujando autos): env_physexplosion con la fuerza aplicada
+-// DIRECTO al cuerpo vphysics del ragdoll (el motor la reparte por los
+-// huesos via VPhysicsTakeDamage -> ApplyForceOffset: evidencia hl2sdk
+-// physobj.cpp CPhysExplosion::Explode). Diferencias con la onda de Amy:
+-//   - spawnflags 1 (SF_PHYSEXPLOSION_NODAMAGE): empuje PURO, cero dano
+-//     (la onda de Amy dana/cochea; esta solo empuja).
+-//   - targetentityname = targetname unico del doble -> SOLO lo empuja a el
+-//     (FindEntity filtra por nombre antes del radio: evidencia
+-//     CPhysExplosion::FindEntity). El radio queda solo como puerta de
+-//     distancia.
+-//   - magnitud ESCALADA POR MASA como Amy v79 (m_iMass/100): el mismo
+-//     empujon fisico para cualquier cuerpo — el "peso" del GMod (alla
+-//     physobj:SetMass(50); aca las masas vienen del .phy del modelo y no
+-//     se pueden tocar por hueso, asi que el equivalente es escalar la
+-//     fuerza por la masa total).
+-// El vphysics hace el resto: arco con gravedad real, tumbledo natural de
+-// los huesos, rebotes contra piso/paredes — y como las posiciones de hueso
+-// las escribe la SIMULACION (no saltos nuestros), el cliente las ve como
+-// movimiento continuo (mismo camino que los cadaveres que lanza una
+-// granada en HL2DM, que todos vieron volar suave siempre).
+-// ============================================================================
+-void Sonic_RagBlast(int rag, const float fDir[3], const float pos[3], const char targetName[32])
+-{
+-    if (rag <= MaxClients || !IsValidEntity(rag)) return;
+-
+-    // masa del doble (default 100 kg si el prop no la publica)
+-    float mass = 100.0;
+-    if (HasEntProp(rag, Prop_Data, "m_iMass"))
+-    {
+-        int m = GetEntProp(rag, Prop_Data, "m_iMass");
+-        if (m > 1) mass = float(m);
+-    }
+-    // magnitud escalada por masa (Amy v79): mismo delta-v para cualquier
+-    // cuerpo. Base = sonicom_ragblast (default 700 = el hitdirection*700
+-    // del GMod). Tope de seguridad 25000 como Amy.
+-    float mag = g_cvSonicRagBlast.FloatValue * (mass / 100.0);
+-    if (mag > 25000.0) mag = 25000.0;
+-
+-    // centro DETRAS-DEBAJO del doble (receta Amy: el empuje radial sale
+-    // hacia adelante+arriba = "levantarlo del suelo y luego aventarlo")
+-    float center[3];
+-    center[0] = pos[0] - fDir[0] * SONIC_RAG_BLASTBACK;
+-    center[1] = pos[1] - fDir[1] * SONIC_RAG_BLASTBACK;
+-    center[2] = pos[2] - SONIC_RAG_BLASTDOWN;
+-
+-    char sMag[16], sRad[16];
+-    IntToString(RoundToNearest(mag), sMag, sizeof(sMag));
+-    IntToString(RoundToNearest(SONIC_RAG_BLASTRAD), sRad, sizeof(sRad));
+-
+-    int ex = CreateEntityByName("env_physexplosion");
+-    if (ex == -1 || !IsValidEntity(ex)) return;
+-
+-    DispatchKeyValue(ex, "magnitude", sMag);
+-    DispatchKeyValue(ex, "radius", sRad);
+-    DispatchKeyValue(ex, "spawnflags", "1");            // NODAMAGE: empuje puro
+-    DispatchKeyValue(ex, "targetentityname", targetName); // SOLO el doble
+-    DispatchSpawn(ex);
+-    TeleportEntity(ex, center, NULL_VECTOR, NULL_VECTOR);
+-    AcceptEntityInput(ex, "Explode");
+-    AcceptEntityInput(ex, "Kill");   // la explosion es sincrona: limpieza ya
+-}
+-
+ // Mata el ragdoll falso de una victima (fin de stun / muerte / mapa).
+ void Sonic_KillSpinRagdoll(int victim, bool restoreRender)
+ {
+@@ -5629,12 +5793,12 @@
+     // vida): el rebote de Sonic no puede nacer dentro de un solido.
+     Sonic_RagMakePassable(rag);
+ 
+-    // v6.11: misma ONDA que la victima (targetname unico + blast)
+-    g_iSonicRagSerial++;
+-    char wtn[32];
+-    Format(wtn, sizeof(wtn), "sonicrag%d", g_iSonicRagSerial);
+-    SetEntPropString(rag, Prop_Data, "m_iName", wtn);
+-    Sonic_RagBlast(rag, fDir, pos, wtn);
++    // v6.33: idem victima — LA CASCADA: impulso DIRECTO por hueso y, si
++    // la mesa no se pudo armar, el plan B motor puro (TeleportEntity-vel
++    // al hueso raiz). La witch vuela con la misma receta que el resto.
++    float speed = g_cvSonicRagBlast.FloatValue;
++    if (!Sonic_RagPhysLaunch(rag, fDir, speed, speed * SONIC_RAG_PHYSLIFT, SONIC_RAG_TUMBLE))
++        Sonic_RagFlingEngine(rag, fDir, speed, speed * SONIC_RAG_PHYSLIFT);
+ 
+     g_iSonicWitchRagRender[s] = view_as<int>(GetEntityRenderMode(witch));
+     SetEntityRenderMode(witch, RENDER_NONE);

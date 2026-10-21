@@ -1,0 +1,173 @@
+--- ../../download/suite_37732_latch_fuego_crashfix/include/Knuckles.inc	2026-10-09 19:15:15.661490566 +0000
++++ include/Knuckles.inc	2026-10-09 19:42:03.081020074 +0000
+@@ -1,7 +1,41 @@
+ /*
+  * ======================================================
+- *  [MODULO] Knuckles the Echidna - Power & Defense v67-OM (LATCH ORIENTADO + FUEGO EN LOS PUÑOS + FIX CRASH DEL PARRY)
++ *  [MODULO] Knuckles the Echidna - Power & Defense v68-OM (CRASH DEL PARRY: LA EXPLOSION DEL SPIT YA NO CORRE DENTRO DEL EVENTO)
+  *
++ *  v68-OM CHANGES (R36 — "todavia se sigue crasheando el left. Analiza
++ *     bn el VSCRIPT para poder saber"):
++ *   - CAUSA RAIZ DEL CRASH QUE PERSISTIA (forense del chch_parrying.nut
++ *     v2.1 completo, 630 lineas): el nut NUNCA ejecuta su explosion
++ *     dentro del codigo del juego — los callbacks OnGameEvent_* de
++ *     VScript en L4D2 se ENCOLAN y corren en el siguiente ciclo del
++ *     script VM, y aun dentro del callback el Explode del env_explosion
++ *     pasa por la COLA de entity I/O del motor (EntFireByHandle delay 0
++ *     = siguiente frame, l.543). SourceMod HookEvent en cambio es
++ *     SINCRONO: Knux_Event_SpitBurst corria DENTRO del stack del
++ *     spitter_projectile reventando (donde nace el charco y se
++ *     autodestruye) y ahi adentro la v67 hacia CreateEntityByName +
++ *     DispatchSpawn + AcceptEntityInput("Explode") inmediato +
++ *     SDKHooks_TakeDamage DMG_BLAST a props/witch/infectados — con
++ *     vphysics en plena colision = crash. PRUEBA: la ROCA (misma
++ *     Knux_ParryExplosion, pero desde un TIMER = contexto seguro como
++ *     el logic_timer del nut) NUNCA crasheo; solo el spit (desde el
++ *     evento) crasheaba. El contexto era el asesino.
++ *   - FIX v68: Knux_Event_SpitBurst queda de SOLO LECTURA — detecta el
++ *     spit devuelto cerca del subject (<=16u como el nut), captura
++ *     posicion + userid, limpia el slot y DIFIERE TODA la explosion a
++ *     un timer de 0.0s (siguiente frame = la semantica EXACTA del nut:
++ *     callback encolado + Explode encolado). Cero mutacion de entidades
++ *     dentro del evento. T_KnuxSpitBurstBoom dispara la misma
++ *     Knux_ParryExplosion 250/150u solo infectados, ahora en contexto
++ *     seguro entre frames (el mismo de la roca, que nunca fallo).
++ *   - PARIDAD NUT en Knux_ParryExplosion: env_explosion con spawnflags=1
++ *     (SF_ENVEXPLOSION_NODAMAGE — el nut l.540: explosion del motor
++ *     puramente visual) + rendermode 5 (nut l.540) + func_breakable en
++ *     los objetivos del dano manual (targets del nut l.549: le faltaba).
++ *   - INTACTO: el latch orientado, el fuego de los puños, el watchdog de
++ *     rocas (timer, vel<=100 o 5s como CheckParriedTankRocks), la
++ *     devolucion del spit (velocidad + m_hThrower + piso 900), el
++ *     bloqueo/counter y TODO lo demas de la v67.
+  *  v67-OM CHANGES (R35 — "fix el agarre de pared si vez el lua este
+  *     cambia la orientacion de knuckles al lado contrario a la pared
+  *     (lo dice el lua)" + "el efecto de fuego de su 3 fase puedes
+@@ -271,7 +305,7 @@
+ #define _Knuckles_included
+ 
+ // v63: sonda de version (sm_sjsver del manager)
+-#define KNUCKLES_INC_VERSION "v67-OM"
++#define KNUCKLES_INC_VERSION "v68-OM"
+ 
+ #if !defined _sourcemod_included
+     #include <sourcemod>
+@@ -2226,12 +2260,21 @@
+     g_fKnuxParriedSpitT[slot] = GetEngineTime();
+ }
+ 
+-// v67-OM: el spit devuelto REVIENTA donde cae (evento spit_burst del
++// v68-OM: el spit devuelto REVIENTA donde cae (evento spit_burst del
+ // juego) y la explosion del parry le cae ENCIMA (ChCh OnGameEvent_
+ // spit_burst: spitter_projectile a <=16u del subject + WasParried ->
+-// SpawnExplosionAtFrom 150/250). El proyectil NO se toca: el juego ya
+-// lo esta matando cuando este evento dispara — el crash de la v66 era
+-// exactamente ese doble-manejo.
++// SpawnExplosionAtFrom 150/250). EL FIX DEL CRASH QUE PERSISTIA TRAS LA
++// v67: HookEvent de SourceMod es SINCRONO — este callback corre DENTRO
++// del stack del spitter_projectile reventando (ahI nace el charco y el
++// proyectil se autodestruye). El nut NUNCA corre su explosion en ese
++// contexto: sus OnGameEvent_* van a la COLA del script VM (siguiente
++// ciclo) y su Explode va por la COLA de entity I/O (EntFireByHandle
++// delay 0 = siguiente frame). Por eso aqui SOLO SE LEE: se detecta el
++// spit devuelto, se captura posicion + userid, se limpia el slot y se
++// DIFIERE TODA la explosion a un timer de 0.0s (siguiente frame).
++// CERO mutacion de entidades dentro del evento — ni Create, ni damage,
++// ni Explode, ni Kill. La roca nunca crasheo porque su explosion YA
++// vena de un timer; el spit ahora usa el MISMO contexto seguro.
+ public void Knux_Event_SpitBurst(Event event, const char[] name, bool dontBroadcast)
+ {
+     int subject = event.GetInt("subject");
+@@ -2247,16 +2290,43 @@
+         int slot = Knux_FindParriedSpit(e);
+         if (slot != -1)
+         {
+-            // el spit devuelto: explosion del parry ENCIMA del splat
+-            // (250 dano / 150u — numeros exactos del nut) — JAMAS al equipo
+-            Knux_ParryExplosion(pPos, GetClientOfUserId(g_iKnuxParriedSpitUser[slot]),
+-                                KNUX_PARRY_SPIT_RADIUS, KNUX_PARRY_SPIT_DAMAGE);
++            // v68: SOLO DATOS — la explosion vive en el timer (contexto
++            // seguro entre frames, la semantica de cola del nut: callback
++            // encolado + Explode encolado = siguiente frame).
++            int userid = g_iKnuxParriedSpitUser[slot];
+             g_iKnuxParriedSpit[slot] = 0;
++            DataPack pk = new DataPack();
++            pk.WriteFloat(pPos[0]);
++            pk.WriteFloat(pPos[1]);
++            pk.WriteFloat(pPos[2]);
++            pk.WriteCell(userid);
++            CreateTimer(0.0, T_KnuxSpitBurstBoom, pk, TIMER_FLAG_NO_MAPCHANGE | TIMER_DATA_HNDL_CLOSE);
+         }
+         break;   // el primero a <=16u es el del burst (nut FindByClassnameWithin)
+     }
+ }
+ 
++// v68-OM: la explosion del spit devuelto, DIFERIDA al siguiente frame
++// (el "siguiente ciclo" del script VM del nut + su EntFireByHandle
++// delay 0). Corre en el mismo contexto seguro de la roca (timer),
++// cuando el spit ya esta muerto y el stack del burst del juego se
++// desmonto hace un frame — cero reentrancia.
++public Action T_KnuxSpitBurstBoom(Handle timer, DataPack pk)
++{
++    pk.Reset();
++    float pos[3];
++    pos[0] = pk.ReadFloat();
++    pos[1] = pk.ReadFloat();
++    pos[2] = pk.ReadFloat();
++    int userid = pk.ReadCell();
++
++    // explosion del parry ENCIMA del splat (250 dano / 150u — numeros
++    // exactos del nut) — JAMAS al equipo
++    Knux_ParryExplosion(pos, GetClientOfUserId(userid),
++                        KNUX_PARRY_SPIT_RADIUS, KNUX_PARRY_SPIT_DAMAGE);
++    return Plugin_Stop;
++}
++
+ // v67-OM: watchdog de aterrizaje de la ROCA (ChCh CheckParriedTankRocks:
+ // vel <= 100 o 5s) — el spit YA NO pasa por aqui (spit_burst event)
+ public Action T_KnuxParryWatch(Handle timer, DataPack pack)
+@@ -2301,10 +2371,15 @@
+ {
+     if (client < 1 || client > MaxClients || !IsClientInGame(client)) client = 0;
+ 
+-    // visual: env_explosion magnitud 0 (ChCh) + particula
++    // visual: env_explosion del nut (l.540: spawnflags 1 = SF_ENVEXPLOSION_
++    // NODAMAGE — explosion del motor PURAMENTE VISUAL/shake, sin dano
++    // propio ni fuerza — el dano lo pone el loop manual de abajo;
++    // rendermode 5 como el nut) + particula
+     int boom = CreateEntityByName("env_explosion");
+     if (boom != -1)
+     {
++        DispatchKeyValue(boom, "spawnflags", "1");     // nut: NODAMAGE (v68)
++        DispatchKeyValue(boom, "rendermode", "5");      // nut: rendermode 5 (v68)
+         DispatchSpawn(boom);
+         TeleportEntity(boom, pos, NULL_VECTOR, NULL_VECTOR);
+         SetEntProp(boom, Prop_Data, "m_iMagnitude", 0);
+@@ -2326,8 +2401,10 @@
+         CreateTimer(2.0, T_KnuxKillEnt, EntIndexToEntRef(fx));
+     }
+ 
+-    // dano MANUAL solo a infectados + props (ChCh targets: player
+-    // infectado / infected / witch / prop_physics / func_breakable)
++    // dano MANUAL solo a infectados + props (ChCh targets l.549:
++    // prop_physics / func_breakable / player / infected / witch — la
++    // v68 le agrega func_breakable que faltaba; SI jugador = team 3;
++    // supervivientes JAMAS — QoL Explosion_Hurt_Team=0 del nut)
+     for (int i = 1; i <= MaxClients; i++)
+     {
+         if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == 3)
+@@ -2358,6 +2435,14 @@
+     {
+         if (!IsValidEntity(e)) continue;
+         float vPos[3]; GetEntPropVector(e, Prop_Send, "m_vecOrigin", vPos);
++        if (GetVectorDistance(pos, vPos) <= rad)
++            SDKHooks_TakeDamage(e, client, client, dmg, DMG_BLAST);
++    }
++    e = -1;   // v68: func_breakable (targets del nut l.549)
++    while ((e = FindEntityByClassname(e, "func_breakable")) != -1)
++    {
++        if (!IsValidEntity(e)) continue;
++        float vPos[3]; GetEntPropVector(e, Prop_Send, "m_vecOrigin", vPos);
+         if (GetVectorDistance(pos, vPos) <= rad)
+             SDKHooks_TakeDamage(e, client, client, dmg, DMG_BLAST);
+     }

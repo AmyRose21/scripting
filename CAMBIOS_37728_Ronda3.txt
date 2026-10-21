@@ -1,0 +1,186 @@
+================================================================
+ SUITE 3.77.28 — "RONDA 3 DE METAL" (2026-10-09)
+ Metal.inc v5.2-OM -> v5.3-OM + Knuckles.inc + sonic.inc + manager
+================================================================
+
+PEDIDO TEXTUAL DEL OWNER
+------------------------
+"Eh.. no no esta en modo anti un smoker me pudo agarrar con la lengua
+durante la carga del mismo aun sigo atascandome contra los enemigos que
+envisto contra la pared en lugares angostos. y la embestida no mata
+commons ni puede embestir a la witch.
+y otra cosa hay que ajustar que la vida max de metal (si se escoje) sea
+de 175 de vida max y no 100 aunque la cura puede aumentar esa cantidad
+si me aplican botiquin pierdo la vida adicional."
+
+================================================================
+ QUE SE ENCONTRO (LA CAUSA RAIZ DE LA LENGUA DEL SMOKER)
+================================================================
+La inmunidad anti-control de la 3.77.27 SI estaba escrita... pero viva
+en un CEMENTERIO: el manager la cableo a 6 FORWARDS FANTASMA con
+nombres que left4dhooks NUNCA invoca (SourcePawn compila cualquier
+public sin quejarse, aunque ninguna extension la llame):
+
+    L4D_OnTongueGrab_Pre        (fantasma)  -> real: L4D_OnGrabWithTongue
+    L4D_OnPouncedOnSurvivor_Pre (fantasma)  -> real: L4D_OnPouncedOnSurvivor
+    L4D_OnJockeyRide_Pre        (fantasma)  -> real: L4D2_OnJockeyRide
+    L4D_OnChargerImpact_Pre     (fantasma)  -> real: L4D2_OnStartCarryingVictim
+    L4D_OnFling                 (fantasma)  -> real: L4D2_OnPlayerFling
+    L4D_OnStagger               (fantasma)  -> real: L4D2_OnStagger
+
+Los forwards REALES ya existian en el suite (Knuckles.inc: lengua /
+carry del charger / fling; sonic.inc: pounce / jockey) con los guards
+de Sonic/Amy/Knuckles de siempre — pero SIN los guards de Metal, que
+solo vivian en las copias muertas del manager. Por eso el smoker te
+agarro con la lengua a media carga: el guard jamas corrio.
+
+Los 2 forwards que si eran reales y ya funcionaban quedan intactos:
+L4D_TankClaw_OnPlayerHit_Pre (punazo del tank) y L4D_OnKnockedDown
+(tumbo de roca/charger).
+
+================================================================
+ QUE SE HIZO (5 PUNTOS)
+================================================================
+
+(1) ANTI-CONTROL DE VERDAD — Metal_ControlImmune (state != IDLE =
+    windup/dash/arrastre/wall slam/rebote) insertado en los FORWARDS
+    REALES, primero de todo:
+      * Knuckles.inc  L4D_OnGrabWithTongue        (lengua del smoker)
+      * Knuckles.inc  L4D2_OnStartCarryingVictim  (carga del charger)
+      * Knuckles.inc  L4D2_OnPlayerFling          (fling del motor)
+      * sonic.inc     L4D_OnPouncedOnSurvivor     (ensarte del hunter)
+      * sonic.inc     L4D2_OnJockeyRide           (monta del jockey)
+    Devolver Plugin_Handled en el pre-hook BLOQUEA el agarre ANTES de
+    que empiece: ni un frame de lengua, ni animacion de agarre, ni
+    musica. El charger que ATROPELLA (knockdown) ya lo bloqueaba el
+    L4D_OnKnockedDown real de siempre.
+      * ADEMAS: L4D2_OnStagger (pre) NO existia en ningun lado (solo
+    el _Post de Tails) — se implementa NUEVO en el manager: ningun
+    stagger del motor cae sobre un Metal en embestida.
+    EFECTO COLATERAL POSITIVO: en los mismos forwards reviven pedidos
+    viejos del owner que solo vivian en los fantasmas y nunca habian
+    corrido: la contra de lengua de Amy v64 ("rompe la lengua AL
+    INSTANTE, SIEMPRE") y Amy_GrabCounter/Knuckles_CheckSpecialCounter
+    en pounce/jockey (las mismas funciones que ya corrian en el carry).
+
+(2) AVALANCHA DE COMMONS — la embestida MATA a los comunes que toca:
+    escaneo de entidades "infected" en radio 120u cada 0.1s durante
+    DASH y DRAGGING, SDKHooks_TakeDamage 9999 DMG_CLUB (kill acreditado
+    a Metal). FX: destello metal_impact en hasta 2 por barrido + sonido
+    de impacto con throttle 0.25s (sin spam en hordas). El v5.2 solo
+    buscaba CLIENTS infectados: los comunes eran puro obstaculo fisico.
+
+(3) WITCH EMBESTIBLE — la witch ya es objetivo valido de la embestida
+    (FindEntityByClassname "witch" en el mismo radio de 100u; el v5.2
+    no la veia porque es una ENTIDAD, no un client):
+      * CATCH: congelada (MOVETYPE_NONE, guardando su movetype
+        original) + grupo de colision DEBRIS en ELLA (su cuerpo no
+        tapona el pasillo mientras la arrastra) + 4 de dano + los FX
+        electricos de siempre.
+      * ARRASTRE: misma velocidad de embestida, teleport de sujecion a
+        85u, tick de 4 de dano cada 0.25s, avalancha de comunes activa.
+      * WALL SLAM COMPLETO: los 3 golpes de 9.75 contra la pared + los
+        sonidos/FX del mod; al terminar sale DESPEDIDA de la pared.
+      * SUELTA por cap de dano (2.5s): fling 400 + 250z.
+      * Si muere a mitad: la carga se libera igual que un especial.
+      * OJO: dañarla la ENFURECE (es una witch) — al soltarla vendra
+        por Metal. La embestida NO la mata de un ciclo (1000 HP):
+        son ~48 de dano por ciclo completo de arrastre+estampado.
+
+(4) ANTI-ATASCO EN LUGARES ANGOSTOS — tres capas:
+      (a) El ARRASTRADO va a grupo de colision DEBRIS durante TODO el
+          arrastre (igual que Metal): su capsula deja de pelear contra
+          la de Metal. Se restaura su grupo original en TODOS los
+          caminos de suelta (drop por dano, fin del estampado, timeout,
+          atasco, muerte de Metal, cambio de personaje, reinicio).
+      (b) Cuando el watchdog detecta atasco (<80 uu/s durante 0.6s)
+          con objetivo vivo: el objetivo se TELETRANSPORTA DETRAS de
+          Metal (90u contra la direccion de la marcha) ANTES de liberar
+          la carga — el pasillo por delante queda despejado al instante.
+      (c) La suelta por cap de dano ahora FLINGA al objetivo hacia
+          delante (350 + 250z): no queda pegado a Metal en el pasillo.
+      + La avalancha del punto 2 elimina el tapon mas frecuente (las
+        hordas acumulandose alrededor de la pelea).
+
+(5) VIDA MAXIMA 175 AL ESCOGER A METAL:
+      * m_iMaxHealth = 175 (grabado en las DOS copias, Data + Send) al
+        ESCOGERLO en el menu, en cada SPAWN siendo Metal y re-afirmado
+        cada 1s desde el PreThink (el motor lo re-normaliza a 100 en
+        algunos caminos).
+      * CON VIDA LLENA (100) arranca directo a 175; herido conserva su
+        vida actual (NO es un full-heal).
+      * EL BOTIQUIN YA NO QUITA LA VIDA EXTRA: el juego cura 80% de la
+        vida que FALTA hacia el MAXIMO QUE VEE. Con max=100 grabado
+        curaba HACIA ABAJO (de 150 te bajaba a ~110: esa era la "vida
+        adicional" que se perdia). Con max=175 el medkit llena hacia
+        175 y las pastillas tambien toman el tope nuevo.
+      * Self Repair: tope del lua 150 -> 175 ("aunque la cura puede
+        aumentar esa cantidad"): la X puede llenar hasta las 175.
+      * Al cambiar de personaje / morir / descargar el plugin: tope
+        devuelto a 100 y vida recortada si quedaba encima — NADIE
+        hereda las 175 (ni el siguiente personaje en ese slot).
+      * El HUD de L4D2 sigue dibujando la barra con escala base: el
+        NUMERO de vida es el real (175 al llenarse).
+
+================================================================
+ ARCHIVOS QUE CAMBIAN EN ESTA ENTREGA
+================================================================
+  * Sonic_ability_manager.smx  (3.77.28 — reemplazo directo)
+  * Sonic_ability_manager.sp   (version + changelog + L4D2_OnStagger
+                               nuevo + hook de seleccion Metal + sm_sjsver)
+  * include/Metal.inc          (v5.3-OM — todo el gameplay nuevo)
+  * include/Knuckles.inc       (guards de Metal en los 3 forwards reales
+                                que viven aqui + contra de lengua de Amy
+                                revivida)
+  * include/sonic.inc          (guards de Metal + contras Amy/Knuckles
+                                en pounce/jockey)
+  * El RESTO de includes: byte-identicos a la 3.77.27 (verificados).
+  * Cero cvars nuevos (95 -> 95), cero materiales nuevos (mismos 8).
+
+================================================================
+ PLAN DE PRUEBA (EN EL SERVER)
+================================================================
+  A. LENGUA: smoker AI o jugador te tira la lengua EN PLENA CARGA (Z):
+     la lengua NO engancha — ni un frame. Probar tambien en windup
+     (los primeros 2s parpadeando) y arrastrando a un especial.
+  B. HUNTER + JOCKEY: que te salten encima a media embestida: no
+     ensartan ni montan. El charger que te ATROPELLA tampoco te tumba.
+  C. STAGGER/FLING: punazo o roca del tank durante la carga: nada te
+     derriba (esto ya funcionaba, verificar que sigue).
+  D. COMMONS: embiste una horda: los comunes que tocas MUEREN al
+     contacto (con destello + golpe sonoro), no se acumulan delante.
+  E. WITCH: embiste a una witch quieto: la atrapa, la arrastra congelada
+     delante, la estampa 3 veces contra la pared y sale despedida.
+     Ojo: queda ENFURECIDA al soltarse (normal: la golpeaste).
+  F. ATASCO: arrastra a un especial (o a la witch) hacia un pasillo
+     angosto/escalera y deja que se atasque: en ~0.6s el objetivo sale
+     TELETRANSPORTADO DETRAS tuyo, la carga se libera y el pasillo
+     queda libre para caminar.
+  G. VIDA: escoge a Metal con la vida llena -> 175/175 al instante.
+     Mimate con la X hasta ~150, que un companero te ponga un BOTIQUIN:
+     cura HACIA ARRIBA (ya no baja). Cura con pastillas, revive de
+     incap ajeno... el tope se sostiene (re-afirmado cada 1s). Cambia a
+     otro personaje: su tope vuelve a 100 (nadie hereda las 175).
+  H. REGRESION: Sonic/Amy/Knuckles siguen con sus contras de siempre
+     (la lengua de Amy v64 AHORA SI rompe al instante — pedido viejo
+     que estaba muerto; si sorprende, avisar y se desactiva).
+  I. sm_sjsver debe decir "Metal v5.3-OM (... ronda 3 ...)".
+
+================================================================
+ RECETAS / CONSTANTES NUEVAS (todas #define en Metal.inc)
+================================================================
+  METAL_MAX_HP               175    tope de vida al escoger a Metal
+  METAL_MAXHP_ASSERT_TICK    1.0s   re-afirmacion del tope (PreThink)
+  METAL_COMMON_KILL_RADIUS   120u   radio de la avalancha
+  METAL_COMMON_KILL_TICK     0.1s   ritmo del escaneo de comunes
+  METAL_COMMON_KILL_DMG      9999   un toque = muerto
+  METAL_WITCH_HOLD_DIST      85u    la witch viaja un poco mas adelantada
+  METAL_WITCH_RELEASE_FLING  400    impulso al soltar a la witch
+  METAL_DRAG_RELEASE_FLING   350    impulso al soltar al especial (cap)
+  METAL_STUCK_TELEPORT_DIST  90u    teleport detras de Metal al atasco
+  METAL_HEAL_HP_CAP          175    (era 150) tope del Self Repair
+
+FALSOS NEGATIVOS DOCUMENTADOS (forense): los #define no viajan al smx
+(compilados); los comentarios de version ("3.77.27" como historial) si
+viajan porque el changelog va en el .sp — el marcador "3.77.28" y
+"v5.3-OM" estan verificados presentes en el binario.

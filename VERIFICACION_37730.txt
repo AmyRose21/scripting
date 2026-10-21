@@ -1,0 +1,56 @@
+VERIFICACION 3.77.30 — KNUCKLES OM + FIX DE BINDS
+==================================
+
+COMPILACION (scripts/build_om_37730.sh, spcomp 1.11.0.6970):
+  28 WARNINGS = LINEA BASE EXACTA (misma distribucion de siempre:
+  Doll 3 / Sally 14 / Metal 2 los de siempre / OM_Stun 1 / manager x8).
+  0 ERRORES.
+  (1er intento con 29: warning 216 nested comment por el "/*" del
+   glob "om/knuckles/*.wav" dentro del comentario de cabecera —
+   corregido a texto sin glob; vuelta a 28 exactos.)
+  smx: 403,690 B (vs 393,670 de la .29 = +10,020 B del avatar)
+  sha256: fff04b6114e7a666b58f077fbeca6690ed241c00cf41161087ba013e6693ee6a
+
+FORENSE (scripts/forense_37730.py, control .29 sha 14be5f97... OK):
+  funciones-candidatas (patron ampliado con Knux_): 703 -> 725
+  NUEVAS (22): Knuckles_OnEntityCreated, Knuckles_OnPlayerDeath,
+    Knux_AvatarFollow, Knux_AvatarOneShot, Knux_AvatarSetColor,
+    Knux_AvatarTintPulse, Knux_AvatarTintReset, Knux_AvatarUpdate,
+    Knux_CheckDeathRagdoll, Knux_CounterBlockFx, Knux_CreateAvatar,
+    Knux_CreateAvatarL, Knux_CreateAvatarProp, Knux_JumpAnimDone,
+    Knux_KillAvatar, Knux_KillAvatarL, Knux_KillAvatarOnly,
+    Knux_SpawnDeathRagdoll, Knux_Speed2D, Knux_TintThink,
+    Knux_TransmitAvatarL, Knux_TransmitAvatarR
+    <- TODAS del modulo Knuckles, CERO de otro modulo
+    (+ 2 verificadas aparte que el regex no atrapa por el prefijo T_:
+       T_KnuxAvatarThink, T_KnuxRagdollCleanup — presentes OK)
+  BORRADAS (0): ninguna
+  cvars (patron historico): 95 -> 95 (cero nuevos/borrados en el
+    patron; el NUEVO knux_avatar verificado PRESENTE aparte)
+
+  MARCADORES v65-OM PRESENTES (23/23): 3.77.30, v65-OM, knux_avatar,
+    models/Noodles/OM/knuckles.mdl, knuckles_avatar_om,
+    Knuckles_OnEntityCreated, Knuckles_OnPlayerDeath, GroundSmash,
+    FallAttack, LatchOff, PunchAnim, idle_lowhealth, walk_lowhealth,
+    run_lowhealth, los 7 sonidos om/knuckles/ (punchstart/swing/
+    punchstun/counter/CounterBounce/Latch/KnucklesCancel) y el FIX DE
+    BINDS (unbind v / unbind b).
+    Verificados aparte: knuckles_avatar_om_l (copia L), la fila de
+    binds completa (bind z/x/c + fila Amy c/v/b).
+
+  HEREDADOS .29 PRESENTES (10/11): Metal_WitchFreeze, Sonic_WitchStun,
+    Metal_KillCommonsInPath, Metal_ApplyMaxHealth, Metal_ControlImmune,
+    L4D_OnGrabWithTongue, L4D2_OnStagger, 'Witch atrapada', v5.4-OM,
+    '3.77.29' AUSENTE POR DISENO (era el PLUGIN_VERSION viejo —
+    verificado que SI estaba en el smx .29; bumpear la version es
+    exactamente lo esperado).
+
+INCLUDES: cambian SOLO Knuckles.inc + Rouge.inc (+4 lineas de
+  despacho OnEntityCreated) vs la .29; los otros 14 verificados
+  byte-identicos en el paquete.
+
+MATERIALES: cero nuevos (los 8 de siempre, copiados identicos de la
+  suite .29; el avatar usa el knuckles.mdl del VPK om_ del servidor).
+
+DIFTS INCLUIDOS: diff_37730_knuckles_v65.txt (+964 lineas),
+  diff_37730_sp.txt (+72), diff_37730_aux.txt (Rouge +4).

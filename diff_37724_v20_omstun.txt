@@ -1,0 +1,444 @@
+--- /home/z/my-project/download/suite_37723/include/OM_Stun.inc	2026-10-08 23:59:39.020069468 +0000
++++ /home/z/my-project/download/suite_37724/include/OM_Stun.inc	2026-10-09 00:31:11.708319162 +0000
+@@ -1,8 +1,37 @@
+ /*
+  * ======================================================
+- *  [MODULO] OM Stun v1.3 - Port del sistema de STUN del mod GMod
++ *  [MODULO] OM Stun v2.0 - EL STUN UNIFICADO DEL SUITE - Port del GMod
+  *  [Pill Pack] Outcome Memories (noodles_om_pills_status.lua)
+  *
++ *  v2.0 (pedido del owner 2026-10-09 — "no es mejor unificar ambos
++ *   stun en un solo documento? ... en si tenemos ragdoll y el stun
++ *   de congelamiento y empuje (tails) pero lo que no tiene el stun
++ *   de tails es las estrellas ... mejor unifiquemos ese sistema para
++ *   ir simplificando todo y no gastemos tanto codigo en la misma
++ *   cosa"):
++ *   - EL STUN UNIFICADO: el congelado del rayo de Tails
++ *     (Tails_SIFreeze* — ~400 lineas paralelas del Tails.inc
++ *     v5.22-v5.26) SE FUSIONA CON ESTE MODULO. Un solo documento para
++ *     el stun de Sonic / Amy / Metal / Tails: mismas capas de freeze
++ *     (martillo + lagged + pausa de animacion), mismos slots por
++ *     userid, mismo ticker 20 Hz, mismas estrellas.
++ *   - EL RAYO GANA LAS ESTRELLAS (lo que le faltaba): el congelado
++ *     por el laser orbita las 3 estrellas amarillas del stun comun +
++ *     chispas + zap del freeze (om_stun_effects lo apaga todo).
++ *   - OPCIONES POR LLAMADA (flags; default 0 = el stun de siempre
++ *     para Sonic/Amy/Metal, CERO cambio en ellos):
++ *       OM_STUN_F_CYAN     tinte hielo (el rayo) en vez de rojo
++ *       OM_STUN_F_PUSH     congelado EMPUJABLE: OM_Stun_Push() lo
++ *                          arrastra por el haz (gravedad/terminal/
++ *                          deslizamiento/reposo del suelo — receta
++ *          Witch_Flight del Tails v5.22: la fisica del vuelo)
++ *       OM_STUN_F_STAGGER  stagger SIEMPRE al liberar (SIStagger_Auto
++ *                          con la red de seguridad de SI_Stagger.inc)
++ *       OM_STUN_F_FIXED    duracion FIJA: los re-stuns no apilan
++ *       OM_STUN_F_NOIFRAME sin iframes al terminar (el rayo puede
++ *                          re-congelar en caliente)
++ *   - NUEVA API: OM_Stun_Push(victim, vel, src) — el rayo (o quien
++ *     sea) sigue empujando al congelado SIN tocar el contador.
+  *  v1.3 (pedido del owner 2026-10-09 — "si podemos hacer algo pausar
+  *   la animacion del infectado especial... literalmente es como poner
+  *   una pausa en su animacion obligandole a que quede congelado (como
+@@ -119,6 +148,9 @@
+ #if !defined _sdkhooks_included
+     #include <sdkhooks>
+ #endif
++#if !defined _si_stagger_included
++    #include <SI_Stagger>   // v2.0: el stagger al liberar (OM_STUN_F_STAGGER)
++#endif
+ 
+ // =======================
+ // Constantes (GMod parity)
+@@ -131,6 +163,28 @@
+ #define OM_STUN_SPRITE_LIFE    0.12   // vida del glow sprite (> tick: solapa suave)
+ #define OM_STUN_SPARK_EVERY    6      // chispas cada N ticks (0.3s al tick de 0.05)
+ 
++// v2.0: fisica del ARRASTRE (OM_STUN_F_PUSH) — receta integra del
++// congelado del rayo de Tails v5.22-v5.26 (que era la receta de la
++// witch del Witch_Flight): gravedad manual, terminal, asentado en el
++// suelo y deslizamiento por paredes con trace world-only.
++#define OM_STUN_PUSH_TICK        0.05    // (= OM_STUN_FX_TICK: el ticker ya corre a 20 Hz)
++#define OM_STUN_PUSH_GRAVITY     800.0   // = sv_gravity default (witch/beam usan lo mismo)
++#define OM_STUN_PUSH_TERMINAL    1600.0  // velocidad de caida maxima (idem)
++#define OM_STUN_PUSH_LIFT        32.0    // colocacion sobre el suelo al aterrizar congelado
++#define OM_STUN_PUSH_PAD         4.0     // margen anti-tunel (solo alarga el trace, NO mueve)
++#define OM_STUN_PUSH_DAMP        0.85    // amortiguacion al deslizar por pared/techo
++#define OM_STUN_PUSH_NUDGE       16.0    // recolocacion pegado al impacto, sin incrustarse
++#define OM_STUN_PUSH_FLOOR_Z     0.65    // normal[2] que cuenta como SUELO
++#define OM_STUN_PUSH_INCRUST     0.05    // fraccion < esto = incrustado: liberar YA
++
++// v2.0: opciones por llamada de OM_Stun() — default 0 = el stun de
++// siempre (estrellas + tinte rojo + apilable + iframes, sin empuje).
++#define OM_STUN_F_CYAN           (1 << 0)   // tinte hielo cyan (el rayo) en vez de rojo
++#define OM_STUN_F_PUSH           (1 << 1)   // congelado empujable (OM_Stun_Push)
++#define OM_STUN_F_STAGGER        (1 << 2)   // stagger SIEMPRE al liberar
++#define OM_STUN_F_FIXED          (1 << 3)   // duracion fija: re-stuns no apilan
++#define OM_STUN_F_NOIFRAME       (1 << 4)   // sin iframes al terminar
++
+ #define DMG_OM_CLUB            (1 << 7)   // DMG_CLUB (default GMod del stun)
+ 
+ #define OM_StunValid(%1) (1 <= %1 <= MaxClients && IsClientInGame(%1) && IsPlayerAlive(%1))
+@@ -159,6 +213,11 @@
+ int     g_iOMStunAnimSeq[MAXPLAYERS + 1];     // v1.3: secuencia capturada al congelar
+ float   g_fOMStunAnimCycle[MAXPLAYERS + 1];   // v1.3: ciclo capturado al congelar
+ float   g_fOMStunAnimRate[MAXPLAYERS + 1];    // v1.3: playback rate original
++int     g_iOMStunFlags[MAXPLAYERS + 1];       // v2.0: flags del ciclo vigente (CYAN/PUSH/STAGGER/FIXED/NOIFRAME)
++float   g_vOMStunPushVel[MAXPLAYERS + 1][3];  // v2.0: velocidad MANUAL del arrastre (NONE no integra)
++float   g_fOMStunPushLast[MAXPLAYERS + 1];    // v2.0: reloj del tick (dt real anti lag-spike)
++bool    g_bOMStunPushRest[MAXPLAYERS + 1];    // v2.0: asentado en el suelo congelado (sin fisica)
++float   g_vOMStunPushSrc[MAXPLAYERS + 1][3];  // v2.0: origen del empuje (dir del stagger final)
+ 
+ ConVar  g_cvOMStunMaxDur;
+ ConVar  g_cvOMStunIframes;
+@@ -193,10 +252,16 @@
+ }
+ 
+ // El corazon: port de Mutaul_OMStunCode. Devuelve true si aterrizo.
++// v2.0: flags configura el ciclo (default 0 = el stun de siempre:
++// estrellas + tinte rojo + apilable + iframes, sin empuje/stagger).
+ bool OM_Stun(int victim, float duration, int attacker = 0,
+-             float damage = 0.0, int dmgType = DMG_OM_CLUB, bool stack = true)
++             float damage = 0.0, int dmgType = DMG_OM_CLUB, bool stack = true,
++             int flags = 0)
+ {
+     if (!OM_StunValid(victim)) return false;
++    // v2.0: FIXED = duracion inamovible (el rayo: "el rayo JAMAS
++    // reinicia el contador") — ni con stack=true un re-stun apila.
++    if ((flags & OM_STUN_F_FIXED) != 0 && OM_IsStunned(victim)) return false;
+     if (!OM_CanStun(victim, stack)) return false;
+ 
+     float now = GetEngineTime();
+@@ -233,6 +298,18 @@
+         // ciclo: los re-stuns del arrastre conservan la captura (mismo
+         // patron del movetype/flag de arriba).
+         OM_Stun_AnimPause(victim);
++
++        // v2.0: flags del ciclo + estado del arrastre listo (mismo
++        // "solo el primero captura": un re-stun NUNCA cambia la
++        // configuracion de un congelado en curso — el congelado manda).
++        g_iOMStunFlags[victim] = flags;
++        float pzero[3] = {0.0, 0.0, 0.0};
++        g_vOMStunPushVel[victim] = pzero;   // vel manual: la integra el ticker si es PUSH
++        g_bOMStunPushRest[victim] = false;  // despierto (no asentado)
++        g_fOMStunPushLast[victim] = now;
++        float psrc[3];
++        GetClientAbsOrigin(victim, psrc);
++        g_vOMStunPushSrc[victim] = psrc;    // dir del stagger final si nunca lo empujan
+     }
+ 
+     // ---- FREEZE (DisablePlayerMovement_OM_stun) ----
+@@ -258,7 +335,12 @@
+         OM_Stun_CreateStars(victim);
+ 
+     if (g_cvOMStunFX == null || g_cvOMStunFX.BoolValue)
+-        SetEntityRenderColor(victim, 255, 90, 90, 255);   // halo rojizo GMod
++    {
++        if (flags & OM_STUN_F_CYAN)
++            SetEntityRenderColor(victim, 150, 220, 255, 255);  // v2.0: hielo (el rayo)
++        else
++            SetEntityRenderColor(victim, 255, 90, 90, 255);   // halo rojizo GMod
++    }
+ 
+     // Screen shake solo para humanas (bots no lo necesitan)
+     if (!IsFakeClient(victim))
+@@ -289,6 +371,23 @@
+     return true;
+ }
+ 
++// v2.0: el arrastre del congelado (ex Tails_SIFreezePush). El rayo (o
++// cualquier caller PUSH) actualiza la velocidad MANUAL que el ticker
++// integra SIN tocar el contador del stun — "puede seguir empujando si
++// pero el tiempo de stun no se reiniciara". Despierta al asentado.
++// No-op si el slot no esta congelado o no nacio PUSH (p.ej. un
++// congelado por Metal: el rayo no lo arrastra, lo respeta).
++void OM_Stun_Push(int victim, const float vel[3], const float src[3])
++{
++    if (victim < 1 || victim > MaxClients) return;
++    if (!OM_IsStunned(victim)) return;
++    if ((g_iOMStunFlags[victim] & OM_STUN_F_PUSH) == 0) return;
++
++    g_vOMStunPushVel[victim] = vel;    // SET: el haz lo CARGA (como a la witch)
++    g_vOMStunPushSrc[victim] = src;    // el stagger final sale de la ultima direccion del empuje
++    g_bOMStunPushRest[victim] = false; // despierta del reposo en el suelo
++}
++
+ // Liberacion inmediata SIN iframes (muertes, cleanup, desconexiones).
+ void OM_Stun_Clear(int victim)
+ {
+@@ -309,6 +408,8 @@
+     g_iOMStunUserId[victim] = 0;
+     g_iOMStunAttacker[victim] = 0;
+     g_iOMStunFXCount[victim] = 0;
++    g_iOMStunFlags[victim] = 0;          // v2.0: configuracion del ciclo fuera
++    g_bOMStunPushRest[victim] = false;   // v2.0: despierto
+ 
+     if (IsClientInGame(victim))
+     {
+@@ -459,10 +560,21 @@
+ }
+ 
+ // Mata todos los timers y vacia los slots (cero datos heredados).
++// v2.0: antes de vaciar, RESTAURAR a cualquier cliente vivo que llegue
++// al fin del mapa con NUESTRO congelado puesto (ex Tails_SIFreezeClearAll:
++// martillo/lagged/tint fuera antes de que el mapa nuevo lo note — en
++// el OnMapStart del mapa nuevo los slots ya estan limpios: no-op).
+ public void OM_Stun_OnMapEnd()
+ {
+     for (int i = 1; i <= MaxClients; i++)
+     {
++        if (g_fOMStunUntil[i] > 0.0 && IsClientInGame(i) && IsPlayerAlive(i))
++        {
++            OM_Stun_Unfreeze(i);
++            OM_Stun_AnimResume(i);
++            SetEntPropFloat(i, Prop_Send, "m_flLaggedMovementValue", 1.0);
++            SetEntityRenderColor(i, 255, 255, 255, 255);
++        }
+         OM_Stun_KillStars(i);
+         if (g_hOMStunTimer[i] != null)
+         {
+@@ -480,6 +592,8 @@
+         g_iOMStunAnimSeq[i] = 0;
+         g_fOMStunAnimCycle[i] = 0.0;
+         g_fOMStunAnimRate[i] = 0.0;
++        g_iOMStunFlags[i] = 0;         // v2.0
++        g_bOMStunPushRest[i] = false;  // v2.0
+     }
+ }
+ 
+@@ -530,12 +644,25 @@
+     // GMod; el motor pelea las anims igual que el movetype)
+     OM_Stun_AnimTick(client);
+ 
+-    float vel[3];
+-    GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
+-    if (vel[0] != 0.0 || vel[1] != 0.0 || vel[2] != 0.0)
++    // v2.0: RAMA DE ARRASTRE (OM_STUN_F_PUSH — ex T_TailsSIFreezeTick
++    // del rayo, receta Witch_Flight): integracion MANUAL de la
++    // velocidad de empuje con gravedad, trace world-only, asentado en
++    // el suelo y deslizamiento por paredes. El congelado NO empujable
++    // sigue con el veto de velocidad de toda la vida.
++    if (g_iOMStunFlags[client] & OM_STUN_F_PUSH)
+     {
+-        float zero[3] = {0.0, 0.0, 0.0};
+-        TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, zero);
++        if (OM_Stun_PushTick(client))
++            return Plugin_Stop;   // incrustado en geometria: liberado YA
++    }
++    else
++    {
++        float vel[3];
++        GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++        if (vel[0] != 0.0 || vel[1] != 0.0 || vel[2] != 0.0)
++        {
++            float zero[3] = {0.0, 0.0, 0.0};
++            TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, zero);
++        }
+     }
+ 
+     // ---- EFECTOS (port del DizzyStarsEffect_OM_stunned) ----
+@@ -628,10 +755,20 @@
+ }
+ 
+ // Fin natural del stun: restaurar TODO + iframes (GMod StunIframesAfterStun)
++// v2.0: las flags del ciclo recien terminado deciden la salida —
++// STAGGER tira el stagger del rayo SIEMPRE ("al terminar el
++// congelamiento el infectado sera stagger al descongelarse") y
++// NOIFRAME se salta la ventana anti-cadena (re-congelable ya).
+ static void OM_Stun_Finish(int client)
+ {
++    // capturar ANTES de limpiar (el stagger necesita atacante + dir)
++    int   flags = g_iOMStunFlags[client];
++    int   atk   = g_iOMStunAttacker[client];
++    float src[3];
++    src = g_vOMStunPushSrc[client];
++
+     OM_Stun_Unfreeze(client);
+-    OM_Stun_AnimResume(client);   // v1.3: devolver la animacion (no-op sin captura)
++    OM_Stun_AnimResume(client);   // v1.3: devolver la animacion (no-op sin captura) — ANTES del stagger
+     OM_Stun_KillStars(client);
+ 
+     if (g_hOMStunTimer[client] != null)
+@@ -641,20 +778,48 @@
+     }
+ 
+     float iframes = 0.5;
+-    if (g_cvOMStunIframes != null)
++    if ((flags & OM_STUN_F_NOIFRAME) != 0)
++        iframes = 0.0;            // el rayo: re-congelable al toque siguiente
++    else if (g_cvOMStunIframes != null)
+         iframes = g_cvOMStunIframes.FloatValue;
+ 
+     g_fOMStunUntil[client] = 0.0;
+     g_fOMStunIframeUntil[client] = GetEngineTime() + iframes;
+     g_iOMStunAttacker[client] = 0;
+     g_iOMStunFXCount[client] = 0;
++    g_iOMStunFlags[client] = 0;          // v2.0
++    g_bOMStunPushRest[client] = false;   // v2.0
+ 
+     if (IsClientInGame(client))
+     {
+         if (IsPlayerAlive(client))
++        {
+             SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
++            float zero[3] = {0.0, 0.0, 0.0};
++            TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, zero);   // v2.0: el stagger arranca limpio (ex Tails)
++        }
+         SetEntityRenderColor(client, 255, 255, 255, 255);
+     }
++
++    // v2.0: STAGGER AL LIBERAR (ex Tails_SIFrzRelease): con la red de
++    // seguridad del SI_Stagger (L4D_CancelStagger levanta a los bots).
++    // Solo vivos del equipo infectado — nunca se tambalea a un
++    // superviviente ni a un cadaver.
++    if ((flags & OM_STUN_F_STAGGER) != 0
++        && IsClientInGame(client) && IsPlayerAlive(client)
++        && GetClientTeam(client) == OM_STUN_SI_TEAM)
++    {
++        SIStagger_Auto(client, atk, src);
++
++        float pos[3];
++        GetClientAbsOrigin(client, pos);
++        pos[2] += 30.0;
++        TE_SetupExplosion(pos, g_iOMStunGlow, 10.0, 1, 0, 0, 0);
++        TE_SendToAll();
++
++        if (atk > 0 && IsClientInGame(atk))
++            PrintHintText(atk, "<font color='#00FFFF' size='20'>>> DESCONGELADO: STAGGER! <<</font>");
++    }
+ }
+ 
+ // Screen shake para victimas humanas (opcional, convar om_stun_shake).
+@@ -676,6 +841,133 @@
+ }
+ 
+ // ============================================================
++//  v2.0: FISICA DEL ARRASTRE (ex cuerpo del T_TailsSIFreezeTick del
++//  rayo de Tails v5.22-v5.26 — receta Witch_Flight, intacta)
++// ============================================================
++
++// v2.0: filtro world-only (patron Witch_Flight / Tails v5.22): el
++// trace del arrastre SOLO se detiene en el mundo — players, props e
++// infectados NUNCA bloquean al congelado en vuelo.
++public bool OM_Stun_WorldOnly(int entity, int contentsMask)
++{
++    return false;
++}
++
++// v2.0: un tick de la fisica del arrastre. Devuelve true si el
++// congelado quedo INCRUSTADO en geometria y hubo que liberarlo YA
++// (el caller corta el timer — patron WF v2.4: nunca se teletransporta
++// a nadie DENTRO de un muro).
++static bool OM_Stun_PushTick(int client)
++{
++    // Reposo sobre el suelo (aterrizo congelado y el empuje lo solto):
++    // cero fisica — evita el ciclo hundimiento-snap. El proximo
++    // OM_Stun_Push lo despierta.
++    if (g_bOMStunPushRest[client]) return false;
++
++    // dt real protegido contra lag spikes
++    float now = GetEngineTime();
++    float dt = now - g_fOMStunPushLast[client];
++    if (dt <= 0.0) dt = OM_STUN_PUSH_TICK;
++    if (dt > 0.25) dt = 0.25;
++    g_fOMStunPushLast[client] = now;
++
++    // Gravedad manual (NONE no integra fisica) + terminal
++    float vel[3];
++    vel = g_vOMStunPushVel[client];
++    vel[2] -= OM_STUN_PUSH_GRAVITY * dt;
++    if (vel[2] < -OM_STUN_PUSH_TERMINAL) vel[2] = -OM_STUN_PUSH_TERMINAL;
++
++    float origin[3];
++    GetEntPropVector(client, Prop_Data, "m_vecAbsOrigin", origin);
++
++    // Desplazamiento real del tick
++    float move[3];
++    move = vel;
++    ScaleVector(move, dt);
++
++    // Extremo del trace con margen anti-tunel (el margen SOLO alarga
++    // el trace, NO mueve al congelado)
++    float traceEnd[3];
++    traceEnd = move;
++    float len = GetVectorLength(move);
++    if (len > 1.0)
++    {
++        float pad[3];
++        pad = move;
++        NormalizeVector(pad, pad);
++        ScaleVector(pad, OM_STUN_PUSH_PAD);
++        AddVectors(traceEnd, pad, traceEnd);
++    }
++    AddVectors(origin, traceEnd, traceEnd);
++
++    // Colision SOLO contra el mundo (mismo filtro del Witch_Flight)
++    Handle trace = TR_TraceRayFilterEx(origin, traceEnd, MASK_SOLID,
++                                       RayType_EndPoint,
++                                       OM_Stun_WorldOnly, 0);
++
++    if (TR_DidHit(trace) && TR_GetFraction(trace) < OM_STUN_PUSH_INCRUST)
++    {
++        // INCRUSTADO en geometria (patron WF v2.4): liberar YA con
++        // stagger — nunca congelado dentro de un muro.
++        delete trace;
++        OM_Stun_Finish(client);
++        return true;
++    }
++
++    if (TR_DidHit(trace))
++    {
++        float hitPos[3], normal[3];
++        TR_GetEndPosition(hitPos, trace);
++        TR_GetPlaneNormal(trace, normal);
++        delete trace;
++
++        if (normal[2] >= OM_STUN_PUSH_FLOOR_Z)
++        {
++            // SUELO: asentarlo congelado y a reposo (vel 0)
++            float land[3];
++            land = hitPos;
++            land[2] += OM_STUN_PUSH_LIFT;
++            TeleportEntity(client, land, NULL_VECTOR, NULL_VECTOR);
++            float zeroV[3] = {0.0, 0.0, 0.0};
++            g_vOMStunPushVel[client] = zeroV;
++            g_bOMStunPushRest[client] = true;
++        }
++        else
++        {
++            // PARED/TECHO -> deslizar: quitar la componente que ENTRA
++            // en la superficie + amortiguar (patron WF)
++            float dot = GetVectorDotProduct(vel, normal);
++            if (dot < 0.0)
++            {
++                float proj[3];
++                proj = normal;
++                ScaleVector(proj, dot);
++                SubtractVectors(vel, proj, vel);
++            }
++            ScaleVector(vel, OM_STUN_PUSH_DAMP);
++            g_vOMStunPushVel[client] = vel;
++
++            // Recolocar pegado al impacto, sin incrustarse
++            float nudge[3], safe[3];
++            nudge = normal;
++            ScaleVector(nudge, OM_STUN_PUSH_NUDGE);
++            AddVectors(hitPos, nudge, safe);
++            TeleportEntity(client, safe, NULL_VECTOR, NULL_VECTOR);
++        }
++    }
++    else
++    {
++        // Vuelo libre: avanzar (origin + move, SIN el pad del trace)
++        delete trace;
++        g_vOMStunPushVel[client] = vel;
++        float newOrigin[3];
++        AddVectors(origin, move, newOrigin);
++        TeleportEntity(client, newOrigin, NULL_VECTOR, NULL_VECTOR);
++    }
++    return false;
++}
++
++// ============================================================
+ //  v1.1: ESTRELLAS REALES DEL GMOD (env_sprite + VPK om_)
+ // ============================================================
+ 

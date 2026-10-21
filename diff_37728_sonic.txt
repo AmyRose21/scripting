@@ -1,0 +1,32 @@
+--- /home/z/my-project/download/suite_37727_ajustes/include/sonic.inc	2026-10-09 05:57:20.224987913 +0000
++++ /home/z/my-project/builds/OM37728/scripting/include/sonic.inc	2026-10-09 07:02:36.337443380 +0000
+@@ -6237,9 +6237,17 @@
+ 
+ // Pounce del hunter: la esquiva lo bloquea ANTES de aplicarse (sin
+ // mini-pounce de 1 tick). En bola es inmunidad directa (D).
++// v3.77.28 (Metal v5.3): el hunter TAMPOCO ensarta a un Metal en plena
++// embestida — este es el forward REAL (el guard de la 3.77.27 vivia en
++// un "L4D_OnPouncedOnSurvivor_Pre" fantasma que nunca corria). De paso
++// reviven las contras de Amy/Knuckles que el fantasma cableaba (las
++// mismas funciones que ya corrian en el carry del charger).
+ public Action L4D_OnPouncedOnSurvivor(int victim, int attacker)
+ {
+     if (Sonic_PounceGuard(victim)) return Plugin_Handled;
++    if (g_iPlayerCharIdx[victim] == METALSONIC_INDEX && Metal_ControlImmune(victim)) return Plugin_Handled;
++    if (g_iPlayerCharIdx[victim] == AMY_INDEX && Amy_GrabCounter(victim, attacker)) return Plugin_Handled;
++    if (Knuckles_CheckSpecialCounter(victim, attacker)) return Plugin_Handled;
+     return Plugin_Continue;
+ }
+ 
+@@ -6247,6 +6255,11 @@
+ public Action L4D2_OnJockeyRide(int victim, int attacker)
+ {
+     if (Sonic_JockeyGuard(victim)) return Plugin_Handled;
++    // v3.77.28 (Metal v5.3): el jockey no monta a un Metal en embestida
++    // (forward real) + contras Amy/Knuckles revividas del fantasma.
++    if (g_iPlayerCharIdx[victim] == METALSONIC_INDEX && Metal_ControlImmune(victim)) return Plugin_Handled;
++    if (g_iPlayerCharIdx[victim] == AMY_INDEX && Amy_GrabCounter(victim, attacker)) return Plugin_Handled;
++    if (Knuckles_CheckSpecialCounter(victim, attacker)) return Plugin_Handled;
+     return Plugin_Continue;
+ }
+ 

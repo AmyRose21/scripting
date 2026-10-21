@@ -1,0 +1,108 @@
+================================================================================
+ VERIFICACION — SUITE 3.77.37 (build del 2026-10-10)
+ Compilador: SourcePawn Compiler 1.11.0.6970 (spcomp64)
+ Base: scripting3.zip del owner (file.garden, sha256
+       275df27e218745f6ae9d28ed0060684f3d39a6147838cf4c61733373320b9f7e)
+       con overlay handles.inc del SM 1.11 oficial (el del zip es viejo
+       y no compila con spcomp 1.11 — error 118 custom destructors)
+================================================================================
+
+ 1) LINEA BASE DEL COMPILADOR
+    - Manager 3.77.34 SIN TOCAR (baseline): 28 warnings.
+      smx sha256 763742efce55a1c021605172ac257ca87f5cd104d9fb4884f2ca5f72f7092ce7
+    - Manager 3.77.37 CON LA DELEGACION: 28 warnings = LINEA BASE EXACTA
+      (0 warnings nuevos, 0 perdidos; el g_iKnuxOrbSprite huerfano se
+      elimino con su precache para volver al 28 exacto).
+    - Parry.sp v2.1: 2 warnings = los mismos preexistentes de v1.4/v1.5
+      (cv_ParryMinSpeed + fwd, documentados desde la v1.4 del owner).
+      El .sp del paquete es BYTE A BYTE el que el owner integro en su
+      scripting3.zip (sha256 3f87d9369b2cb2b1584de6748f96de6360ac7f7d
+      1e8e2086cb25b060d42a2541). El smx se recompila AQUI para que
+      salga del mismo arbol de includes que el manager (los includes
+      stock del scripting3 son mas nuevos que los del overlay viejo —
+      de ahi los +369 B frente al build KNXCHCH de la Task 45).
+
+ 2) FORENSE DE CADENAS (payload zlib del FFPS, dataoffs@20)
+
+    MANAGER 3.77.37 — presentes:
+      3.77.37 / v70-OM / knux_punch_cooldown / knux_counter_duration /
+      knux_avatar / sm_knux_counter / knux_sky_cooldown / knux_fist_fire /
+      Sonic_Suite.cfg / knuckles.mdl                      [10/10 OK]
+
+    MANAGER 3.77.37 — ELIMINADOS (cero apariciones en el payload):
+      knux_parry_projectiles / knux_parry_spit / knux_parry_rocks /
+      knux_parry_radius / Knux_ParryScan / Knux_ParryReflect /
+      Knux_ParryWatchRock / Knux_ParryExplosion / Knux_Event_SpitBurst /
+      T_KnuxSpitBurstBoom / T_KnuxParryWatch / 3.77.34 / v69-OM
+                                                          [13/13 OK]
+      (las cadenas tank_rock/spitter_projectile que quedan en el smx
+      son de OTROS modulos: Amy.inc las usa para su golpe/LOS,
+      sonic.inc para el homing, Rouge.inc para su acido, y
+      left4dhooks.inc las declara — usos legitimos intactos.)
+
+    PARRY v2.1 — presentes:
+      ChCh_KnxNotify / knx_parry_runner / chch_parrying /
+      uk_parry_knx_api / uk_parry_smx_instant / knxparry_state /
+      uk_parry_window / uk_parry_radius / tank_rock /
+      spitter_projectile / PIEDRA DEVUELTA!              [11/11 OK]
+
+ 3) KNUCKLES.INC v70-OM (post-edicion, grep de referencias vivas)
+    - Cero referencias en CODIGO a: Knux_Parry*, knux_parry_*,
+      KNUX_PARRY_*, spit_burst, g_fKnuxNextSpitScan,
+      Knux_Find/MarkParriedSpit, g_iKnuxParriedSpit*,
+      T_KnuxKillEnt, Knux_ParryConeOK, g_iKnuxOrbSprite.
+    - Las unicas menciones restantes son los COMENTARIOS del
+      changelog historico (v66-v69) en el header — no compilan.
+    - 192,002 -> 175,073 bytes (-16,929 = todo el maquinario).
+    - El counter de golpes fisicos (sm_knux_counter, bloqueo melee,
+      animaciones counter/counter_hit, tintes) INTACTO.
+
+ 4) CHCH_PARRYING.NUT v2.2 (el ejecutor — verificacion completa)
+    - 899 lineas, sin CRLF, balance {}/()/[] con parser
+      strings/comentarios: 0 errores.
+    - Marcadores v2.2: 20/20 (ChCh_KnxNotify, KnxWindows, KnxWindowScan,
+      KnxWindowTick, Knx_Window_*, KnxIsIncoming, KnxIsFriendly,
+      KnxWindowFeedback, KnxEnemyCD, ChCh_KnxEventsBound,
+      uk_parry_knx_api, ...).
+    - Funciones originales del v2.1 intactas: 7/7 (0 perdidas).
+    - BYTE A BYTE el build verificado de la entrega anterior
+      (sha256 dec637f288bd1fea36b50092c1dc0a303f11369be5bc9bf869bc6345b1586b94).
+    - knuckles_parry_state.nut byte a byte igual
+      (8d54ec1c3e813f9aa187a2bbe8a46a79359d0063cc2dc22a01af71586f55cb1b).
+
+ 5) INCLUDES DEL PAQUETE
+    - 16 includes: Knuckles.inc v70-OM (el unico cambiado) + 15
+      verificados byte a byte contra el scripting3.zip del owner
+      (cmp 15/15 OK).
+    - REFERENCIA_chch_parrying.nut: intacto (el v2.1 de referencia).
+    - materials/icons/ (10): extraidos del suite_37736 (identicos a
+      los de la .34/.35 — cero cambios de recursos en esta version).
+
+ 6) COHERENCIA DE LA ARQUITECTURA (el SMX avisa, el .nut parrea)
+    - El shove abre ventana (Parry_OpenWindow -> Parry_SetWindow ->
+      Parry_NotifyNut ON con la duracion) y TODOS los cierres pasan
+      por Parry_CloseWindow -> NotifyNut OFF (expiry del timer,
+      knxparry_state 0, jugador invalido, disconnect).
+    - Con handshake (uk_parry_knx_api=1) el smx NO corre su
+      WindowScan nativo (bridge=true) — el .nut es el ejecutor.
+    - El .nut v2.2 cierra su ventana por: la orden de apagado del
+      smx, su propio Knx_Window_Max (tope anti-olvido), round_start.
+    - Fallbacks sin regresion: sin .nut -> ejecutor nativo v2.0 del
+      smx; .nut viejo (v2.1 sin ChCh_KnxNotify) -> el aviso no
+      encuentra la funcion y no pasa nada (el smx sigue con el
+      nativo); sin smx -> el .nut funciona como v2.1 pura + ventanas
+      manuales por consola (script ChCh_KnxNotify(1,1,2.0)).
+
+ 7) DOBLES / CONFLICTOS
+    - El parry instantaneo del shove (smx v1.4) y la ventana del .nut
+      conviven sin duplicar: el .nut NO toca lo que ya es tuyo
+      (KnxIsFriendly: m_hThrower propio o de otro survivor = no se
+      agarra) y el filtro incoming (receta Amy: >250 u/s + coseno
+      0.3) evita agarrar lo que se aleja.
+    - La postura del manager ya NO escanea proyectiles (cero doble
+      con el .nut) — SOLO counter de golpes fisicos como siempre.
+    - Si el doble sonido del shove molesta (instantaneo + ventana):
+      uk_parry_smx_instant 0 apaga el del smx.
+
+ TODO VERIFICADO — BUILD SANO
+================================================================================

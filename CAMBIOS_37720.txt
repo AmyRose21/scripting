@@ -1,0 +1,142 @@
+================================================================
+ SUITE 3.77.20 "LAS ESFERITAS BLANCAS"  (sonic.inc v6.27-OM)
+================================================================
+
+QUINTO REPORTE DEL OWNER (probando la 3.77.19, 2026-10-09):
+
+  1. "weon y las cositas blancas que habia antes?... que las
+     hisiste desaparecieron"
+  2. "la linea roja salio un poco mal pero ya dejalo asi pero el
+     coso del cuerpo veamos"
+  3. (aporta el QC del modelo: file.garden/aoWRYc0-p1TyFbL9/sonic.qc)
+     "la linea que te dije nace y se elaza aqui. Torso asi se llama
+     la pieza del cuerpo de sonic. las rojas estan bn salen en sus
+     sapatos pero no estan como el spindash que nace y esta siempre
+     pegado al cuerpo si no que estas salen pero se quedan atras."
+  4. "las esferitas blancas que desapareciste nacen de Torso tambien
+     y se dispersan aleatoriamanete y camvien el humo blanco (lo
+     dice el lua de G mod no mms...)"
+  5. "el aspa azul del video esta bn xq en el Gmod original tambien
+     sale."
+
+================================================================
+ QUE DICE EL QC DEL MODELO (Noodles/OM/Sonic.mdl)
+================================================================
+
+  $attachment "Trail"          -> bone "Trail" a +19.08z, con la
+      secuencia AUTOPLAY "attatchfix" cuyo weightlist pesa SOLO ese
+      bone: queda FIJO pegado al cuerpo en todas las animaciones.
+      ES el punto donde "nace y se enlaza la linea" del cuerpo.
+      Nuestro info_target +20z del beam azul YA esta ahi (el Lua
+      GMod L1213 tambien usaba +20z) -> CONFIRMADO, no se toca.
+  $attachment "LeftFootTrail"  -> hijo del bone LeftFoot (offset
+      lateral 2.46u): donde el Lua cuelga el Sonicred IZQUIERDO
+      (attachment 2 del puppet, L1236).
+  $attachment "RightFootTrail" -> hijo del bone RightFoot: el
+      Sonicred DERECHO (attachment 3, L1247). "las rojas estan bn
+      salen en sus sapatos" -> posicion correcta, se dejan como
+      estan (orden del owner: "ya dejalo asi").
+  $definebone "Torso"          -> la PIEZA DEL CUERPO (hijo del
+      Root). De aqui nacen LAS ESFERITAS BLANCAS.
+
+================================================================
+ QUE DICE EL LUA DE GMOD (el owner tiene razon: "no mms")
+================================================================
+
+  Las esferitas blancas = efecto OM_tinyball_fleetway
+  (lua/effects/om_noodles_effects_fleetway.lua L657-742, registrado
+  en L742; disparado por el model-effects del personaje):
+
+    Material("icons/Fleetways_tiny_balls.png", "smooth")
+    cada 0.1s: 40 intentos x 1/6 de exito (~6.7 bolitas)
+    NACEN: GetBoneMatrix(bone "Torso"):GetTranslation()
+           + Vector(rand(-10,10), rand(-10,10), rand(-10,10)) * 1.2
+    VELOCIDAD: VectorRand():GetNormalized() * math.Rand(15,40)*2
+           = 30-80 uu/s EN CUALQUIER DIRECCION (se dispersan)
+    Color(255,255,255) BLANCAS, alpha 150 -> 0
+    size 0.5-1 -> 0 (puntitos), vida 1.2-2.5s
+    gravedad (0,0,rand(1,3)) suave hacia ARRIBA, air resistance 40
+
+  Y como pide el owner: "CAMBIAN el humo blanco" -> en la carrera
+  el humo blanco-azulado se va y en su lugar van LAS ESFERITAS.
+
+================================================================
+ CAMBIOS 1-a-1 (sonic.inc v6.26-OM -> v6.27-OM)
+================================================================
+
+  1) NUEVO MATERIAL AUTENTICO: materials/icons/
+     fleetways_tiny_balls.vmt + .vtf — convertido del PNG REAL del
+     pack del owner (70x72 RGBA -> 64x64 RGBA8888, VTF 7.2, 7 mips,
+     flags 0x2000; la estrellita crema-blanca (189,248,185) queda
+     exacta — roundtrip verificado). Gate FileExists + PrecacheModel
+     + AddMatToDownloads como los otros 5. Sin el archivo: fallback
+     glow01 BLANCO (misma lectura de puntito brillante).
+
+  2) NUEVA Sonic_PeelTinyBall (la llama la FSM de la carrera junto
+     al CloudTick, 10 Hz = la cadencia del emitter GMod):
+       - 2-3 esferitas por latido (~25/s — alla eran 67/s pero eran
+         particulas de CLIENTE gratis; aqui cada una es un edict)
+       - nacen DEL TORSO: pos + 24z ± 12u (bone Torso del QC ~19z,
+         emitter del Think +27z, moon +35z — coherente)
+       - BLANCAS "255 255 255" alpha 150, escala 0.05-0.09
+         (puntito brillante, las estrellas OM_Stun 0.10 ya
+         aprobadas son la referencia de tamano)
+       - vida 1.2-2.5s (de las mas largas del suite: la nube queda
+         VIVA detras cuando el corredor ya paso — la firma del look)
+
+  3) NUEVA Sonic_SpawnPeelBall — el MOVIMIENTO REAL:
+       env_sprite aditivo + SetEntityMoveType(MOVETYPE_FLY) +
+       TeleportEntity con velocity 30-80 uu/s aleatoria (sesgo +z
+       que reemplaza la gravedad suave del lua) => EL ENGINE LAS
+       DISPERSA solo, tick a tick, sin timers ni thinks. Kill
+       diferido por I/O (OnUser1) como todo el suite: cero leaks.
+       (Degradacion documentada: si el movetype no simulase en algun
+       build, quedan como puffs estaticos — inofensivo.)
+
+  4) "CAMBIAN EL HUMO BLANCO": los 5 HUMOS "135 185 255" del
+     PeelCloudTick FUERA. La nube de la carrera queda:
+       ESFERITAS BLANCAS voladoras (protagonistas)
+       + 5 glows "125 125 175" (las lineas de velocidad del video
+       GMod, aprobadas desde la .18)
+       + 1 moon + luz azul 170/1.1.
+
+  5) INTACTOS por orden expreso del owner:
+       - la linea ROJA de los zapatos ("ya dejalo asi")
+       - el ASPA AZUL ("esta bn xq en el Gmod original tambien sale")
+       - el beam AZUL 3 capas (ya nace a +20z = attachment Trail)
+       - el POLVO GRIS de la carga (sonic_peeloutdust2_OM original)
+       - TODO el resto del suite (cero gameplay, cero cvars)
+
+================================================================
+ QUE PROBAR (plan de prueba del owner)
+================================================================
+
+  a) Instalar: smx a plugins/ + la carpeta materials/ completa del
+     zip (ahora son 8 archivos: los 6 de siempre + los 2 nuevos de
+     las esferitas). Sin los materials igual funciona (fallback
+     glow01 blanco) pero la estrellita autentica los necesita.
+
+  b) Correr el Peel Out y mirar la CARRERA:
+     - Esferitas BLANCAS chiquitas naciendo del TORSO que SALEN
+       VOLANDO en todas direcciones y quedan flotando atras ~1-2s
+     - Sin el humo blanco-azulado de antes (lo cambian las esferitas)
+     - Los glows azul-claros + moon + beam + rojas igual que la .19
+
+  c) Si algo no calza, receta de calibracion 1-liner (decir cual):
+     - esferitas muy chicas/grandes -> escala 0.05-0.09 en
+       Sonic_SpawnPeelBall (1 linea)
+     - muy pocas/muchas -> GetRandomInt(2,3) en Sonic_PeelTinyBall
+     - no se mueven (quedan clavadas) -> el movetype no simula:
+       se cambia a dispersion-en-nacimiento (pos ya dispersa)
+
+================================================================
+ ARCHIVOS DEL ZIP
+================================================================
+
+  Sonic_ability_manager.smx   (3.77.20)
+  Sonic_ability_manager.sp    (fuente)
+  include/ (9 .inc — sonic.inc v6.27-OM + 8 intactos)
+  materials/icons/ (8: + fleetways_tiny_balls.vmt/.vtf NUEVOS)
+  diff_37720_v627.txt (diff completo vs 3.77.19)
+  VERIFICACION_37720.txt (forense del binario)
+  worklog.md (el registro completo pedido)

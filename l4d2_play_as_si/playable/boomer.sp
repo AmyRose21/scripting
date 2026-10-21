@@ -3,108 +3,217 @@
 #endif
 #define _pure_play_as_si_boomer_included
 
-StringMap boomerVomitedList;
-StringMap boomerVoomitOwner;
-Handle boomerVomitTimers[MAXPLAYERS + 1];
-Handle boomerBonusDamageTimer;
+Handle g_hBoomerVomitTimers[MAXPLAYERS + 1];
+// float g_fBoomerScale[MAXPLAYERS + 1];
+// int g_iBoomerBiteCount[MAXPLAYERS + 1];
 
-ConVar boomerHp;
-ConVar boomerClawDmg;
-ConVar boomerBonusDmg;
-ConVar boomerExplosionDmg;
-ConVar boomerExplosionRadius;
-ConVar boomerExplosionForce;
-ConVar boomerHealPoint;
-ConVar boomerVomitRadius;
-ConVar boomerVomitAngle;
-ConVar boomerVomitEffectDuration;
-ConVar boomerAbilityCooldown;
+float g_fBoomerVomitDamageRangeSquare;
+float g_fBoomerExplosionRangeSquare;
 
+ConVar g_hCvarBoomerHp;
+ConVar g_hCvarBoomerClawDmg;
+ConVar g_hCvarBoomerBonusDmg;
+ConVar g_hCvarBoomerExplosionDmg;
+ConVar g_hCvarBoomerExplosionRadius;
+ConVar g_hCvarBoomerExplosionForce;
+ConVar g_hCvarBoomerHealPoint;
+ConVar g_hCvarBoomerVomitRadius;
+ConVar g_hCvarBoomerAbilityCooldown;
+// !rcon sm plugins reload l4d2_play_as_si
 void AddBoomerConVars()
 {
-    boomerVomitedList = new StringMap();
-    boomerVoomitOwner = new StringMap();
-
     char desc[128];
     Format(desc, 128, "%t", "ConVar Boomer HP");
-    boomerHp = CreateConVar("l4d2_play_as_si_boomer_hp", "400", desc, 0, true, 100.0);
+    g_hCvarBoomerHp = CreateConVar("l4d2_play_as_si_boomer_hp", "400", desc, 0, true, 100.0);
     Format(desc, 128, "%t", "ConVar Boomer Claw Damage");
-    boomerClawDmg = CreateConVar("l4d2_play_as_si_boomer_claw_dmg", "150.0", desc, 0, true, 10.0);
+    g_hCvarBoomerClawDmg = CreateConVar("l4d2_play_as_si_boomer_claw_dmg", "150.0", desc, 0, true, 10.0);
     Format(desc, 128, "%t", "ConVar Boomer Bonus Damage");
-    boomerBonusDmg = CreateConVar("l4d2_play_as_si_boomer_bonus_dmg", "100.0", desc, 0, true, 50.0);
+    g_hCvarBoomerBonusDmg = CreateConVar("l4d2_play_as_si_boomer_bonus_dmg", "100.0", desc, 0, true, 50.0);
     Format(desc, 128, "%t", "ConVar Boomer Explosion Damage");
-    boomerExplosionDmg = CreateConVar("l4d2_play_as_si_boomer_explosion_dmg", "100.0", desc, 0, true, 50.0);
+    g_hCvarBoomerExplosionDmg = CreateConVar("l4d2_play_as_si_boomer_explosion_dmg", "100.0", desc, 0, true, 50.0);
     Format(desc, 128, "%t", "ConVar Boomer Explosion Radius");
-    boomerExplosionRadius = CreateConVar("l4d2_play_as_si_boomer_explosion_radius", "100.0", desc, 0, true, 50.0);
+    g_hCvarBoomerExplosionRadius = CreateConVar("l4d2_play_as_si_boomer_explosion_radius", "100.0", desc, 0, true, 50.0);
     Format(desc, 128, "%t", "ConVar Boomer Explosion Force");
-    boomerExplosionForce = CreateConVar("l4d2_play_as_si_boomer_explosion_force", "1000.0", desc, 0, true, 300.0);
+    g_hCvarBoomerExplosionForce = CreateConVar("l4d2_play_as_si_boomer_explosion_force", "1000.0", desc, 0, true, 300.0);
     Format(desc, 128, "%t", "ConVar Boomer Heal");
-    boomerHealPoint = CreateConVar("l4d2_play_as_si_boomer_heal_point", "400.0", desc, 0, true, 100.0);
+    g_hCvarBoomerHealPoint = CreateConVar("l4d2_play_as_si_boomer_heal_point", "400.0", desc, 0, true, 100.0);
     Format(desc, 128, "%t", "ConVar Boomer Vomit Radius");
-    boomerVomitRadius = CreateConVar("l4d2_play_as_si_boomer_vomit_radius", "200.0", desc, 0, true, 100.0);
-    Format(desc, 128, "%t", "ConVar Boomer Vomit Angle");
-    boomerVomitAngle = CreateConVar("l4d2_play_as_si_boomer_vomit_angle", "45.0", desc, 0, true, 90.0);
-    Format(desc, 128, "%t", "ConVar Boomer Vomit Effect Duration");
-    boomerVomitEffectDuration = CreateConVar("l4d2_play_as_si_boomer_vomit_effect_duration", "10.0", desc, 0, true, 5.0);
+    g_hCvarBoomerVomitRadius = CreateConVar("l4d2_play_as_si_boomer_vomit_radius", "200.0", desc, 0, true, 100.0);
     Format(desc, 128, "%t", "ConVar Boomer Ability Cooldown");
-    boomerAbilityCooldown = CreateConVar("l4d2_play_as_si_boomer_ability_cooldown", "4.0", desc, 0, true, 0.0);
+    g_hCvarBoomerAbilityCooldown = CreateConVar("l4d2_play_as_si_boomer_ability_cooldown", "4.0", desc, 0, true, 0.0);
 }
 
-public void OnBoomerSuccess(int client)
+void AfterConvarConfigExec_Boomer()
 {
-    SetEntProp(client, Prop_Data, "m_iHealth", GetConVarInt(boomerHp));
-    SetEntProp(client, Prop_Data, "m_iMaxHealth", GetConVarInt(boomerHp));
-}
-
-public void OnBoomerAbilityUse(int client)
-{
-    if(boomerVomitTimers[client] == null)
+    if(GetConVarFloat(g_hCvarBoomerVomitRadius) >= 10000.0)
     {
-        DataPack dp;
-        boomerVomitTimers[client] = CreateDataTimer(0.3, TimerVomit, dp, TIMER_REPEAT);
-        dp.WriteCell(client);
-        dp.WriteFloat(GetGameTime() + 3.0);
+        g_fBoomerVomitDamageRangeSquare = 100000000.0;
+        SetConVarFloat(g_hCvarBoomerVomitRadius, 10000.0);
+    }
+    else
+    {
+        g_fBoomerVomitDamageRangeSquare = GetConVarFloat(g_hCvarBoomerVomitRadius) * GetConVarFloat(g_hCvarBoomerVomitRadius);
+    }
+
+    if(GetConVarFloat(g_hCvarBoomerExplosionRadius) >= 10000.0)
+    {
+        g_fBoomerExplosionRangeSquare = 100000000.0;
+        SetConVarFloat(g_hCvarBoomerExplosionRadius, 10000.0);
+    }
+    else
+    {
+        g_fBoomerExplosionRangeSquare = GetConVarFloat(g_hCvarBoomerExplosionRadius) * GetConVarFloat(g_hCvarBoomerExplosionRadius);
     }
 }
 
-Action TimerVomit(Handle timer, DataPack dp)
+void ClearPlayerBoomer(int client)
+{
+    SetEntityMoveType(client, MOVETYPE_WALK);
+    CloseHandleSafety(g_hBoomerVomitTimers[client]);
+}
+
+public Action L4D_ActivateAbility_Boomer(int client, int ability)
+{
+    if(!IsSurvivor(client))
+        return Plugin_Continue;
+    
+    // Block all
+    return Plugin_Handled;
+}
+
+public void L4D_ActivateAbility_Boomer_PostHandled(int client, int ability)
+{
+    if(!IsSurvivor(client))
+        return;
+    if(g_hBoomerVomitTimers[client] != null)
+    {
+        L4D2_SetCustomAbilityCooldown(client, 9999999.0);
+        return;
+    }
+    L4D2_SetCustomAbilityCooldown(client, 9999999.0);
+
+    float endPos[3]; GetAbsOrigin(client, endPos); endPos[2] += 300.0;    
+    SetEntityMoveType(client, MOVETYPE_NONE);
+
+    DataPack dp = CreateDataPack();
+    dp.WriteCell(client);
+    dp.WriteFloatArray(endPos, 3);
+    
+    RequestFrame(BoomerTakeOff, dp);
+}
+
+void BoomerTakeOff(DataPack dp)
 {
     dp.Reset();
     int client = dp.ReadCell();
+    if(!IsSurvivor(client) || !IsPlayerAlive(client) || g_hPlayerZombie[client] == null)
+    {
+        delete dp;
+        return;
+    }
+
+    float pos[3]; GetAbsOrigin(client, pos);
+    float endPos[3]; dp.ReadFloatArray(endPos, 3);
+
+    if(GetVectorDistance(pos, endPos, true) <= 100.0)
+    {
+        delete dp;
+        g_hBoomerVomitTimers[client] = CreateTimer(GetTickInterval(), TimerBoomerListener, client, TIMER_REPEAT);
+        
+        PrintToChat(client, "%t", "Chat Boomer Taken Off");
+        PrintHintText(client, "%t", "Hint Boomer Taken Off");
+        return;
+    }
+
+    pos[2] += 10.0;
+    TeleportEntity(client, pos);
+
+    RequestFrame(BoomerTakeOff, dp);
+}
+
+Action TimerBoomerListener(Handle timer, int client)
+{
     if(!IsClientInGame(client) || !IsPlayerAlive(client))
     {
-        boomerVomitTimers[client] = null;
+        g_hBoomerVomitTimers[client] = null;
         return Plugin_Stop;
     }
-    float endTime = dp.ReadFloat();
-    if(endTime < GetGameTime())
-    {
-        boomerVomitTimers[client] = null;
-        SetAbilityCooldown(client, GetConVarFloat(boomerAbilityCooldown), 0.5);
-        return Plugin_Stop;
-    }
-    float center[3];
-    GetAbsOrigin(client, center);
-    float eyeAngle[3];
-    GetClientEyeAngles(client, eyeAngle);
-    float eyeDir[3];
-    GetAngleVectors(eyeAngle, eyeDir, NULL_VECTOR, NULL_VECTOR);
 
+    if(GetClientButtons(client) & IN_ATTACK)
+    {
+        float endPos[3]; GetAbsOrigin(client, endPos); endPos[2]-= 295.0;
+
+        DataPack dp = CreateDataPack();
+        dp.WriteCell(client);
+        dp.WriteFloatArray(endPos, 3);
+    
+        RequestFrame(BoomerLanded, dp);
+
+        g_hBoomerVomitTimers[client] = null;
+        return Plugin_Stop;
+    }
+
+    return Plugin_Continue;
+}
+
+void BoomerLanded(DataPack dp)
+{
+    dp.Reset();
+    int client = dp.ReadCell();
+    if(!IsSurvivor(client) || !IsPlayerAlive(client) || g_hPlayerZombie[client] == null)
+    {
+        delete dp;
+        return;
+    }
+
+    float pos[3]; GetAbsOrigin(client, pos);
+    float endPos[3]; dp.ReadFloatArray(endPos, 3);
+
+    if(GetVectorDistance(pos, endPos, true) <= 400.0)
+    {
+        delete dp;
+        OnBoomerJumpDownArrived(client);
+        return;
+    }
+
+    pos[2] -= 20.0;
+    TeleportEntity(client, pos);
+
+    RequestFrame(BoomerLanded, dp);
+}
+
+void OnBoomerJumpDownArrived(int client)
+{    
+    SetEntityMoveType(client, MOVETYPE_WALK);
+    
+    L4D2_SetCustomAbilityCooldown(client, GetConVarFloat(g_hCvarBoomerAbilityCooldown));
+
+    float center[3]; GetAbsOrigin(client, center);
     float victimPos[3];
-    float dir[3];
+    float velocity[3];
     for(int i = 1; i <= MaxClients; i++)
     {
-        if(!IsInfected(i))
-            continue;
-        GetAbsOrigin(i, victimPos);
-        MakeVectorFromPoints(center, victimPos, dir);
-
-        if(GetVectorDistance(center, victimPos) <= GetConVarFloat(boomerVomitRadius) && GetAngleBetweenTwoDirections(eyeDir, dir) <= GetConVarFloat(boomerVomitAngle))
+        if(IsInfected(i) && IsPlayerAlive(i))
         {
-            AddToVomit(i, client);
-            L4D_CTerrorPlayer_OnVomitedUpon(i, client);
+            GetAbsOrigin(i, victimPos);
+            if(GetVectorDistance(center, victimPos, true) > g_fBoomerVomitDamageRangeSquare)
+                continue;
+
+            GetEntPropVector(i, Prop_Data, "m_vecVelocity", velocity);
+            AddVectors(velocity, {0.0, 0.0, 1000.0}, velocity);
+            TeleportEntity(i, NULL_VECTOR, NULL_VECTOR, velocity);
+            SDKHooks_TakeDamage(i, client, client, GetConVarFloat(g_hCvarBoomerBonusDmg), DMG_GENERIC, -1, NULL_VECTOR, NULL_VECTOR, false);
+        }
+        else if(IsSurvivor(i) && IsPlayerAlive(i))
+        {
+            GetAbsOrigin(i, victimPos);
+            if(GetVectorDistance(center, victimPos, true) > g_fBoomerVomitDamageRangeSquare)
+                continue;
+            
+            ShakeScreen(i, 0, 50.0, 100.0, 3.0);
         }
     }
+
     char classname[9];
     for(int i = MAXPLAYERS; i <= GetMaxEntities(); i++)
     {
@@ -114,43 +223,40 @@ Action TimerVomit(Handle timer, DataPack dp)
         if(classname[0] != 'i' && classname[0] != 'w')
             continue;
 
-        bool isWitch = StrEqual(classname, "witch", false);
-        if(!StrEqual(classname, "infected", false) && !isWitch)
-            continue;
-
         GetAbsOrigin(i, victimPos);
-        MakeVectorFromPoints(center, victimPos, dir);
-        if(GetVectorDistance(center, victimPos) <= GetConVarFloat(boomerVomitRadius) && GetAngleBetweenTwoDirections(eyeDir, dir) <= GetConVarFloat(boomerVomitAngle))
+        if(GetVectorDistance(center, victimPos, true) > g_fBoomerVomitDamageRangeSquare)
+            continue;
+        
+        if(StrEqual(classname, "witch", false))
         {
-            AddToVomit(i, client);
-            int attacker = client;
-            if(isWitch)
-            {
-                attacker = GetRandomInfected(1); // Alive Infected
-            }
-            L4D2_Infected_OnHitByVomitJar(i, attacker);
+            SDKHooks_TakeDamage(i, client, client, GetConVarFloat(g_hCvarBoomerBonusDmg), DMG_BLAST, -1, {0.0, 0.0, 1000.0}, NULL_VECTOR, false);
+        }
+        else if(StrEqual(classname, "infected", false))
+        {
+            SDKHooks_TakeDamage(i, client, client, GetConVarFloat(g_hCvarBoomerBonusDmg), DMG_GENERIC, -1, {0.0, 0.0, 1000.0}, NULL_VECTOR, false);
         }
     }
-    return Plugin_Continue;
+
+    TE_SetupBeamRingPoint(center, GetConVarFloat(g_hCvarBoomerVomitRadius) - 10.0, GetConVarFloat(g_hCvarBoomerVomitRadius), g_iBeam, g_iGlow, 0, 15, 3.0, 5.0, 0.0, {50, 255, 50, 196}, 10, 0);
+    TE_SendToAll();
 }
 
-public void OnPlayerBoomerDeath(int client)
+void OnBoomerDeath(int client)
 {
-    float center[3];
-    GetAbsOrigin(client, center);
-    PCreateParticle(client, "explosion_huge", 3.0, center);
+    float center[3]; GetAbsOrigin(client, center);
+    PCreateParticle(client, PARTICLE_BOOMER_EXPLODE, 3.0, center);
 
     float victimPos[3];
     for(int i = 1; i <= MaxClients; i++)
     {
-        if(!IsInfected(i))
+        if(!IsInfected(i) || !IsPlayerAlive(i))
             continue;
         GetAbsOrigin(i, victimPos);
 
-        if(GetVectorDistance(center, victimPos) <= GetConVarFloat(boomerExplosionRadius))
+        if(GetVectorDistance(center, victimPos, true) <= g_fBoomerExplosionRangeSquare)
         {
-            AddExplosionForce(i, center, GetConVarFloat(boomerExplosionForce));
-            SDKHooks_TakeDamage(i, client, client, GetConVarFloat(boomerExplosionDmg), DMG_GENERIC);
+            AddExplosionForce(i, center, GetConVarFloat(g_hCvarBoomerExplosionForce));
+            SDKHooks_TakeDamage(i, client, client, GetConVarFloat(g_hCvarBoomerExplosionDmg), DMG_GENERIC, -1, NULL_VECTOR, NULL_VECTOR, false);
         }
     }
 
@@ -165,76 +271,12 @@ public void OnPlayerBoomerDeath(int client)
 
         if(!StrEqual(classname, "infected", false) && !StrEqual(classname, "witch", false))
             continue;
-
-        GetAbsOrigin(i, victimPos);
-
-        if(GetVectorDistance(center, victimPos) <= GetConVarFloat(boomerExplosionRadius))
-        {
-            SDKHooks_TakeDamage(i, client, client, GetConVarFloat(boomerExplosionDmg), DMG_BLAST);
-        }
-    }
-}
-// !rcon sm plugins reload l4d2_play_as_si
-public void AddToVomit(int entity, int attacker)
-{
-    if(!IsValidEntity(entity) || !IsSurvivor(attacker) || playerStatus[attacker] != PLAYABLE_BOOMER)
-        return;
-    char id[8];
-    Format(id, 8, "%d", entity);
-    if(!boomerVomitedList.ContainsKey(id))
-    {
-        boomerVomitedList.SetValue(id, GetGameTime() + GetConVarFloat(boomerVomitEffectDuration));
-        boomerVoomitOwner.SetValue(id, attacker);
-        // Infected or Common Push in List Then DO Damage
-        if(boomerBonusDamageTimer == null)
-        {
-            boomerBonusDamageTimer = CreateTimer(0.25, TimerBoomerBonusDamage, 0, TIMER_REPEAT);
-        }
-    }
-}
-
-public void RemoveInfectedFromVomit(int entity)
-{
-    char id[8];
-    Format(id, 8, "%d", entity);
-    if(boomerVomitedList.ContainsKey(id))
-    {
-        boomerVomitedList.Remove(id);
-        boomerVoomitOwner.Remove(id);
-    }
-}
-
-Action TimerBoomerBonusDamage(Handle timer)
-{
-    if(boomerVomitedList.Size <= 0)
-    {
-        boomerVomitedList.Clear();
-        boomerVoomitOwner.Clear();
-        boomerBonusDamageTimer = null;
-        return Plugin_Stop;
-    }
         
-    char id[8];
-    StringMapSnapshot shots = boomerVomitedList.Snapshot();
-    for(int i = 0; i < shots.Length; i++)
-    {
-        shots.GetKey(i, id, 8);
-        int entity = StringToInt(id);
-        int attacker = -1;
-        float endTime = -1.0;
-        boomerVoomitOwner.GetValue(id, attacker);
-        boomerVomitedList.GetValue(id, endTime);
-        // (alive SI or common) and valid attacker and in damage duration
-        if(((IsInfected(entity) && IsPlayerAlive(entity)) || IsCommonInfected(entity)) && IsSurvivor(attacker) && endTime >= GetGameTime())
+        GetAbsOrigin(i, victimPos);
+        if(GetVectorDistance(center, victimPos, true) <= g_fBoomerExplosionRangeSquare)
         {
-            SDKHooks_TakeDamage(entity, attacker, attacker, GetConVarFloat(boomerBonusDmg), DMG_IGNITE);
+            SDKHooks_TakeDamage(i, client, client, GetConVarFloat(g_hCvarBoomerExplosionDmg), DMG_BLAST);
         }
-        else
-        {
-            boomerVomitedList.Remove(id);
-            boomerVoomitOwner.Remove(id);
-        }
+        
     }
-    CloseHandle(shots);
-    return Plugin_Continue;
 }

@@ -1,0 +1,51 @@
+VERIFICACION TECNICA — SUITE 3.77.13
+=====================================
+
+COMPILACION
+-----------
+* spcomp 1.11.0.6970, arbol builds/OM37713
+* 28 warnings = LINEA BASE EXACTA de la 3.77.10/3.77.11/3.77.12
+  (cero warnings de sonic.inc / Amy.inc / Speed_sonic.inc)
+* smx 371,351 B
+  sha256 73d6f8ca8bba6dfd9c1a27c02acdebf6ee849c279c6bf7e597cd61f5980e0f17
+
+FORENSE DE SIMBOLOS (smx_diff_37713.py, vs la 3.77.12 entregada)
+----------------------------------------------------------------
+* funciones: 582 -> 588 (+7 / -1):
+    NUEVAS  : Sonic_FixSpriteTrail, Sonic_KillOwnedEnt, Sonic_MakeBallGlow,
+              Sonic_MakeBlueLight, Sonic_MakeSpriteTrail, Sonic_MakeTrailTarget,
+              Sonic_SpawnHitFx
+    BORRADAS: Speed_RGBToInt (paso a stock tras el no-op del aura — no
+              genera warning)
+* cvars: 208 -> 208 (delta 0 — cero cvars nuevos, como se prometio)
+* marcadores v6.20 presentes en el binario:
+    "v6.20-OM", "v101-OM", "3.77.13",
+    "Sonic_MakeSpriteTrail", "Sonic_FixSpriteTrail", "Sonic_SpawnHitFx",
+    "Sonic_MakeTrailTarget", "Sonic_MakeBlueLight", "Sonic_MakeBallGlow",
+    "Sonic_STTransmit", "env_spritetrail" (reintroducido por el modo
+    autentico), "OnUser1 !self:SetScale:1:0.5:1" (el fix fbef0102
+    textual), "light_dynamic", "info_target", "sonic_drop_impact",
+    "70 130 255" (la luz azul)
+* marcadores v6.19-OM / v100-OM ausentes (reemplazados por v6.20/v101)
+* el glow del speed: el string m_iGlowType sigue en el binario por
+  OTROS modulos (vision de Amy, avatares) pero las escrituras del
+  boost estan muertas (cuerpo de Speed_SetBoostGlow = no-op)
+
+INTACTOS (diff -q byte a byte vs la 3.77.12)
+---------------------------------------------
+OK Tails.inc (v5.25-B) / OK Sally.inc (v6.2) / OK Cream.inc (v6.1) /
+OK Eggman.inc (v3.1)
+
+MATERIAL NUEVO: sonic_drop_impact
+---------------------------------
+* PNG original del pack: 388x431 RGBA (14,090 B)
+* GMod lo dibuja en un quad CUADRADO (DrawQuadEasy size x size) =>
+  remuestreado a 256x256 = misma presentacion final
+* VTF 7.2 RGBA8888, 9 mips, flags 0x2000 (clonados de bluetrail.vtf
+  del mismo pack), sin low-res, mips de menor a mayor (layout validado
+  contra los VTF originales con el decoder del proyecto)
+* 349,604 B; VMT UnlitGeneric $translucent $vertexcolor $vertexalpha
+  $nocull (mismo estilo que sonic_dashing_effect.vmt del pack)
+* roundtrip verificado (re-decodificado a PNG coherente)
+* el plugin lo detecta con FileExists y lo encola a descargas con su
+  .vtf real; sin el -> glow01 nativo

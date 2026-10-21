@@ -1,0 +1,55 @@
+VERIFICACION SUITE 3.77.22 (sonic.inc v6.29-OM / manager 3.77.22)
+=====================================================================
+
+ARBOL Y BASE
+- Reconstruccion verificada del arbol 3.77.21: scripting3.zip del owner
+  (sha256 86957844047510c9... IDENTICO al registrado en la Task 31) +
+  overlay oficial SM 1.11 (spcomp64 1.11.0.6970) + los 9 includes de la
+  suite_37721_nube (byte a byte del zip) + Sonic_ability_manager.sp
+  3.77.21. Compilacion de verificacion de la 3.77.21 sobre ese arbol:
+  28 warnings = linea base, y tabla de secciones identica a la smx
+  entregada salvo 264 B de rtti.data (metadatos de debug sin impacto
+  en codigo — misma clase de drift +-75B ya documentada como
+  "intercambiable" en la Task 31).
+- Ediciones 3.77.22 SOLO en include/sonic.inc (v6.28-OM -> v6.29-OM) y
+  Sonic_ability_manager.sp (3.77.21 -> 3.77.22). Amy/Tails/Sally/
+  Cream/Eggman/Metal/OM_Stun/Speed_sonic y los 8 materials:
+  verificados IDENTICOS byte a byte contra la 3.77.21 (cmp).
+
+COMPILACION (scripts/build_om_37722.sh, arbol builds/OM37722)
+- 28 warnings = LINEA BASE EXACTA (Doll_System 3 / Metal 2 / Sally 14 /
+  OM_Stun 1 / manager tag-mismatch x8 en L2955-2958) — CERO de
+  sonic.inc, cero del codigo nuevo.
+- smx 376,232 B (3.77.21: 375,097 -> +1,135 B coherentes con 4
+  funciones nuevas + rama TP de la bola + bloque de lock estirable).
+  sha256 db9a82d95cd68136a73856bb23e2a47b6804fee2cf93b43a85b9a02d9b791e59
+
+FORENSE (scripts/smx_lzma_forensic.py — NOTA TECNICA: los smx de este
+spcomp viajan con el payload COMPRIMIDO en zlib (stream @ ~482; el
+formato no esta documentado en los includes); la forense descomprime
+ambos binarios y compara el contenido real, 1.9 MB cada uno)
+- FUNCIONES: 627 -> 631 (+4 EXACTAS: Sonic_DodgeAnimDone /
+  Sonic_PropSequence / Sonic_DodgeStomped / Sonic_RefireDodge;
+  0 borradas)
+- CVARS: 94 -> 94 (mismo set; solo cambia el default de
+  sonicom_peel_nube). DEFAULT VERIFICADO EN EL BINARIO: la cadena "1"
+  inmediatamente antes de "sonicom_peel_nube" en la data (la 3.77.21
+  tenia "0") — el default nuevo VIAJA en el smx.
+- MARCADORES PRESENTES 10/10: 3.77.22 / v6.29-OM / las 4 funciones
+  nuevas / g_iSonicDodgeSeq / g_fSonicDodgeCap / sonicom_peel_nube /
+  "DEFAULT, orden del owner 2026-10-09".
+- CONTROLES 3.77.21 PRESENTES 9/9: Sonic_PeelNubeBeamStart /
+  Sonic_PlayDodgeAnim / tails_avatar_tp / Dodge1 / Dodge4 /
+  sonicom_ball_z / "224 240 255" (esferitas) / Sonic_AvatarFollow /
+  Sonic_CreateBall. El texto viejo "0 (default)" del cvar AUSENTE
+  (reemplazado por la descripcion v6.29).
+
+DIFS
+- diff_37722_v629_sonic.txt: 309 lineas (cvar default + doc v6.29 +
+  rama TP de la bola en AvatarFollow + bloque de lock estirable de la
+  eva + 4 helpers nuevos + sonda readback en PlayDodgeAnim + resets)
+- diff_37722_sp.txt: 55 lineas (bloque changelog v3.77.22 + version)
+
+PAQUETE download/suite_37722/: smx + .sp + 9 includes + 8 materials
+(identicos) + 2 diffs + CAMBIOS_37722 (reporte 1-a-1 + OJO del cfg +
+plan de prueba A-F + palancas) + VERIFICACION_37722 + worklog.md.

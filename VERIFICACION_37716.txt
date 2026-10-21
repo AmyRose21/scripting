@@ -1,0 +1,28 @@
+VERIFICACION DE LA 3.77.16 (antes del zip)
+============================================
+1. COMPILACION: 28 warnings = LINEA BASE EXACTA de las 3.77.13/14/15
+   (todas preexistentes de Sally/OM_Stun/manager; CERO de sonic.inc).
+   smx 373,624 bytes.
+2. FORENSE SMX vs la 3.77.15 ENTREGADA (scripts/smx_diff_37716.py):
+   - funciones: 593 -> 593 (delta 0 — correcto: v6.23 recalibra las
+     funciones existentes del peel, no agrega otras)
+   - cvars: 208 -> 208 (delta 0 — cero cvars nuevos)
+   - MARCADORES PRESENTES (30/30): 3.77.16, v6.23-OM, v101-OM,
+     v5.25-B, SpawnPeelPuff/PeelCloudTick/PeelChargeDust/PeelFlash/
+     MakeBlueLight/WorldOrigin, env_spritetrail, light_dynamic,
+     BeamFollow, tintes GMod "135 185 255"/"125 125 175"/
+     "180 180 180", sonicom_trails(_mat), rutas blue2/Sonicred/
+     om_bluesmoke/sonic_dashing_effect/sonic_drop_impact, la luz
+     "70 130 255 200", y los I/O NUEVOS "OnUser1 !self:Alpha:0:" y
+     "OnUser1 !self:Scale:" (el desvanecido/crecimiento).
+   - MARCADORES AUSENTES (correcto): v6.22-OM, v6.21-OM, "3.77.15".
+3. INCLUDES INTACTOS (diff -q 8/8 identicos vs OM37715): Amy, Tails,
+   Sally, Cream, Eggman, Metal, OM_Stun, Speed_sonic. Solo cambian
+   sonic.inc (v6.23) y el .sp (version + changelog). Diff completo:
+   diff_37716_v623.txt (405 lineas).
+4. GAMEPLAY: CERO cambios. Mismos danyos, velocidades, cooldowns,
+   cvars y comportamiento de las habilidades. Solo valores VISUALES
+   del peel (escalas/colores/posiciones/cantidad de particulas) +
+   la textura de los beams TE del peel cuando el pack esta.
+5. DEPENDENCIAS: ninguna nueva. Materiales = pack v3 SIN CAMBIOS.
+6. work.md (el worklog que pediste) VIAJA EN EL ZIP.

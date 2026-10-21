@@ -1,0 +1,699 @@
+--- /home/z/my-project/download/suite_37731_carga_parry/include/Knuckles.inc	2026-10-09 18:36:16.889629771 +0000
++++ /home/z/my-project/builds/OM37730/scripting/include/Knuckles.inc	2026-10-09 19:11:27.892434259 +0000
+@@ -1,6 +1,45 @@
+ /*
+  * ======================================================
+- *  [MODULO] Knuckles the Echidna - Power & Defense v66-OM (CARGA DEL PUNO + ANIMS DEL BLOQUEO + PARRY)
++ *  [MODULO] Knuckles the Echidna - Power & Defense v67-OM (LATCH ORIENTADO + FUEGO EN LOS PUÑOS + FIX CRASH DEL PARRY)
++ *
++ *  v67-OM CHANGES (R35 — "fix el agarre de pared si vez el lua este
++ *     cambia la orientacion de knuckles al lado contrario a la pared
++ *     (lo dice el lua)" + "el efecto de fuego de su 3 fase puedes
++ *     colocarle 2 efectos de fuego en los puños (lo dice el propio lua
++ *     de gmod)" + "cuando uso el counter sobre el vomito de la spitter
++ *     en vez de devolverse como hace en Vscript el juego se muere y
++ *     se cierra. solo"):
++ *   - AGARRE DE PARED ORIENTADO (lua l.759-792): al engancharse, el
++ *     pill_assignedangle = normal:Angle() — el avatar queda MIRANDO
++ *     AL LADO CONTRARIO de la pared (espalda contra ella; el giro lo
++ *     suaviza el ExpDamp del yaw). Gate del lua l.761 (|normal.z| <
++ *     0.5): solo paredes, nunca suelo/techo. El SALTO DE SALIDA sale
++ *     por la NORMAL de la pared (lua l.700: Normals_latch:Forward()*
++ *     glideg) — antes salia por la camara y podias lanzarte contra la
++ *     propia pared que mirabas.
++ *   - FUEGO REAL EN LOS PUÑOS (lua l.1123-1190 + effects l.319-484):
++ *     la espiral Knuckles_FireOrb EXACTA del GMod (radio 35->0, 2
++ *     vueltas, ciclo 0.9s, onda ~18 Hz, color fuego 255/120-245/30)
++ *     dibujada con beams TE + material NUEVO om_knux_flame (blaze
++ *     flame del pack OM, 2 archivos en materials/icons) sobre CADA
++ *     PUÑO (2 efectos, uno por mano) + nucleo env_sprite de llama en
++ *     la mano + el ANILLO Knuckles_firering al alcanzar el nivel 3
++ *     (l.1179-1189). Fallback glow01 naranja si el material no esta
++ *     montado (patron om_bluesmoke). Palanca knux_fist_fire (1).
++ *   - FIX DEL CRASH del counter sobre el spit (reporte del owner):
++ *     causa — la v66 hookeaba SDKHook_Touch al spitter_projectile y
++ *     lo mataba con Kill: el juego revienta el spit por DENTRO de su
++ *     propio touch (spawn del charco + autodestruccion) y el
++ *     doble-manipulo lo tumbaba. FIX nut-faithful (ChCh v2.1): el
++ *     spit SOLO se devuelve (velocidad + m_hThrower + lista propia de
++ *     refs) — CERO hooks, CERO watchdog, CERO Kill sobre el; la
++ *     explosion cae encima cuando el JUEGO lo revienta (evento
++ *     spit_burst, el mismo camino del nut: spitter_projectile a <=16u
++ *     del subject -> explosion 250/150u solo infectados). Las ROCAS
++ *     pierden tambien el touch hook (el nut no lo usa): quedan con el
++ *     watchdog de velocidad (vel<=100 o 5s -> explosion 500/250u +
++ *     Kill, como CheckParriedTankRocks). Sonido de las explosiones =
++ *     explode_1-3 del nut (antes el skyboom del Meteoro).
+  *
+  *  v66-OM CHANGES (R34 — "el puño se puede cargar (el lua lo dice
+  *     todo)" + "el bloqueo no hace su animacion de golpe ni de
+@@ -232,7 +271,7 @@
+ #define _Knuckles_included
+ 
+ // v63: sonda de version (sm_sjsver del manager)
+-#define KNUCKLES_INC_VERSION "v66-OM"
++#define KNUCKLES_INC_VERSION "v67-OM"
+ 
+ #if !defined _sourcemod_included
+     #include <sourcemod>
+@@ -320,12 +359,26 @@
+ float g_fKnuxNextOrbT[MAXPLAYERS + 1];      // orbes de fuego del nivel 3 (20 Hz)
+ int   g_iKnuxOrbSprite = 0;                 // glow01.vmt (orbes + flash del parry)
+ int   g_iKnuxOrbEnt[MAXPLAYERS + 1][2];     // v66: las 2 orbes persistentes (refs)
++// v67-OM: FUEGO REAL en los puños (lua l.1123-1190: espirales
++// Knuckles_FireOrb de 2 vueltas + firering al llenar — material
++// om_knux_flame, el blaze flame del pack OM)
++int   g_iKnuxFlameSprite = 0;                 // om_knux_flame.vmt (0 = no montado -> glow01)
++float g_fKnuxFlameStart[MAXPLAYERS + 1];      // inicio del ciclo de espiral
++float g_fKnuxFlameAng[MAXPLAYERS + 1][2];     // angulo inicial por mano (lua math.Rand)
++int   g_iKnuxFlameDir[MAXPLAYERS + 1][2];     // sentido de giro por mano (lua random)
++float g_fKnuxFlamePrev[MAXPLAYERS + 1][2][3]; // punto anterior del beam (trail)
++bool  g_bKnuxFlameHasPrev[MAXPLAYERS + 1][2]; // hay punto previo valido
+ float g_fKnuxDisarmTank[MAXPLAYERS + 1]; 
+ 
+ float g_fKnuxExtendedImmunity[MAXPLAYERS + 1];
+ 
+ // Manejo de fisicas en pared
+ float g_fKnuxNextClingTime[MAXPLAYERS + 1];
++// v67-OM: ORIENTACION DEL AGARRE (lua l.759-792): el avatar mira a la
++// NORMAL de la pared (lado contrario, espalda contra la pared) y el
++// salto de salida sale por la normal (l.700), no por la camara
++float g_fKnuxLatchNormal[MAXPLAYERS + 1][3];
++float g_fKnuxLatchYaw[MAXPLAYERS + 1];
+ 
+ // v58: Prevencion de impactos multiples por un solo Dash.
+ // Sistema de "epoch": cada golpe incrementa la epoch global; una entidad
+@@ -339,6 +392,15 @@
+ float g_fKnuxNextSpitScan[MAXPLAYERS + 1];
+ int   g_iKnuxBeamSprite = -1; 
+ 
++// v67-OM: spits devueltos por el parry (el "ChCh_WasParried" del nut
++// via SetContext, hecho con una lista corta de EntRefs): la detonacion
++// vive en el evento spit_burst del JUEGO — cero hooks sobre el proyectil
++#define KNUX_PARRY_SPIT_SLOTS 8
++#define KNUX_PARRY_SPIT_TTL   10.0
++int   g_iKnuxParriedSpit[KNUX_PARRY_SPIT_SLOTS];
++int   g_iKnuxParriedSpitUser[KNUX_PARRY_SPIT_SLOTS];
++float g_fKnuxParriedSpitT[KNUX_PARRY_SPIT_SLOTS];
++
+ // v63 (R30): H3 METEOR STRIKE — maquina de estados por jugador
+ int    g_iKnuxSkyState[MAXPLAYERS + 1];      // 0 none / 1 ascent / 2 aim / 3 dive
+ float  g_fKnuxSkyCooldown[MAXPLAYERS + 1];
+@@ -365,6 +427,7 @@
+ ConVar g_cvKnuxPunchCD, g_cvKnuxCounterCD;
+ ConVar g_cvKnuxChargeT1, g_cvKnuxChargeT2, g_cvKnuxPunchCDCancel;
+ ConVar g_cvKnuxParrySpit, g_cvKnuxParryRocks, g_cvKnuxParryRadius;
++ConVar g_cvKnuxFistFire;
+ ConVar g_cvKnuxGlideSpeed, g_cvKnuxGlideGravity;
+ ConVar g_cvKnuxDamageReduc, g_cvKnuxSlamDmg, g_cvKnuxSlamRadius;
+ ConVar g_cvKnuxCounterDuration;
+@@ -427,6 +490,19 @@
+ #define KNUX_ORB_LIFE      0.08
+ #define KNUX_ORB_EVERY     0.05
+ 
++// v67-OM: FUEGO de los puños — la espiral EXACTA del Knuckles_FireOrb
++// del effects lua (l.319-484): radio 35 -> 0, 2 vueltas, vida 0.9s, onda
++// sen(cos)*18 Hz de amplitud 4; el beam TE lleva el trail (el GMod
++// encadena 25 segmentos, l.372-407) y el color fuego 255/120+i*5/30
++#define KNUX_FLAME_CYCLE     0.9
++#define KNUX_FLAME_RADIUS    35.0
++#define KNUX_FLAME_FLOOR_R    3.0
++#define KNUX_FLAME_ROTATIONS 2.0
++#define KNUX_FLAME_WAVEHZ   18.0
++#define KNUX_FLAME_WAVEAMP   4.0
++#define KNUX_FLAME_BEAMLIFE  0.30
++#define KNUX_FLAME_BEAMW     9.0
++
+ // v66-OM: PARRY DE PROYECTILES en la postura (receta ChCh_Parrying v2.1)
+ #define KNUX_PARRY_CONE_DOT     0.30    // ChCh: cono frontal (~72 grados por lado)
+ #define KNUX_PARRY_CONE_MINDIST 100.0   // ChCh: emergencia pegado al cuerpo
+@@ -500,6 +576,8 @@
+     g_cvKnuxParrySpit      = CreateConVar("knux_parry_spit", "1", "v66: devolver escupitajos del spitter en la postura (1/0)");
+     g_cvKnuxParryRocks     = CreateConVar("knux_parry_rocks", "1", "v66: devolver rocas del tank en la postura (1/0)");
+     g_cvKnuxParryRadius    = CreateConVar("knux_parry_radius", "300.0", "v66: radio de deteccion del parry (ChCh 300)");
++    // v67-OM: fuego real en los puños de la fase 3 (espiral + nucleo + firering)
++    g_cvKnuxFistFire       = CreateConVar("knux_fist_fire", "1", "v67: fuego en los puños de la carga nivel 3 (1/0)");
+     
+     g_cvKnuxGlideSpeed    = CreateConVar("knux_glide_speed", "450.0", "Velocidad horizontal al planear");
+     g_cvKnuxGlideGravity  = CreateConVar("knux_glide_gravity", "0.4", "Gravedad al planear");
+@@ -534,6 +612,9 @@
+     HookEvent("player_spawn", Knux_Event_PlayerSpawn);
+     HookEvent("player_death", Knux_Event_PlayerDeath);
+     HookEvent("round_end", Knux_Event_RoundEnd);
++    // v67-OM: detonacion del spit devuelto — el MISMO camino del nut
++    // (ChCh OnGameEvent_spit_burst): cero hooks sobre el proyectil
++    HookEvent("spit_burst", Knux_Event_SpitBurst);
+ 
+     // v65-OM: avatar — convar + FSM a 10 Hz (patron T_MetalAvatarThink).
+     // La muerte del avatar (ragdoll + anti-corpse) vive en el hook
+@@ -572,6 +653,10 @@
+ 
+     // v63 (R30): sonidos/particulas del METEORO + esfera + boomer diferido
+     PrecacheSound(KNUX_SOUND_SKYBOOM, true);
++    // v67-OM: boom del parry estilo ChCh (nut: ambient/explosions/explode_1-3)
++    PrecacheSound("ambient/explosions/explode_1.wav", true);
++    PrecacheSound("ambient/explosions/explode_2.wav", true);
++    PrecacheSound("ambient/explosions/explode_3.wav", true);
+     Knux_PrecacheParticle("boomer_explode_Boomer");   // burst del boomer (patron Amy)
+     Knux_PrecacheParticle("gas_explosion_main");      // mega explosion (no-op si ya esta)
+     PrecacheModel(KNUX_SKY_BALL_MDL);                 // esfera del escudo de Sally
+@@ -601,6 +686,14 @@
+     // v66-OM: sprite de las orbes de fuego + el flash del parry (el
+     // mismo glow01 de las estrellas del OM_Stun)
+     g_iKnuxOrbSprite = PrecacheModel("materials/sprites/glow01.vmt", true);
++
++    // v67-OM: material de FUEGO de los puños (blaze flame del pack OM,
++    // renombrado a om_knux_flame) — gate como om_bluesmoke: si el
++    // archivo no esta montado PrecacheModel da 0 y todo cae al glow01
++    // naranja de la v66 (nada se rompe)
++    g_iKnuxFlameSprite = PrecacheModel("materials/icons/om_knux_flame.vmt", true);
++    AddFileToDownloadsTable("materials/icons/om_knux_flame.vmt");
++    AddFileToDownloadsTable("materials/icons/om_knux_flame.vtf");
+     if (g_bKnuxSndPunchStart) AddFileToDownloadsTable("sound/om/knuckles/punchstart.wav");
+     if (g_bKnuxSndSwing)      AddFileToDownloadsTable("sound/om/knuckles/swing.wav");
+     if (g_bKnuxSndPunchStun)  AddFileToDownloadsTable("sound/om/knuckles/punchstun.wav");
+@@ -707,6 +800,11 @@
+     g_iKnuxChargeLevel[client] = 0;
+     g_iKnuxPunchPower[client] = 0;
+     g_fKnuxNextOrbT[client] = 0.0;
++    // v67-OM: orientacion del agarre + espiral de fuego fresca
++    g_fKnuxLatchYaw[client] = 0.0;
++    g_fKnuxLatchNormal[client][0] = 0.0;
++    g_fKnuxLatchNormal[client][1] = 0.0;
++    g_fKnuxLatchNormal[client][2] = 0.0;
+ 
+     // v63 (R30): cortar la maquina del METEORO (el movetype y el resto del
+     // estado fisico se restauran abajo; la esfera ya lanzada es AUTONOMA y
+@@ -846,6 +944,9 @@
+                 g_iKnuxChargeLevel[client] = 3;
+                 Knux_AvatarTintPulse(client, 255, 0, 0);   // l.1155
+                 if (g_bKnuxSndPhase3) EmitSoundToAll("om/knuckles/phase3.wav", client, _, KNUX_SND_LEVEL);
++                // v67-OM: el anillo de fuego en ambos puños (Knuckles_firering
++                // del lua l.1179-1189 — effects l.95-183)
++                Knux_FireRing(client);
+                 PrintCenterText(client, "🔥 CARGA NIVEL 3 — ¡MAXIMO!");
+             }
+         }
+@@ -884,11 +985,22 @@
+     {
+         // 1. Enganche a la Pared (SOLO SI ESTÁ EN EL AIRE)
+         if (!g_bKnuxCharging[client] && !g_bKnuxClinging[client] && !g_bKnuxSlamming[client] && g_iKnuxWallChains[client] < KNUX_MAX_WALL_CHAINS) {
+-            if (GetEngineTime() > g_fKnuxNextClingTime[client] && Knux_IsNearWall(client)) {
++            float wallN[3];
++            if (GetEngineTime() > g_fKnuxNextClingTime[client] && Knux_FindWall(client, wallN)) {
+                 g_bKnuxClinging[client] = true;
+                 g_bKnuxGliding[client] = false;
+                 g_iKnuxWallChains[client]++;
+                 
++                // v67-OM: ORIENTACION DEL AGARRE (lua l.759-792): el
++                // pill_assignedangle = normal:Angle() — el avatar queda
++                // MIRANDO AL LADO CONTRARIO de la pared (espalda contra
++                // ella) mientras dura el agarre, y el salto de salida
++                // sale por la normal (l.700), no por la camara
++                g_fKnuxLatchNormal[client][0] = wallN[0];
++                g_fKnuxLatchNormal[client][1] = wallN[1];
++                g_fKnuxLatchNormal[client][2] = wallN[2];
++                g_fKnuxLatchYaw[client] = RadToDeg(ArcTangent2(wallN[1], wallN[0]));
++                
+                 float stop[3] = {0.0, 0.0, 0.0};
+                 TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, stop);
+                 SetEntityMoveType(client, MOVETYPE_NONE); 
+@@ -905,11 +1017,13 @@
+                 g_fKnuxNextClingTime[client] = GetEngineTime() + 0.5; // Cooldown de pared
+                 
+                 SetEntityMoveType(client, MOVETYPE_WALK); 
+-                float ang[3], fwd[3]; GetClientEyeAngles(client, ang); ang[0] = 0.0; 
+-                GetAngleVectors(ang, fwd, NULL_VECTOR, NULL_VECTOR);
+-                
+-                // IMPULSO FUERTE
+-                ScaleVector(fwd, g_cvKnuxGlideSpeed.FloatValue * 1.2); 
++                // v67-OM: el impulso sale por la NORMAL de la pared (lua
++                // l.700: Normals_latch:Forward()*glideg) — mirando al lado
++                // contrario, saltar YA no te lanza contra la propia pared
++                // que dejaste atras (la camara puede seguir mirandola)
++                float fwd[3];
++                fwd[0] = g_fKnuxLatchNormal[client][0] * g_cvKnuxGlideSpeed.FloatValue * 1.2;
++                fwd[1] = g_fKnuxLatchNormal[client][1] * g_cvKnuxGlideSpeed.FloatValue * 1.2;
+                 fwd[2] = 450.0; // Gran empuje hacia arriba
+                 
+                 TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, fwd);
+@@ -994,7 +1108,10 @@
+     }
+ }
+ 
+-bool Knux_IsNearWall(int client)
++// v67-OM: devuelve la NORMAL de la pared (lua l.759: tr.HitNormal) y
++// aplica el gate del lua l.761 (|normal.z| < 0.5): solo superficies de
++// PARED cuentan — suelo y techo no son agarrables en el original
++bool Knux_FindWall(int client, float normal[3])
+ {
+     float pos[3], ang[3], fwd[3], end[3];
+     GetClientEyePosition(client, pos); GetClientEyeAngles(client, ang);
+@@ -1002,7 +1119,14 @@
+     ScaleVector(fwd, 40.0); AddVectors(pos, fwd, end);
+     float mins[3] = {-16.0, -16.0, -16.0}; float maxs[3] = {16.0, 16.0, 16.0};
+     Handle trace = TR_TraceHullFilterEx(pos, end, mins, maxs, MASK_SOLID, Knux_TraceFilter_World, client);
+-    bool hit = TR_DidHit(trace); delete trace;
++    bool hit = TR_DidHit(trace);
++    if (hit)
++    {
++        TR_GetPlaneNormal(trace, normal);
++        // lua l.761: solo paredes (normal ~horizontal)
++        if (normal[2] > 0.5 || normal[2] < -0.5) hit = false;
++    }
++    delete trace;
+     return hit;
+ }
+ public bool Knux_TraceFilter_World(int entity, int contentsMask, int data) { return (entity == 0); }
+@@ -1978,6 +2102,10 @@
+             if (dist > radius) continue;
+             if (!Knux_ParryConeOK(center, fwd, pPos, dist)) continue;
+             Knux_ParryReflect(client, ent, KNUX_PARRY_ROCK_MULT);
++            // v67: la roca sigue con el watchdog de aterrizaje del ChCh
++            // (CheckParriedTankRocks — ya SIN touch hook: el nut no lo
++            // usa y los proyectiles del juego se autogestionan)
++            Knux_ParryWatchRock(ent, client);
+         }
+     }
+ 
+@@ -1989,11 +2117,17 @@
+         {
+             if (!IsValidEntity(ent)) continue;
+             if (HasEntProp(ent, Prop_Send, "m_hThrower") && GetEntPropEnt(ent, Prop_Send, "m_hThrower") == client) continue;
++            if (Knux_FindParriedSpit(ent) != -1) continue;   // v67: ya devuelto
+             float pPos[3]; GetEntPropVector(ent, Prop_Send, "m_vecOrigin", pPos);
+             float dist = GetVectorDistance(center, pPos);
+             if (dist > radius) continue;
+             if (!Knux_ParryConeOK(center, fwd, pPos, dist)) continue;
+             Knux_ParryReflect(client, ent, 1.0);
++            // v67: la lista reemplaza el context "ChCh_WasParried" del
++            // nut — el spit NO se toca mas: sin hook, sin watchdog, sin
++            // Kill. El juego lo revienta solo y el evento spit_burst pone
++            // la explosion encima (ChCh OnGameEvent_spit_burst).
++            Knux_MarkParriedSpit(ent, client);
+         }
+     }
+ }
+@@ -2036,67 +2170,101 @@
+     }
+     EmitGameSoundToAll("GolfClub.ImpactWorld", client);
+     PrintCenterText(client, "🛡️ ¡DEVUELTO!");
++    // v67-OM: NADA MAS se engancha al proyectil — el ChCh original NO
++    // hookea el Touch de NINGUN proyectil (el spit se autogestiona via
++    // evento spit_burst y la roca via el watchdog de velocidad). El
++    // SDKHook_Touch + Kill sobre el spitter_projectile de la v66 era el
++    // CRASH del juego que reporto el owner.
++}
+ 
+-    // impacto directo sobre un infectado = detonacion YA (ademas del
+-    // watchdog de aterrizaje)
+-    SDKHook(ent, SDKHook_Touch, Knux_ParryTouch);
+-
+-    // watchdog (ChCh CheckParriedTankRocks): detona al perder velocidad
+-    // (aterrizo/choco) o a los 5s
+-    char cls[32]; GetEntityClassname(ent, cls, sizeof(cls));
+-    bool isRock = StrEqual(cls, "tank_rock");
++// v67-OM: watchdog de la ROCA (ChCh CheckParriedTankRocks — SOLO rocas):
++// detona al perder velocidad (vel <= 100 = aterrizo/choco) o a los 5s
++void Knux_ParryWatchRock(int ent, int client)
++{
+     DataPack pack = new DataPack();
+     pack.WriteCell(EntIndexToEntRef(ent));
+     pack.WriteCell(GetClientUserId(client));
+     pack.WriteFloat(GetEngineTime());
+-    pack.WriteCell(isRock ? 1 : 0);
+     CreateTimer(KNUX_PARRY_WATCH, T_KnuxParryWatch, pack, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE | TIMER_DATA_HNDL_CLOSE);
+ }
+ 
+-// toque del proyectil devuelto: si es un infectado, detona al instante
+-// (diferido al proximo frame — nunca matar la entidad dentro de su
+-// propio Touch)
+-public void Knux_ParryTouch(int entity, int other)
++// v67-OM: LISTA DE SPITS DEVUELTOS (el "ChCh_WasParried" del nut via
++// SetContext, hecho con EntRefs): la detonacion vive en el evento
++// spit_burst del JUEGO (ChCh OnGameEvent_spit_burst) — cero hooks sobre
++// el proyectil, cero Kill: el juego lo revienta solo.
++int Knux_FindParriedSpit(int ent)
+ {
+-    bool isInfected = false;
+-    if (other >= 1 && other <= MaxClients)
+-    {
+-        if (IsClientInGame(other) && IsPlayerAlive(other) && GetClientTeam(other) == 3) isInfected = true;
+-    }
+-    else if (IsValidEntity(other))
++    float now = GetEngineTime();
++    int ref = EntIndexToEntRef(ent);
++    for (int s = 0; s < KNUX_PARRY_SPIT_SLOTS; s++)
+     {
+-        char cls[32]; GetEntityClassname(other, cls, sizeof(cls));
+-        if (StrEqual(cls, "infected") || StrEqual(cls, "witch")) isInfected = true;
++        if (g_iKnuxParriedSpit[s] == 0) continue;
++        if (now - g_fKnuxParriedSpitT[s] > KNUX_PARRY_SPIT_TTL) continue;
++        if (g_iKnuxParriedSpit[s] == ref) return s;
+     }
+-    if (!isInfected) return;
+-
+-    int thrower = 0;
+-    if (HasEntProp(entity, Prop_Send, "m_hThrower")) thrower = GetEntPropEnt(entity, Prop_Send, "m_hThrower");
+-    DataPack pack = new DataPack();
+-    pack.WriteCell(EntIndexToEntRef(entity));
+-    pack.WriteCell((thrower >= 1 && thrower <= MaxClients) ? GetClientUserId(thrower) : 0);
+-    CreateTimer(0.0, T_KnuxParryBoom, pack, TIMER_FLAG_NO_MAPCHANGE | TIMER_DATA_HNDL_CLOSE);
++    return -1;
+ }
+ 
+-// la detonacion diferida del Touch
+-public Action T_KnuxParryBoom(Handle timer, DataPack pack)
++void Knux_MarkParriedSpit(int ent, int client)
+ {
+-    pack.Reset();
+-    int ent = EntRefToEntIndex(pack.ReadCell());
+-    int client = GetClientOfUserId(pack.ReadCell());
+-    if (ent == INVALID_ENT_REFERENCE || !IsValidEntity(ent)) return Plugin_Stop;
+-    Knux_ParryDetonate(ent, client);
+-    return Plugin_Stop;
++    // slot: el mismo ent si ya estaba, o el mas viejo/expirado/libre
++    int slot = Knux_FindParriedSpit(ent);
++    if (slot == -1)
++    {
++        slot = 0;
++        float oldest = g_fKnuxParriedSpitT[0];
++        for (int s = 1; s < KNUX_PARRY_SPIT_SLOTS; s++)
++        {
++            if (g_iKnuxParriedSpit[s] == 0 || g_fKnuxParriedSpitT[s] < oldest)
++            {
++                oldest = g_fKnuxParriedSpitT[s]; slot = s;
++            }
++        }
++    }
++    g_iKnuxParriedSpit[slot] = EntIndexToEntRef(ent);
++    g_iKnuxParriedSpitUser[slot] = GetClientUserId(client);
++    g_fKnuxParriedSpitT[slot] = GetEngineTime();
++}
++
++// v67-OM: el spit devuelto REVIENTA donde cae (evento spit_burst del
++// juego) y la explosion del parry le cae ENCIMA (ChCh OnGameEvent_
++// spit_burst: spitter_projectile a <=16u del subject + WasParried ->
++// SpawnExplosionAtFrom 150/250). El proyectil NO se toca: el juego ya
++// lo esta matando cuando este evento dispara — el crash de la v66 era
++// exactamente ese doble-manejo.
++public void Knux_Event_SpitBurst(Event event, const char[] name, bool dontBroadcast)
++{
++    int subject = event.GetInt("subject");
++    if (subject <= 0 || subject > 2048 || !IsValidEntity(subject)) return;
++    float sPos[3]; GetEntPropVector(subject, Prop_Send, "m_vecOrigin", sPos);
++
++    int e = -1;
++    while ((e = FindEntityByClassname(e, "spitter_projectile")) != -1)
++    {
++        if (!IsValidEntity(e)) continue;
++        float pPos[3]; GetEntPropVector(e, Prop_Send, "m_vecOrigin", pPos);
++        if (GetVectorDistance(sPos, pPos) > 16.0) continue;    // nut: 16u
++        int slot = Knux_FindParriedSpit(e);
++        if (slot != -1)
++        {
++            // el spit devuelto: explosion del parry ENCIMA del splat
++            // (250 dano / 150u — numeros exactos del nut) — JAMAS al equipo
++            Knux_ParryExplosion(pPos, GetClientOfUserId(g_iKnuxParriedSpitUser[slot]),
++                                KNUX_PARRY_SPIT_RADIUS, KNUX_PARRY_SPIT_DAMAGE);
++            g_iKnuxParriedSpit[slot] = 0;
++        }
++        break;   // el primero a <=16u es el del burst (nut FindByClassnameWithin)
++    }
+ }
+ 
+-// watchdog de aterrizaje (ChCh: vel <= 100 la roca / <= 50 el spit, o 5s)
++// v67-OM: watchdog de aterrizaje de la ROCA (ChCh CheckParriedTankRocks:
++// vel <= 100 o 5s) — el spit YA NO pasa por aqui (spit_burst event)
+ public Action T_KnuxParryWatch(Handle timer, DataPack pack)
+ {
+     pack.Reset();
+     int ent = EntRefToEntIndex(pack.ReadCell());
+     int userid = pack.ReadCell();
+     float startT = pack.ReadFloat();
+-    bool isRock = pack.ReadCell() != 0;
+ 
+     if (ent == INVALID_ENT_REFERENCE || !IsValidEntity(ent)) return Plugin_Stop; // ya detono
+ 
+@@ -2104,9 +2272,12 @@
+     if (HasEntProp(ent, Prop_Send, "m_vecAbsVelocity")) GetEntPropVector(ent, Prop_Send, "m_vecAbsVelocity", vel);
+     else GetEntPropVector(ent, Prop_Data, "m_vecVelocity", vel);
+     float spd = GetVectorLength(vel);
+-    if (spd <= (isRock ? 100.0 : 50.0) || GetEngineTime() - startT >= KNUX_PARRY_TIMEOUT)
++    if (spd <= 100.0 || GetEngineTime() - startT >= KNUX_PARRY_TIMEOUT)
+     {
+-        Knux_ParryDetonate(ent, GetClientOfUserId(userid));
++        float pos[3]; GetEntPropVector(ent, Prop_Send, "m_vecOrigin", pos);
++        Knux_ParryExplosion(pos, GetClientOfUserId(userid),
++                            KNUX_PARRY_ROCK_RADIUS, KNUX_PARRY_ROCK_DAMAGE);
++        AcceptEntityInput(ent, "Kill");   // nut: rock.Kill()
+         return Plugin_Stop;
+     }
+     return Plugin_Continue;
+@@ -2120,20 +2291,17 @@
+     return Plugin_Stop;
+ }
+ 
+-// la explosion del parry (ChCh SpawnExplosionAtFrom): env_explosion con
+-// iMagnitude 0 (visual + shake SIN dano propio) + particula + dano MANUAL
+-// solo a infectados — JAMAS al equipo (QoL del original).
+-void Knux_ParryDetonate(int ent, int client)
+-{
+-    if (!IsValidEntity(ent)) return;
+-    float pos[3]; GetEntPropVector(ent, Prop_Send, "m_vecOrigin", pos);
+-    char cls[32]; GetEntityClassname(ent, cls, sizeof(cls));
+-    bool isRock = StrEqual(cls, "tank_rock");
+-    float rad = isRock ? KNUX_PARRY_ROCK_RADIUS : KNUX_PARRY_SPIT_RADIUS;
+-    float dmg = isRock ? KNUX_PARRY_ROCK_DAMAGE : KNUX_PARRY_SPIT_DAMAGE;
++// v67-OM: la explosion del parry (ChCh SpawnExplosionAtFrom): env_explosion
++// con iMagnitude 0 (visual + shake SIN dano propio) + particula + dano
++// MANUAL solo a infectados y props — JAMAS al equipo (QoL del original).
++// El sonido es el explode_1-3 del nut (antes el skyboom del Meteoro).
++// Quien llama decide si ademas mata la entidad (la ROCA si; el spit JAMAS
++// — el juego ya lo esta reventando cuando dispara spit_burst).
++void Knux_ParryExplosion(const float pos[3], int client, float rad, float dmg)
++{
+     if (client < 1 || client > MaxClients || !IsClientInGame(client)) client = 0;
+ 
+-    // visual: env_explosion magnitud 0 (ChCh) + particula + boom de Amy
++    // visual: env_explosion magnitud 0 (ChCh) + particula
+     int boom = CreateEntityByName("env_explosion");
+     if (boom != -1)
+     {
+@@ -2142,6 +2310,9 @@
+         SetEntProp(boom, Prop_Data, "m_iMagnitude", 0);
+         SetEntProp(boom, Prop_Data, "m_iRadiusOverride", RoundToNearest(rad));
+         if (client > 0) SetEntPropEnt(boom, Prop_Data, "m_hOwnerEntity", client);
++        char boomSnd[64];
++        Format(boomSnd, sizeof(boomSnd), "ambient/explosions/explode_%d.wav", GetRandomInt(1, 3));
++        EmitSoundToAll(boomSnd, boom, _, KNUX_SND_LEVEL);   // nut: EmitSoundOn(explode_X, kaboom)
+         AcceptEntityInput(boom, "Explode", client, client);
+         CreateTimer(0.1, T_KnuxKillEnt, EntIndexToEntRef(boom));
+     }
+@@ -2154,9 +2325,9 @@
+         AcceptEntityInput(fx, "StartActive");
+         CreateTimer(2.0, T_KnuxKillEnt, EntIndexToEntRef(fx));
+     }
+-    EmitSoundToAll(KNUX_SOUND_SKYBOOM, ent, _, KNUX_SND_LEVEL);
+ 
+-    // dano MANUAL solo a infectados (ChCh targets: SI + infected + witch)
++    // dano MANUAL solo a infectados + props (ChCh targets: player
++    // infectado / infected / witch / prop_physics / func_breakable)
+     for (int i = 1; i <= MaxClients; i++)
+     {
+         if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == 3)
+@@ -2182,17 +2353,27 @@
+         if (GetVectorDistance(pos, vPos) <= rad)
+             SDKHooks_TakeDamage(e, client, client, dmg, DMG_BLAST);
+     }
+-
+-    AcceptEntityInput(ent, "Kill");
++    e = -1;
++    while ((e = FindEntityByClassname(e, "prop_physics")) != -1)
++    {
++        if (!IsValidEntity(e)) continue;
++        float vPos[3]; GetEntPropVector(e, Prop_Send, "m_vecOrigin", vPos);
++        if (GetVectorDistance(pos, vPos) <= rad)
++            SDKHooks_TakeDamage(e, client, client, dmg, DMG_BLAST);
++    }
+ }
+ 
+ // =====================================================================
+-// v66-OM: ORBES DE FUEGO del preview del nivel 3 (lua l.1123-1149: el
+-// Knuckles_FireOrb en ambas manos mientras la carga llega al maximo) —
+-// glow01 naranja a 20 Hz sobre los puños del avatar, el mismo patron de
+-// las estrellas del OM_Stun (TE por tick, cero entidades).
++// v67-OM: FUEGO REAL EN LOS PUÑOS del nivel 3 (owner: "puedes colocarle
++// 2 efectos de fuego en los puños — lo dice el propio lua de gmod").
++// El lua (l.1123-1190) pone el efecto Knuckles_FireOrb en CADA MANO (los
++// huesos LeftHand/RightHand) y el Knuckles_firering al llenar: aqui la
++// ESPIRAL es la exacta del effects lua (l.319-484: radio 35->0, 2
++// vueltas, ciclo 0.9s, onda ~18 Hz, color fuego 255/120-245/30) dibujada
++// con beams TE + material om_knux_flame (blaze flame del pack OM), un
++// nucleo env_sprite de llama por mano y el ANILLO al alcanzar el nivel 3.
+ // =====================================================================
+-// v66-OM: mata las orbes de fuego (release/cancel/reset/muerte)
++// mata el fuego de los puños (release/cancel/reset/muerte)
+ void Knux_KillFireOrbs(int client)
+ {
+     for (int k = 0; k < 2; k++)
+@@ -2203,43 +2384,65 @@
+             if (orb != INVALID_ENT_REFERENCE && IsValidEntity(orb)) AcceptEntityInput(orb, "Kill");
+             g_iKnuxOrbEnt[client][k] = 0;
+         }
++        g_bKnuxFlameHasPrev[client][k] = false;   // v67: el trail arranca fresco
+     }
++    g_fKnuxFlameStart[client] = 0.0;              // v67: espiral nueva
+ }
+ 
+-// crea (o re-crea si murio) una orbe en la mano
++// crea (o re-crea si murio) el NUCLEO de fuego de una mano — v67: material
++// om_knux_flame (blaze flame del OM); sin el archivo montado cae al
++// glow01 naranja de la v66 (gate del patron om_bluesmoke)
+ int Knux_SpawnFireOrb(float pos[3])
+ {
+     int orb = CreateEntityByName("env_sprite");
+     if (orb == -1) return 0;
+-    DispatchKeyValue(orb, "model", "materials/sprites/glow01.vmt");
+-    DispatchKeyValue(orb, "rendercolor", "255 140 0");   // fuego naranja
++    if (g_iKnuxFlameSprite != 0)
++    {
++        DispatchKeyValue(orb, "model", "materials/icons/om_knux_flame.vmt");
++        DispatchKeyValue(orb, "rendercolor", "255 165 70");
++        DispatchKeyValue(orb, "scale", "0.30");
++    }
++    else
++    {
++        DispatchKeyValue(orb, "model", "materials/sprites/glow01.vmt");
++        DispatchKeyValue(orb, "rendercolor", "255 140 0");   // fallback v66
++        DispatchKeyValue(orb, "scale", "0.35");
++    }
+     DispatchKeyValue(orb, "rendermode", "9");            // aditivo
+-    DispatchKeyValue(orb, "scale", "0.35");
+     DispatchKeyValue(orb, "renderamt", "255");
+     DispatchSpawn(orb);
+     TeleportEntity(orb, pos, NULL_VECTOR, NULL_VECTOR);
+     return EntIndexToEntRef(orb);
+ }
+ 
++// posicion de la mano k (offsets del cuerpo — el nucleo y la espiral viven aqui)
++void Knux_HandPos(int client, int k, float fwd[3], float right[3], float hand[3])
++{
++    float base[3]; GetClientAbsOrigin(client, base);
++    float side = (k == 0) ? KNUX_ORB_SIDE : -KNUX_ORB_SIDE;
++    hand[0] = base[0] + fwd[0] * KNUX_ORB_FORWARD + right[0] * side;
++    hand[1] = base[1] + fwd[1] * KNUX_ORB_FORWARD + right[1] * side;
++    hand[2] = base[2] + KNUX_ORB_HEIGHT;
++}
++
+ void Knux_FireOrbs(int client)
+ {
++    if (!g_cvKnuxFistFire.BoolValue) return;   // v67: palanca del fuego
+     float now = GetEngineTime();
+     if (now < g_fKnuxNextOrbT[client]) return;
+     g_fKnuxNextOrbT[client] = now + KNUX_ORB_EVERY;
++    if (g_fKnuxFlameStart[client] <= 0.0) g_fKnuxFlameStart[client] = now;
+ 
+     float yawAng[3], fwd[3], right[3];
+     yawAng[0] = 0.0; yawAng[1] = g_fKnuxBodyYaw[client]; yawAng[2] = 0.0;
+     GetAngleVectors(yawAng, fwd, right, NULL_VECTOR);
+-    float base[3]; GetClientAbsOrigin(client, base);
+ 
+     for (int k = 0; k < 2; k++)
+     {
+-        float side = (k == 0) ? KNUX_ORB_SIDE : -KNUX_ORB_SIDE;
+         float hand[3];
+-        hand[0] = base[0] + fwd[0] * KNUX_ORB_FORWARD + right[0] * side;
+-        hand[1] = base[1] + fwd[1] * KNUX_ORB_FORWARD + right[1] * side;
+-        hand[2] = base[2] + KNUX_ORB_HEIGHT;
++        Knux_HandPos(client, k, fwd, right, hand);
+ 
++        // nucleo: el corazon de llama de la mano
+         int orb = (g_iKnuxOrbEnt[client][k] != 0) ? EntRefToEntIndex(g_iKnuxOrbEnt[client][k]) : INVALID_ENT_REFERENCE;
+         if (orb == INVALID_ENT_REFERENCE || !IsValidEntity(orb))
+         {
+@@ -2249,6 +2452,70 @@
+         {
+             TeleportEntity(orb, hand, NULL_VECTOR, NULL_VECTOR);
+         }
++
++        // ---- la ESPIRAL Knuckles_FireOrb (effects lua l.319-484) ----
++        float t = (now - g_fKnuxFlameStart[client]) / KNUX_FLAME_CYCLE;
++        if (t >= 1.0)
++        {
++            // reinicio del ciclo: angulo y sentido aleatorios (lua l.333-334)
++            g_fKnuxFlameStart[client] = now;
++            t = 0.0;
++            g_fKnuxFlameAng[client][k] = float(GetRandomInt(0, 359));
++            g_iKnuxFlameDir[client][k] = (GetRandomInt(0, 1) == 0) ? -1 : 1;
++            g_bKnuxFlameHasPrev[client][k] = false;
++        }
++        float radius = KNUX_FLAME_RADIUS * (1.0 - t);
++        if (radius < KNUX_FLAME_FLOOR_R) radius = KNUX_FLAME_FLOOR_R;
++        float spA = g_fKnuxFlameAng[client][k] + float(g_iKnuxFlameDir[client][k]) * t * KNUX_FLAME_ROTATIONS * 360.0;
++        float rad = DegToRad(spA);
++        // la onda del lua (l.388): sin(CurTime()*18 + i) * 4
++        float wave = Sine(now * KNUX_FLAME_WAVEHZ + float(k)) * KNUX_FLAME_WAVEAMP;
++        float p[3];
++        p[0] = hand[0] + Cosine(rad) * (radius + wave);
++        p[1] = hand[1] + Sine(rad)   * (radius + wave);
++        p[2] = hand[2] + Sine(now * KNUX_FLAME_WAVEHZ + float(k) + 2.0) * 3.0;
++
++        // el trail: beam del punto anterior al actual — el GMod encadena
++        // 25 segmentos (l.372-407); a 20 Hz con vida 0.3s viven ~6 por
++        // mano y la espiral queda envuelta en llama (mismo canal TE que
++        // las estrellas del OM_Stun, cero entidades nuevas)
++        if (g_iKnuxFlameSprite != 0 && g_bKnuxFlameHasPrev[client][k])
++        {
++            int alpha = RoundToNearest(160.0 * (1.0 - t) + 60.0);
++            int col[4];
++            col[0] = 255; col[1] = 130; col[2] = 40; col[3] = alpha;
++            TE_SetupBeamPoints(g_fKnuxFlamePrev[client][k], p, g_iKnuxFlameSprite,
++                               0, 0, 0, KNUX_FLAME_BEAMLIFE,
++                               KNUX_FLAME_BEAMW * (1.0 - t) + 2.0, 2.0, 1, 4.0,
++                               col, 0);
++            TE_SendToAll();
++        }
++        g_fKnuxFlamePrev[client][k][0] = p[0];
++        g_fKnuxFlamePrev[client][k][1] = p[1];
++        g_fKnuxFlamePrev[client][k][2] = p[2];
++        g_bKnuxFlameHasPrev[client][k] = true;
++    }
++}
++
++// v67-OM: el ANILLO de fuego del nivel 3 (Knuckles_firering del lua
++// l.1179-1189, effects l.95-183): un anillo CONTRAYENDO por mano al
++// alcanzar la carga maxima — TE puro, cero entidades
++void Knux_FireRing(int client)
++{
++    if (!g_cvKnuxFistFire.BoolValue || g_iKnuxFlameSprite == 0) return;
++    float yawAng[3], fwd[3], right[3];
++    yawAng[0] = 0.0; yawAng[1] = g_fKnuxBodyYaw[client]; yawAng[2] = 0.0;
++    GetAngleVectors(yawAng, fwd, right, NULL_VECTOR);
++
++    for (int k = 0; k < 2; k++)
++    {
++        float hand[3];
++        Knux_HandPos(client, k, fwd, right, hand);
++        int col[4];
++        col[0] = 255; col[1] = 170; col[2] = 50; col[3] = 220;
++        TE_SetupBeamRingPoint(hand, 65.0, 10.0, g_iKnuxFlameSprite, 0, 0, 0,
++                              0.45, 9.0, 0.0, col, 0, 0);
++        TE_SendToAll();
+     }
+ }
+ 
+@@ -3344,6 +3611,13 @@
+             yawObj = velYaw;
+     }
+ 
++    // v67-OM: AGARRE DE PARED — mientras cuelga, el yaw objetivo es la
++    // NORMAL de la pared (lua: pill_assignedangle = normal:Angle() en el
++    // latch, l.791-792): el avatar mira al lado contrario de la pared.
++    // El giro suave de abajo hace la rotacion (la velocidad es 0 asi que
++    // la rama de arriba nunca compite).
++    if (g_bKnuxClinging[client]) yawObj = g_fKnuxLatchYaw[client];
++
+     // ---- giro suave hacia el objetivo (~900 grados/s) ----
+     float now = GetEngineTime();
+     float dt  = now - g_fKnuxYawLastT[client];

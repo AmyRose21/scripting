@@ -1,0 +1,124 @@
+================================================================
+ SUITE 3.77.19 "LA COSA NEGRA"  (sonic.inc v6.26-OM / manager 3.77.19)
+================================================================
+
+QUE VERSION REEMPLAZA: 3.77.18 (v6.25-OM). Solo cambia el peel out.
+Cero gameplay, cero cvars nuevos, cero materiales nuevos.
+Amy v101-OM / Tails v5.25-B / Sally v6.2 / Cream v6.1 / Eggman v3.1 /
+Speed_sonic v3.3 / Metal / OM_Stun: INTACTOS (identicos a la .18).
+
+INSTALACION (de siempre)
+------------------------
+1. sonic_ability_manager.smx  ->  addons/sourcemod/plugins/
+   (reemplaza el anterior; el .sp y los .inc son por si quieres el fuente)
+2. materials/icons/  ->  SOLO si no los copiaste con la .17/.18
+   (om_bluesmoke + sonic_dashing_effect + sonic_drop_impact, vmt+vtf)
+3. Reinicio de mapa o changelevel.
+4. sm_sjsver debe decir: Manager 3.77.19 | sonic v6.26-OM
+
+================================================================
+ EL DIAGNOSTICO DE TU VIDEO (13-20-15) — 1 A 1
+================================================================
+
+TU REPORTE: "OK ESTAS CERCA! ... para que no se vea la cosa esta negra
+y ajustar unas cositas las lineas rojas debes aumentar su hz ... lo del
+spindash este siempre estaba pegado ... y el laser azul que falta puedes
+añadirle (el que antes aparecia a espaldas de sonic)".
+
+Se analizo tu video fotograma a fotograma (VLM sobre hoja de contactos
++ 3 recortes 2x a t=1.0/1.33/2.0s). Lo que se veia:
+
+  (1) CUADROS NEGROS: 5-7 cuadrados de bordes duros con un punto blanco
+      en el centro flotando alrededor de Sonic durante TODO el dash —
+      "un sprite de glow que fallo en mezclarse" (textual del analisis).
+      Eran LA MASA DE LA NUBE: los 5 humos por latido iban en
+      "rendermode 0" (modo OPACO del motor) — en ese modo los pixeles
+      transparentes de la textura se pintan NEGRO y solo el nucleo
+      blanco del glow queda. O sea: el propio mecanismo de la niebla
+      estaba dibujando los cuadros. TODO lo que tu server siempre dibujo
+      bien (el glow de la bola, las chispas, el polvo de la carga) va en
+      modo ADITIVO (5).
+
+  (2) LINEAS ROJAS: se veian y pegadas a los pies (bien) pero "a
+      segmentos rectos" — se muestreaban 20 veces por segundo (segmentos
+      de ~40u a la velocidad de la carrera).
+
+  (3) EL LASER AZUL: la banda de la .18 era delgada (28->14 + 15->1)
+      y a ratos se perdia (en el recorte de t=1.33s directamente no se
+      veia) — lee como "nada atras", no como el laser que recuerdas.
+
+================================================================
+ LOS 3 CAMBIOS DE LA 3.77.19
+================================================================
+
+1) ADIOS "LA COSA NEGRA" — TODO aditivo
+   Sonic_SpawnPeelPuff ya NO tiene modo opaco: TODO sprite de la nube
+   (humos + glows + moons) y del polvo de carga sale en rendermode 5
+   (aditivo), el unico modo que tu server demostro que dibuja bien.
+   Los humos recalibrados para aditivo: alpha 220 -> 120 y un punto
+   mas grandes (0.14-0.21) — el aditivo APILA: a 50 por segundo la
+   masa queda DENSA alrededor del cuerpo (como el video GMod) sin
+   quemarse a blanco. La niebla que ya se veia queda igual o mejor.
+
+2) LINEAS ROJAS "SIEMPRE PEGADAS" (tu idea, literal)
+   El latido del motor baja 0.05s -> 0.01s. Un timer de SourceMod no
+   puede disparar mas rapido que UNA VEZ POR FOTOGRAMA del servidor:
+   o sea que ahora muestrea CADA FRAME = 30 veces/seg en tu server de
+   30 tick, o 60 si corres tu TickrateEnabler. Es el MISMO regimen de
+   muestreo que usa el BeamFollow nativo del spindash (que el CLIENTE
+   samplea por fotograma y por eso "siempre esta pegado y funciona a
+   la perfeccion" — tu frase). Segmentos de 13-27u a 800 uu/s =
+   curva continua de verdad, no mas segmentos rectos.
+
+3) EL LASER AZUL DE LA ESPALDA — de vuelta, con el cuerpo del spindash
+   Las 3 capas de la banda azul SUBEN a la GEOMETRIA EXACTA del trail
+   de la BOLA (el que certifica tu server desde la v6.19):
+     - halo ancho azul      34 -> 19  (antes 28 -> 14)
+     - nucleo claro blanco  24 -> 1   (antes 15 -> 1)
+     - acento azul profundo 24 -> 1   (antes 15 -> 1)
+     - alfas 190-220 (antes 165-205)
+   sobre el mismo info_target a +20z del Lua GMod (la banda que flota
+   EN EL AIRE sobre la linea roja del suelo y queda A ESPALDAS del
+   corredor mientras avanza). Doble tamaño, doble presencia: es el
+   laser que se veia antes de los cambios.
+
+================================================================
+ PLAN DE PRUEBA (2 minutos)
+================================================================
+ A. Mira la carrera con sonicom_trails 1 (default): NO debe aparecer
+    NI UN cuadro negro en ningun momento (ni en la carga, ni corriendo,
+    ni al frenar).
+ B. La niebla azul-blanca debe verse como en tu video de la .18 o mas
+    densa alrededor del cuerpo, y el polvo gris de la CARGA debe seguir
+    saliendo (sigue en aditivo, como el que ya veias).
+ C. Las lineas rojas de los pies: corre en circulos y haz giros brutos
+    — deben ser curvas continuas pegadas a las botas, sin escalones.
+ D. La banda azul atras: corre en linea recta — debe leerse GRANDE y
+    clara detras de Sonic a la altura de las piernas/cintura, como el
+    trail del spindash.
+ E. Si algo queda para afinar (ver PALANCAS abajo), con un dato tuyo
+    ("que pieza y hacia donde") es hotfix de 1 constante.
+
+================================================================
+ PALANCAS DE CALIBRACION (constantes en sonic.inc, todo documentado)
+================================================================
+ * Niebla tenue en mapa CLARO?     alpha 120 -> 150 (5 humos, PeelCloudTick)
+ * Niebla demasiado brillante?     alpha 120 -> 90
+ * Laser azul demasiado grande?    halo 34.0 -> 28.0 (CreatePeelTrail)
+ * Lineas rojas muy gruesas?       6.0 -> 4.0 (los 2 TEStartChain de pies)
+ * Cero cuadros negros garantizado: no hay mas rendermode 0 en el suite.
+
+================================================================
+ QUE NO CAMBIO
+================================================================
+ - La BOLA del spindash: intacta (mismo trail 3 capas de siempre).
+ - El polvo gris de la carga: mismo look, ahora siempre aditivo.
+ - Los moons y las chispas: igual (materiales en materials/icons si los
+   tienes; sin ellos no salen moons, la niebla no los necesita).
+ - La luz azul de la oscuridad, el flash blanco, el carry/rescate,
+   daños, cooldowns, cvars: TODO igual.
+ - smd_spritetrail_fix (si lo tienes): sin tocar, solo aplica al modo
+   autentico (sonicom_trails_mat 1), que sigue opt-in.
+
+ VERIFICACION: ver VERIFICACION_37719.txt (build + forense de simbolos).
+ REGISTRO COMPLETO DE TRABAJO: worklog.md (dentro del zip, como pediste).

@@ -1,0 +1,61 @@
+VERIFICACION SUITE 3.77.7 "AVATAR REMOTO POR TP"
+==================================================
+
+COMPILACION
+-----------
+- Compilador: spcomp64 1.11.0.6970 + overlay oficial 1.11
+  (scripts/build_om_current.sh)
+- Resultado: 28 warnings = TODAS preexistentes (misma lista
+  exacta que v6.14: Doll_System 3, Metal 2, Sally 14,
+  OM_Stun 1, manager 8 tag mismatches L2608-2611)
+- CERO warnings de Tails.inc / sonic.inc / Amy.inc (codigo
+  nuevo y viejo de los tres modulos limpio)
+- smx: 363,445 B (v6.14: 362,629 B; +816 B coherentes con
+  ~176 lineas netas nuevas)
+- sha256 smx:
+  87797234cf91731f90a8ef7450ac2335d4f25ce0fcfa91bd5de7b2d9f4b4475e
+
+FORENSE DEL SMX (diff contra el smx v6.14 ENTREGADO)
+----------------------------------------------------
+- Simbolos: 575 = 574 (v6.14) + 1 Tails_AvatarTPOn, 0 borrados
+  (nota de precision: el worklog de la Task 21 registro "575"
+  aritmeticos para la v6.14; el conteo literal de simbolos del
+  smx entregado es 574 — CarryTraceFilter vive en la tabla de
+  publicos. Esta verificacion compara ARTIFACTO vs ARTIFACTO.)
+- Tails_OnAvatarTPChanged: presente en el blob (tabla de
+  publicos — MISMO patron que los callbacks existentes
+  Tails_OnFollowModeChanged / Tails_OnAvInterpChanged, ambos
+  tambien ausentes de simbolos y presentes en blob: verificado)
+- Cvars: 169 = 168 (v6.14) + tails_avatar_tp
+- Marcadores de version presentes en el smx:
+  3.77.7 = True | v5.25-B = True | v6.15-OM = True | v98-OM = True
+- Funciones clave de la linea intactas: carry v6.14 8/9 en
+  simbolos (la 9a es publica, como siempre) + Amy v93-v97 6/6
+
+DIFF POR ARCHIVO (baselines verificadas por sha256)
+---------------------------------------------------
+- Tails.inc     : baseline incoming/scripting3_v97 (v97 pristino,
+  d81bfeb6...) -> v5.25-B (228,583 B)
+- sonic.inc     : baseline paquete v6.14 (71f098f9...) -> v6.15-OM
+  (229,364 B)
+- Amy.inc       : baseline paquete v6.14 = v97 (fdb9b56f...,
+  el mismo hash registrado en la Task 20-R) -> v98-OM (484,605 B)
+- manager .sp   : baseline paquete v6.14 (eb33f365...) -> 3.77.7
+  (167,508 B; linea de version 4,034 chars < 4096, error 075 OK)
+- Total del diff unificado: +226 / -50 lineas
+
+REGRESIONES REVISADAS EN CODIGO
+-------------------------------
+- Copia L de los 3 avatares: 0 cambios de comportamiento
+  (parentada + EF_NOINTERP + pulso + contra-rotacion eye)
+- Transmit filters R/L: intactos (el dueño nunca recibe la R)
+- tails_follow 1 (diag): comportamiento identico (la R es el
+  avatar unico TP de siempre; el dual nunca existio ahi)
+- tails_avinterp en vivo: ya NO toca la R-TP (solo L y R
+  parentada) — fix agregado en esta version
+- FSMs 10 Hz de los 3 modulos: montaje/reparacion/tardio-L
+  intactos; el toggle del cvar mata y las FSM re-montan <=0.1s
+- Sonic: bola parentada + R oculta pegada por TP durante la
+  bola; EndRoll/OM_Cancel/restore 0.15s intactos
+- Muzzle del laser (usa al player, no al avatar), GetAvatarEnts
+  (trails), ragdolls, tarot, lanzamiento, peel carry: intactos

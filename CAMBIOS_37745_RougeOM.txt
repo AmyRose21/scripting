@@ -1,0 +1,202 @@
+==========================================================================
+ SUITE 3.77.45 — "ROUGE OM v10: EL KIT COMPLETO DEL GMOD"
+ Orden del owner 2026-10-10 (tras la 3.77.44):
+ "Aun tienes los Lua de Gmod? Si aun los tienes incluyelas con sus
+  pasivas de rouge y habilidades (y si las otras 2 habilidades que ya
+  tiene muevelas a la 3 y 4) y Bueno ya te sabes todo el numerito...
+  con incluir personaje nuevo sincronizacion bla bla bla... No se si
+  rouge OM tendra mas de 2 habilidades si es asi tendras que remplazar
+  una y si la habilidad de flash sera modificada se fucionada con la
+  granada quimica en la habilidad 4 ella tendra tambien un Parry (tipo
+  counter de knuckles pero un tanto mas debil pero aun asi podra
+  activar la devolucion de proyectiles (Ya sabes que debes modificar)"
+==========================================================================
+
+LOS LUA DE GMOD: SI ESTABAN (otra vez).
+  El pack completo de 118 Lua (el de la Task 25, zip 3,758,655 B
+  sha256 436e180d...) fue RECUPERADO del TransferNow 20261008nqkvBS25
+  (el metodo API+Referer documentado en el worklog) y la fuente de
+  esta suite es el redimated_om_pills_survivors_rouge.lua (1350
+  lineas) + su register de convars + el ent_om_rouge_smokebomb_display.
+  TODO lo de abajo sale de ahi con los numeros del lua.
+
+==========================================================================
+ QUE SE CAMBIO (2 archivos + el .nut)
+==========================================================================
+
+1) ROUGE.INC v9.1 -> v10-OM (2216 -> 4096 lineas)
+
+   LAYOUT NUEVO (4 slots, como pediste):
+   ─────────────────────────────────────────────────────────────────
+    Z  BARRIDO (Sweep Kick del lua, NUEVO)
+       Carga 0.35s (sweepkick_chargeup; paso corto + punchstart.wav
+       pitch 107) -> EMBESTIDA a 550 (sweepkick_speed) durante 0.9s
+       con I-FRAMES COMPLETOS (el lua pone OM_Damage_Reduction=0 en
+       la embestida). Primer golpe por contacto (la esfera de 95 del
+       lua resuelta por touch, cero escaneo por tick):
+         * comun: dano + el RAGDOLL VOLADO en la direccion del
+           barrido (dir*500 girando — el CreateRagdolLCharacter_OM
+           del lua)
+         * especial: stagger 2.5s (basestun 5 del lua recortado a la
+           escala L4D2) + dano + empujon
+         * tank: dano + empujon
+         * witch: ESTATUA (Sonic_WitchStun 1.5s)
+       Sonido: om/blaze/blazekick.wav (el del lua). Golpear = +30 de
+       energia (sweepkick_reward). Recarga 28 si golpea / 15 si falla
+       (sweepkick_cd_hit / cd_miss EXACTOS del lua).
+       DESDE LA PARED: Z = el lanzazo aim*1500 del lua.
+
+    X  CONTRAGOLPE (NUEVO — tu Parry "tipo counter de knuckles pero
+       un tanto mas debil")
+       4s de ventana (vs los 8s de la postura de Knuckles: DEBIL).
+       Lo que devuelve es a MEDIA FUERZA: comunes 50 (Knuckles 100),
+       especiales 100 + empuje 500 (Knuckles 200 + 800 + 5s sin
+       habilidad), witch estatua 1.2s (Knuckles 2s). El BLOQUEO si es
+       total: nada le baja vida en su ventana.
+       Y LO QUE PEDISTE EXPLICITO: "aun asi podra activar la
+       devolucion de proyectiles" — SI: el Contragolpe llama DIRECTO
+       (RunScriptCode, patron supertank SetAmyMode) a SU ENTRADA
+       ChCh_RougeNotify del chch_parrying.nut v2.9 y esa ventana
+       devuelve TODO lo que le tiren: roca del tank, saliva, molotov,
+       pipe, bile jar, granada del launcher + enemigos en cono.
+       X otra vez la apaga antes de tiempo (toggle, como Knuckles).
+       Sonido SUYO: om/rouge/flashbomb.wav (el destello de espia).
+       Recarga 25 (mas larga que la de Knuckles 20: es mas debil).
+
+    C  BAT BOMB SPRAY (movida INTACTA desde la X — "muevelas a la 3")
+
+    B  CEBO+FLASH (el Cebo Quimico movido desde la Z — "a la 4" — y
+       FUSIONADO con la Flash Bang del lua: "la habilidad de flash
+       sera modificada se fucionada con la granada quimica")
+       La granada quimica sigue siendo la de siempre (explosion 300 +
+       charco de acido real insect_swarm + atraccion de comunes del
+       pipebomb) y ahora TRAS explotar llega el DESTELLO:
+         * radio 400 con LINEA DE VISION (el FindInSphere+Visible del
+           lua)
+         * comunes y witch: ESTATUA CYAN (la ceguera, OM_Stun)
+         * especiales: stagger 1.2 + LENTITUD x0.7 durante 6s (la
+           rougeslowdown EXACTA del lua)
+         * tank: lentitud x0.85 3s (resiste)
+         * si alcanzo a alguien: +20 de energia (smokebomb_reward)
+       VFX: destello blanco triple + om/rouge/flashbomb.wav.
+
+    ONDA NEGRA: REEMPLAZADA (como avisaste: "si tendra mas de 2
+    habilidades tendras que remplazar una"). NO SE BORRA: queda
+    accesible por consola con sm_rouge_wave (su codigo esta intacto
+    al 100%, solo salio de la tecla C).
+
+   PASIVAS DEL LUA (todas):
+   ─────────────────────────────────────────────────────────────────
+    * ENERGIA (la rouge_latchbar, barra purpura del lua): 30 inicial
+      / 100 max (convars rouge_energy_*). Regen 1.2/s. ALIMENTA el
+      agarre de pared, los aleteos y el lanzazo. Histeresis del lua:
+      si llega a 0 no vuelve a agarrar nada hasta recuperarse a 35.
+      HUD: barra de 10 bloques en el hint (callada cuando esta llena).
+    * AGARRE DE PARED (el LatchOntoWall_OM_Knuckels del lua — el
+      mismo sistema que usa Knuckles): en el aire contra una pared
+      vertical (20u al frente, a mas de 25u del suelo) se pega
+      (max 2 por vuelo, rouge_latch_max), drena energia, SPACE = el
+      LANZAZO aim*700+60z (launchy_power, cuesta 15). Se rompe sola
+      si la energia muere o llega al suelo. Sonido om/knuckles/
+      Latch.wav (el mismo del lua).
+    * ALETEOS (el Flap del lua): 3 saltos en el aire por vuelo, 16 de
+      energia cada uno, impulso vertical 400 bajando 30 por uso, la
+      velocidad horizontal se frena a 0.85 con cada aleteo. Sonido
+      om/rouge/flap.wav.
+    * REDUCCION PASIVA: recibe el 90% de todo el dano
+      (passivereduction 90 del lua; rouge_passive_reduction 0.9).
+    * Y LAS DE SIEMPRE INTACTAS: planeo con SHIFT + inmunidad de
+      caida + evasion instintiva 30%.
+
+   AVATAR (el "numerito" completo — 6o avatar del suite):
+   ─────────────────────────────────────────────────────────────────
+    rouge.mdl del VPK (models/Noodles/OM/rouge.mdl, deteccion
+    FileExists: SI el modelo no esta montado TODO cae al survivor
+    normal y TODO el kit funciona igual — CERO dependencia).
+    * copias R/L + sync (parentado o por TP segun tails_avatar_tp) +
+      pulso de pausa + ADOPCION de huerfanos en el montaje (la
+      receta Task 49 que arregló los reinicios del avatar — esta FSM
+      es la UNICA creadora de sus props y los huerfanos mueren en el
+      instante del montaje, nunca en barridos en caliente)
+    * FSM con las secuencias del rouge.mdl que usa el lua: idle/
+      walk/run/jump/fall + latch (agarrada) + flap + SweepKick +
+      IdleLowHealth/WalkLowHealth/RunLowHealth (HP <= 60, el
+      ShouldAlternate del lua) + DownedIdle/DownedWalk (incap)
+    * el yaw mientras cuelga mira HACIA AFUERA de la pared (el
+      pill_assignedangle del lua)
+    * ragdoll de muerte rouge.mdl 15s + filtro anti-corpse 2s/200u
+      (receta Knuckles/Metal/Sonic)
+    * tintes: pulso magenta en el contragolpe, blanco en cada
+      bloqueo, rosa en el golpe del barrido
+
+2) CHCH_PARRYING.NUT v2.8 -> v2.9 (1223 -> 1285 lineas)
+   * NUEVA ENTRADA: ::ChCh_RougeNotify (y su metodo KnxRougeNotify) —
+     la llama el Contragolpe del manager por RunScriptCode, igual que
+     SetAmyMode del supertank. LA ENTRADA ES LA IDENTIDAD: la ventana
+     guarda SU banda rouge=true.
+   * SU SONIDO: Rouge_Window_Sound = om/rouge/flashbomb.wav (""=off)
+     con su precache propio.
+   * SU HINT: "¡CONTRAGOLPE DE ESPIA!" en cada proyectil devuelto.
+   * SU REPORTE AL SMX: rouge_parry_blocked <idx> en cada bloqueo de
+     su ventana (patron knx_parry_blocked / amyparry_strike) -> el
+     manager suelta el tinte blanco de destello del avatar.
+   * ChCh_ParryStatus ahora muestra la identidad ROUGE en sus ventanas
+     y te dice que tambien se abre con el Contragolpe X de Rouge.
+   * TODO LO DEMAS INTACTO: las entradas de Knuckles (ChCh_KnxNotify)
+     y Amy (ChCh_AmyNotify), el loop 30 Hz, watchdog, boomer fuses,
+     roca/saliva/granadas devueltas, enemigos en cono, sonidos
+     punchstun/HammerHit. (Chequeo de balance {} () [] con parser de
+     strings/comentarios: 0 errores. Marcadores v2.9 9/9, intactos 8/8.)
+
+3) SONIC_ABILITY_MANAGER.SP v3.77.44 -> v3.77.45
+   * Ruteo: Z Rouge = Barrido / X = Contragolpe / C = Bat Bomb /
+     B = Cebo+Flash. El set ROUGE de Sage SIGUE con las granadas
+     (Z cebo / X bomba — el set presta las granadas, no el kit).
+   * sm_sjsver actualizado (la descripcion larga de Rouge v10-OM).
+   * OM_IsTrackedAvatarRef + el barrido de huerfanos del arranque
+     conocen los props rouge_avatar_om / _l (la adopcion de la Task
+     49 cubre al 6o avatar).
+   * Strings de ayuda de las teclas C y B actualizados.
+   * CERO cambios en el resto de personajes (diff 163 lineas, todo
+     comentario de version + ruteo Rouge + tracking).
+
+PARRY.SMX v2.6 y KNUCKLES_PARRY_STATE.NUT: SIN CAMBIOS (identicos
+byte a byte a los de la 3.77.44 — el watchdog solo arranca el .nut;
+la entrada nueva la llama el manager directo).
+
+==========================================================================
+ QUE NO SE TOCO (cero regresion)
+==========================================================================
+ * Knuckles v75-OM, Amy v104-OM, sonic v6.31-OM, Tails, Metal, Sally,
+   Cream, Eggman, Shadow, Sage: IDENTICOS byte a byte a la 3.77.44
+   (verificado por cmp en los 17 .inc — solo Rouge.inc difiere).
+ * El codigo del Cebo, la Bat Bomb y la Onda Negra: INTACTOS (la
+   Onda solo salio de la tecla; sm_rouge_wave sigue en consola).
+ * Compilacion: spcomp64 1.11.0.6970, 28 warnings = LA MISMA LINEA
+   BASE EXACTA de la 3.77.44 (cero warnings nuevos).
+
+==========================================================================
+ PLAN DE PRUEBA (5 minutos)
+==========================================================================
+ 1. sm_sjsver -> debe decir "Manager 3.77.45 ... Rouge v10-OM (KIT
+    GMOD...)" y al final "nut v2.9".
+ 2. Con Rouge: Z (carga y embiste — los comunes salen volando en
+    ragdoll), X (contragolpe magenta 4s — que un tank le tire una
+    ROCA: debe volver devuelta con su hint "¡CONTRAGOLPE DE ESPIA!"
+    y su sonido flashbomb), C (bat bomb), B (cebo+flash: explosion +
+    charco + DESTELLO que congela a la vista).
+ 3. Salto en el aire 3 veces (aleteos con energia), pegate a una
+    pared en el aire (agarre) y SPACE (lanzazo).
+ 4. La barra de energia en el hint baja/ sube sola.
+ 5. knx_parry_status en consola: con el contragolpe abierto debe
+    listar tu ventana con el tag [ROUGE].
+ 6. Si tienes el rouge.mdl montado en el VPK: el avatar espejo con
+    sus anims (idle/run/jump/fall/latch/flap/SweepKick). Si no lo
+    tienes: todo funciona igual sin avatar (por diseño).
+
+ PALANCAS (todas en cfg/sourcemod/Sonic_Suite.cfg — auto-reconciliado)
+  rouge_energy_start/max/regen, rouge_latch_max/drain/jumpcost/
+  launch, rouge_flap_max/cost/power/cd, rouge_passive_reduction,
+  rouge_kick_charge/speed/duration/radius/damage/stun/cd_hit/cd_miss/
+  reward, rouge_parry_cooldown/duration/common_dmg/si_dmg/push,
+  rouge_flash_radius/slowdur/slow/stun/reward, rouge_avatar (0=off).

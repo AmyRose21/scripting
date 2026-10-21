@@ -1,0 +1,290 @@
+--- download/suite_37743_la_habilidad_manda/chch_parrying.nut	2026-10-10 10:06:17.540252339 +0000
++++ download/suite_37744_directo_smx/chch_parrying.nut	2026-10-10 11:14:45.607038375 +0000
+@@ -1,4 +1,25 @@
+-printl("Ultrakill-like parrying v2.7 loaded: LA HABILIDAD MANDA — la ventana SOLO la abren la postura de Knuckles y la pose de martillo de Amy; el shove ya NO parrea")
++printl("Ultrakill-like parrying v2.8 loaded: DIRECTO DEL SMX AL VSCRIPT — la entrada de Knuckles (ChCh_KnxNotify) y la de Amy (ChCh_AmyNotify) las llama el manager como el SetAmyMode del supertank; el shove ya NO parrea")
++// ------------------------------------------------------------------
++// v2.8 (suite 3.77.44 — orden del owner 2026-10-10: "el ultimo cambio
++//   que hiciste solo hiciste que el Vscript jamas se enterara del
++//   tema... No tienes que poner un identificador de personaje porque
++//   sencillamente el parry este Vscript puede identificar si es
++//   knuckles o amy quien llama... se te hace tan dificil hacer algo
++//   como hiciste con el super tank?... que en si sea una ventana
++//   abierta por 8 seg donde devuelve todo daño con dicho counter"):
++//   DIRECTO DEL SMX AL VSCRIPT — PATRON SUPERTANK (SetAmyMode). El
++//   manager llama a las entradas de ESTE .nut por RunScriptCode y
++//   punto: la entrada de Knuckles (ChCh_KnxNotify) desde su postura,
++//   la de Amy (ChCh_AmyNotify, NUEVA) desde su pose de defensa de la
++//   Z. LA ENTRADA ES LA IDENTIDAD: no hay registro de personajes que
++//   consultar ni convars espejo que mantener. La cadena de la v2.7
++//   (postura -> consola knxparry_state -> Parry.smx -> gate
++//   knxparry_chars -> gate uk_parry_chars de aqui) tenia 5 eslabones:
++//   si UNO fallaba, el .nut jamas se enteraba (y hasta la llamada
++//   DIRECTA de Amy moria en el gate uk_parry_chars, un convar que
++//   solo mantenia el Parry.smx v2.4+). Fuera gates, fuera puentes de
++//   consola, fuera identificadores: el .nut confia en su entrada como
++//   el supertank confia en SetAmyMode.
+ // ------------------------------------------------------------------
+ // v2.7 (suite 3.77.43 — orden del owner 2026-10-10: "dime que le
+ //   pusiste que cada que el knuckles activa su parry o amy su
+@@ -9,10 +30,11 @@
+ //   m_flNextShoveTime) y OleMateShoved (el parry instantaneo del
+ //   shove) fueron BORRADOS: el shove de TODOS es 100% vanilla, para
+ //   siempre. LA VENTANA LA ABRE SOLO LA HABILIDAD — la postura de
+-//   Knuckles (knxparry_state -> Parry.smx -> ChCh_KnxNotify) o la
+-//   pose Z de Amy (ChCh_KnxNotify directo) — y sigue siendo exclusiva
+-//   de ellos (KnxCanShoveParry gatea la apertura y la vigilia; su
+-//   nombre es historico, ya no hay shove que gatear).
++//   Knuckles (SU entrada ChCh_KnxNotify, llamada DIRECTA del manager)
++//   o la pose Z de Amy (SU entrada ChCh_AmyNotify, tambien directa).
++//   LA ENTRADA ES LA IDENTIDAD (patron SetAmyMode del supertank):
++//   quien llama define de quien es la ventana. Cero consola, cero
++//   registro de personajes, cero gates, cero puentes de por medio.
+ // ------------------------------------------------------------------
+ // v2.6 (suite 3.77.42 — reporte del owner 2026-10-10: "el Vscript
+ //   aun se activa es con un Shove... Y NO DEBERIA SER GENERAL! ...
+@@ -602,9 +624,10 @@
+     // es un shove vanilla. La ventana la abre SOLO la habilidad.
+     CheckParriedTankRocks();
+ 
+-    // v2.2/v2.7 — la ventana de estado KNX (la abre la HABILIDAD: la
+-    // postura de Knuckles via knxparry_state / la pose Z de Amy via
+-    // ChCh_KnxNotify) escanea y parrea sola
++    // v2.2/v2.8 — la ventana de estado KNX (la abre la HABILIDAD: la
++    // postura de Knuckles via SU entrada ChCh_KnxNotify / la pose Z de
++    // Amy via SU entrada ChCh_AmyNotify — ambas llamadas DIRECTAS del
++    // manager) escanea y parrea sola
+     KnxWindowTick();
+ 
+     // v2.3 — mechas de boomers: vuelan y ESTALLAN al tocar el suelo
+@@ -614,12 +637,14 @@
+ // -------------------------------------------------------------------
+ // v2.2/v2.7 — MODO ESTADO KNX: la ventana que abre la HABILIDAD
+ // -------------------------------------------------------------------
+-// v2.7: el shove YA NO parrea ni abre NADA (owner: "y no con shove
+-// ni con IN_ATTACK2"). La ventana la abre EXCLUSIVAMENTE la habilidad:
+-//   - Knuckles: la POSTURA (el manager manda knxparry_state ->
+-//     Parry.smx -> ChCh_KnxNotify(idx, 1, segundos))
+-//   - Amy: la POSE DE DEFENSA de la Z (el manager de Amy llama
+-//     ChCh_KnxNotify directo; dura lo que le quede de pose)
++// v2.8: el shove YA NO parrea ni abre NADA (owner: "y no con shove
++// ni con IN_ATTACK2"). La ventana la abre EXCLUSIVAMENTE la habilidad,
++// con LLAMADA DIRECTA DEL SMX AL VSCRIPT (patron SetAmyMode del
++// supertank — cero consola, cero registro de personajes):
++//   - Knuckles: la POSTURA -> el manager llama SU entrada
++//     ChCh_KnxNotify(idx, 1, segundos) (RunScriptCode)
++//   - Amy: la POSE DE DEFENSA de la Z -> el manager llama SU entrada
++//     ChCh_AmyNotify(idx, 1, segundos) (RunScriptCode)
+ // Desde ese momento y hasta que se cumpla la duracion (o llegue la
+ // ORDEN DE APAGADO: ChCh_KnxNotify(idx, 0)), este loop escanea y
+ // parrea SOLO todo lo que le tiren. Filtros de la ventana:
+@@ -629,6 +654,28 @@
+ // -------------------------------------------------------------------
+ function ChCh_Parrying::KnxNotify(idx, on, dur)
+ {
++    // v2.8 — LA ENTRADA DE KNUCKLES (la llama el manager DIRECTO, patron
++    // SetAmyMode del supertank). El gate KnxCanShoveParry de la v2.6/2.7
++    // leia uk_parry_chars — un convar que SOLO mantenia el Parry.smx
++    // v2.4+; sin el plugin la ventana moria en silencio ("el Vscript
++    // jamas se enterara" — owner). FUERA. Quien llama a esta entrada ES
++    // Knuckles por definicion: la entrada es la identidad.
++    return KnxOpenWindow(idx, on, dur, false)
++}
++
++// v2.8 — LA ENTRADA DE AMY (la llama el manager DIRECTO desde la pose de
++// defensa de la Z). Misma mecanica, bandera amy=true para el contador
++// aparte (sonido de martillo + amyparry_strike al manager).
++function ChCh_Parrying::KnxAmyNotify(idx, on, dur)
++{
++    return KnxOpenWindow(idx, on, dur, true)
++}
++
++// v2.8 — el nucleo compartido de la ventana (antes KnxNotify). LA
++// IDENTIDAD LA DICTA LA ENTRADA QUE LLAMAN — como el SetAmyMode del
++// supertank. Sin registros, sin convars espejo, sin gates.
++function ChCh_Parrying::KnxOpenWindow(idx, on, dur, isAmy)
++{
+     if (Settings.Knx_Window != 1) return false
+ 
+     if (on != 1)
+@@ -639,15 +686,11 @@
+         return true
+     }
+ 
+-    // v2.6 — LA VENTANA TAMBIEN ES EXCLUSIVA: solo Amy y Knuckles
+-    // (la lista la publica el manager en uk_parry_chars). Un Parry.smx
+-    // viejo o una consola curiosa pidiendo ventana para OTRO
+-    // sobreviviente se rechaza aqui — el gate mas profundo del sistema.
+     local who = null
+     try { who = EntIndexToHScript(idx) } catch(e) { who = null }
+-    if (who == null || !who.IsValid() || !KnxCanShoveParry(who))
++    if (who == null || !who.IsValid() || !who.IsSurvivor() || who.IsDead())
+     {
+-        if (Settings.Knx_Debug) printl("[KNX] ventana RECHAZADA en ent " + idx + " (no es Amy/Knuckles)")
++        if (Settings.Knx_Debug) printl("[KNX] ventana RECHAZADA en ent " + idx + " (jugador no valido)")
+         return false
+     }
+ 
+@@ -656,8 +699,8 @@
+     if (d <= 0.0) d = Settings.Knx_Window_Max   // hasta la orden de apagado
+     if (d > 3600.0) d = 3600.0
+ 
+-    KnxWindows.rawset(idx, { until = Time() + d })
+-    if (Settings.Knx_Debug) printl("[KNX] ventana ABIERTA en ent " + idx + " por " + d + " s")
++    KnxWindows.rawset(idx, { until = Time() + d, amy = isAmy })
++    if (Settings.Knx_Debug) printl("[KNX] ventana ABIERTA en ent " + idx + " (" + (isAmy ? "AMY" : "KNUCKLES") + ") por " + d + " s")
+     return true
+ }
+ 
+@@ -682,9 +725,10 @@
+         if (!who.IsSurvivor() || who.IsDead() || who.IsIncapacitated() || who.IsHangingFromLedge())
+         { expired.append(idx); continue }
+ 
+-        // v2.6 — ...y si dejo de ser Amy/Knuckles (cambio de personaje
+-        // en caliente): la ventana es de ellos o de nadie
+-        if (!KnxCanShoveParry(who)) { expired.append(idx); continue }
++        // v2.8 — la identidad la trajo la ENTRADA que abrio la ventana;
++        // no hay registro que consultar. Si el jugador deja de ser
++        // valido, la ventana muere sola (la habilidad que la abrio ya
++        // mando su orden de apagado por su lado).
+ 
+         KnxWindowScan(who)
+     }
+@@ -847,51 +891,29 @@
+     foreach (b in done) KnxBoomers.rawdelete(b)
+ }
+ 
+-// v2.3 — de quien es esta ventana? Amy (pose de defensa de la Z) o
+-// Knuckles (shove parry): el modelo lo dice (amy.mdl del suite).
+-// Amy lleva SU contador aparte (sonido/hints propios) y su parry de
+-// proyectiles dispara la DEFENSA DE MARTILLO en el manager.
++// v2.8 — de quien es esta ventana? LO DICE LA ENTRADA QUE LA ABRIO
++// (patron supertank: SetAmyMode no consulta ningun registro — la llamo
++// el codigo de Amy, luego es Amy). La ventana guarda su bandera amy y
++// eso es toda la identidad. El chequeo por modelo queda como respaldo
++// para servers donde el player SI viste el amy.mdl.
+ function ChCh_Parrying::KnxIsAmy(who)
+ {
+-    // v2.6 — EL MODELO MIENTE EN ESTE SUITE: el jugador NO lleva el
+-    // amy.mdl (el avatar es un prop_dynamic parentado; el modelo del
+-    // player sigue siendo el vanilla) — el chequeo por modelo de la
+-    // v2.3 NUNCA matcheo y la DEFENSA DE MARTILLO (amyparry_strike) y
+-    // el contador aparte de Amy JAMAS disparaban. La fuente de verdad
+-    // es el manager: publica a sus Amy en uk_amy_chars (lo mantiene el
+-    // Parry.smx v2.4 con el puente knxparry_chars). El modelo queda
+-    // como respaldo (servers que SI vistan el amy.mdl).
+     local idx = who.GetEntityIndex()
+-    try
+-    {
+-        local s = Convars.GetStr("uk_amy_chars")
+-        if (s != null && (" " + s + " ").find(" " + idx.tostring() + " ") != null) return true
+-    }
+-    catch(e) {}
++    if (KnxWindows.rawin(idx) && KnxWindows[idx].rawin("amy"))
++        return KnxWindows[idx].amy == true
+     local mdl = ""
+     try { mdl = who.GetModelName().tolower() } catch(e) { return false }
+     return (mdl.find("amy") != null)
+ }
+ 
+-// v2.6/v2.7 — QUIEN PUEDE TENER LA VENTANA ABIERTA (owner: "los
+-// unicos es amy y knuckles por el momento"): la lista vive en el
+-// convar uk_parry_chars — la llena el Parry.smx con lo que el manager
+-// le publica por knxparry_chars (0 = nadie, 1 = knuckles, 2 = amy).
+-// v2.7: el shove ya NO parrea para NADIE — esto gatea la APERTURA de
+-// la ventana (KnxNotify) y su vigilia (KnxWindowTick): la ventana es
+-// de Amy y Knuckles o de nadie. (El nombre historico "ShoveParry" se
+-// conserva para no recablear los 3 llamantes.)
+-function ChCh_Parrying::KnxCanShoveParry(who)
+-{
+-    local idx = who.GetEntityIndex()
+-    try
+-    {
+-        local s = Convars.GetStr("uk_parry_chars")
+-        if (s == null) return false
+-        return (" " + s + " ").find(" " + idx.tostring() + " ") != null
+-    }
+-    catch(e) { return false }
+-}
++// v2.8 — KnxCanShoveParry BORRADA (def + 2 llamantes): su lectura de
++// uk_parry_chars era el eslabon que mataba la cadena cuando el
++// Parry.smx v2.4+ no estaba o no habia publicado — hasta la llamada
++// DIRECTA de Amy se rechazaba en silencio ("el Vscript jamas se
++// enterara" — owner). La exclusividad ahora es estructural: SOLO el
++// manager llama a las entradas (ChCh_KnxNotify / ChCh_AmyNotify), y el
++// manager solo las llama desde el codigo de Knuckles y de Amy. La
++// entrada es la identidad — como SetAmyMode en el supertank.
+ 
+ // v2.3 — el jugo sonoro de la ventana parametrizado (CONTADOR APARTE:
+ // Amy suena con SU martillo; Knuckles con SU slam) — hint + sonido a
+@@ -1089,10 +1111,14 @@
+ }
+ 
+ // -------------------------------------------------------------------
+-// v2.2 — API ROOT "MODO ESTADO": el smx (Parry.smx v2.1+) avisa por
+-// aqui cuando Knuckles ENTRA en parry y cuando SALE. Tambien usable
+-// a mano desde la consola del servidor (sin smx de por medio):
+-//     script ChCh_KnxNotify(1, 1, 2.0)   // abre 2 s en el jugador 1
++// v2.2/v2.8 — API ROOT "MODO ESTADO": el manager llama estas entradas
++// DIRECTO (RunScriptCode, patron SetAmyMode del supertank). LA ENTRADA
++// ES LA IDENTIDAD: ChCh_KnxNotify = la entrada de KNUCKLES (la llama
++// el codigo de la postura), ChCh_AmyNotify = la de AMY (la llama el
++// codigo de la pose de defensa de la Z). Tambien usable a mano desde
++// la consola del servidor (sin smx de por medio):
++//     script ChCh_KnxNotify(1, 1, 8.0)   // Knuckles: abre 8 s en el jugador 1
++//     script ChCh_AmyNotify(2, 1, 2.0)   // Amy: abre 2 s en el jugador 2
+ //     script ChCh_KnxNotify(1, 0)        // LA ORDEN DE APAGADO
+ // -------------------------------------------------------------------
+ if (!("ChCh_KnxNotify" in getroottable()))
+@@ -1108,6 +1134,51 @@
+     }
+ }
+ 
++// v2.8 — LA ENTRADA DE AMY (misma mecanica, bandera amy=true)
++if (!("ChCh_AmyNotify" in getroottable()))
++{
++    ::ChCh_AmyNotify <- function(idx, on, dur = 0.0)
++    {
++        local root = getroottable()
++        local P = null
++        if ("ChCh_Parrying" in root) P = root.ChCh_Parrying
++        else if ("DirectorScript" in root && "ChCh_Parrying" in root.DirectorScript) P = root.DirectorScript.ChCh_Parrying
++        if (P == null) { ::print("[AMY] ChCh_AmyNotify: ChCh_Parrying no esta cargado\n"); return false }
++        return P.KnxAmyNotify(idx, on, dur)
++    }
++}
++
++// v2.8 — EL STATUS DE LAS VENTANAS (lo dispara el knx_parry_status del
++// Parry.smx por RunScriptCode): el estado vive AQUI, lo reporta AQUI.
++if (!("ChCh_ParryStatus" in getroottable()))
++{
++    ::ChCh_ParryStatus <- function()
++    {
++        local root = getroottable()
++        local P = null
++        if ("ChCh_Parrying" in root) P = root.ChCh_Parrying
++        else if ("DirectorScript" in root && "ChCh_Parrying" in root.DirectorScript) P = root.DirectorScript.ChCh_Parrying
++        if (P == null) { ::print(".nut: ChCh_Parrying no esta cargado\n"); return false }
++        local n = 0
++        foreach (idx, w in P.KnxWindows)
++        {
++            local who = null
++            try { who = EntIndexToHScript(idx) } catch(e) { who = null }
++            local tag = "?"
++            if (w.rawin("amy") && w.amy == true) tag = "AMY"
++            else tag = "KNUCKLES"
++            local rest = w.until - Time()
++            if (rest < 0.0) rest = 0.0
++            local nm = "ent " + idx
++            if (who != null && who.IsValid()) { try { nm = who.GetPlayerName() } catch(e) {} }
++            ::print(" ventana ABIERTA     : " + nm + " [" + tag + "] " + rest + " s restantes\n")
++            n++
++        }
++        if (n == 0) ::print(" ventanas abiertas   : ninguna (abrela con la postura de Knuckles / la Z de Amy)\n")
++        return true
++    }
++}
++
+ // v2.2 — handshake con Parry.smx v2.1+: el smx crea el convar
+ // uk_parry_knx_api y lo lee para saber que ESTE .nut esta vivo. Si
+ // el smx no esta o es viejo, esto es un no-op silencioso.

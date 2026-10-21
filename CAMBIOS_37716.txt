@@ -1,0 +1,99 @@
+SUITE 3.77.16 — "LOOK DEL PEEL AL ESTILO GMOD"
+(sonic.inc v6.23-OM / manager 3.77.16 — el resto del arbol INTACTO)
+
+================================================================
+QUE PASO CON LAS CAPTURAS DEL 04:50 (diagnostico)
+================================================================
+Compare tus 4 capturas contra el video del GMod cuadro por cuadro, y
+luego re-lei los LUA de GMod con lupa. Conclusion en una linea: los
+EFECTOS eran los correctos pero los TAMAÑOS estaban inflados entre
+1.4x y 3.5x, y la "luz" la puse como luz de mundo cuando en GMod es
+un resplandor de particulas. Tres culpables de la "nube gigante":
+
+  (a) LOS GLOWS salian a 60-85 unidades (escala 0.60-0.85). En el Lua
+      de GMod son SetStartSize(45-55). Ese era el blob amorfo gigante
+      detras de tu cabeza en la captura 04_50_28.
+  (b) El FLASH BLANCO de arranque salia a 160 unidades (escala 1.6)
+      = media pantalla de glow.
+  (c) La LUZ AZUL (light_dynamic) iba a radio 220 / brillo 2 / a la
+      altura de la CABEZA (+40z): lavaba de azul la niebla y las
+      paredes alrededor. En GMod la carrera NO lleva luz dinamica:
+      la "luz" que recuerdas son los 16 glow particles ADITIVOS que
+      el emitter suelta POR FOTOGRAMA alrededor del corredor.
+
+Y lo que faltaba (lo contrario): la nube quedaba RALA (3 humos + 2
+glows por latido) y el MOON casi invisible (un puntito estatico de
+8-18u que no se movia) — en el GMod el emitter tira 16+16 particulas
+POR FOTOGRAMA con velocidades aleatorias de ±300-580 u/s, y el moon
+es un arco azul-cian que NACE DETRAS tuyo, CRECE de 16 a 112 y se
+apaga volando hacia atras (effects lua: back-offset 0->80).
+
+================================================================
+LO QUE CAMBIO (1-a-1 con lo que se ve)
+================================================================
+1. GLOWS: 0.45-0.55 (45-55u EXACTO del GMod), 5 por latido. Ya no
+   hay blob gigante — ahora es el resplandor que "es" la luz de la
+   carrera, como en GMod.
+2. HUMOS AZULES: 0.20-0.25 (20-25u EXACTO), 8 por latido (eran 3).
+   La nube ahora tiene MASA — se lee como el chaparron de energia
+   del video, no como 3 motitas flotando.
+3. AMBOS se apagan con DESVANECIDO (Alpha->0 por I/O) y encogen a
+   mitad de vida (el SetEndSize 0 del GMod) — nada desaparece de
+   golpe.
+4. MOON (los arcos): nace DETRAS del corredor (20-60u atras), arranca
+   a 30-55u e intenta CRECER x2.2 a mitad de vida. Usa el
+   sonic_dashing_effect ORIGINAL del pack (el arco azul-cian suave).
+5. FLASH BLANCO: 1.6 -> 0.45 (glow del tamanio del cuerpo).
+6. LUZ AZUL del peel: radio 220->150, brillo 2->1, altura cabeza->
+   cuerpo (+20z). Sigue brillando azul en lo oscuro, pero ya no
+   convierte media pantalla en gelatina azul. (La BOLA conserva su
+   luz 220/2 — de ella no hubo quejas.)
+7. TRAIL PRINCIPAL con LA TEXTURA REAL TAMBIEN EN NATIVO: blue2.vmt
+   es un chip 2x2 UNIFORME (color plano) — a diferencia de las
+   texturas de PERFIL (bluetrail/bluestartrail2) que se mapeaban
+   mal en los beams TE, este chip da IGUAL como se mapee = sale la
+   banda azul suave y plana del GMod. Con tu pack de materiales
+   instalado, el trail principal y los PIES usan blue2/Sonicred
+   tintados de blanco aunque sonicom_trails_mat este en 0. Sin el
+   pack: laserbeam tintado como siempre (cero dependencia).
+8. PIES ROJOS: cola 2.0 -> 1.0 (valor EXACTO del util.SpriteTrail:
+   6->1) y con el pack salen con la textura Sonicred autentica.
+9. POLVO DE LA CARGA: ahora CRECE (nace 5-9u, salta x2.2 — alla
+   SetStartSize(3-6) SetEndSize(10-20)), 4 puffs por gate, con sesgo
+   hacia arriba como el dir.z del Lua.
+
+NOTA sobre los arcos curvos de las capturas: eso es COMPORTAMIENTO
+CORRECTO — la estela sigue el CAMINO que recorriste (si corres en
+circulo, la estela es un arco; en el video de GMod tambien curva al
+girar). Lo que estaba mal era el tamano/look, no la curva.
+
+================================================================
+QUE NECESITAS INSTALAR
+================================================================
+- Sonic_ability_manager.smx (reemplaza el 3.77.15) — NADA MAS.
+- Materiales: los mismos del pack v3 (suite_37712_mats_sonicball.zip,
+  link de siempre) — esta version NO agrego archivos nuevos. Si ya
+  los tienes, no toques nada. (Sin el pack todo sigue funcionando
+  con el look nativo.)
+- Cvar: sin cambios. sonicom_trails 1 / sonicom_trails_mat 0 como
+  tengas. (Con el pack instalado, mat 0 ahora SI usa las texturas
+  reales del peel.)
+
+================================================================
+PLAN DE PRUEBA (2 minutos)
+================================================================
+1. Carga el peel (T): el polvo gris de la carga debe crecer y
+   subir, no quedarse pegado al suelo.
+2. Al soltar: flash blanco del tamanio del cuerpo (no pantalla).
+3. Corriendo: nube azul densa PEGADA a ti (humos 20-25u + resplan-
+   dor 45-55u), los arcos azules naciendo DETRAS y creciendo, la
+   banda azul principal suave y plana (no tubo neon), y las 2 lineas
+   rojas de los pies pegadas al suelo.
+4. En zona oscura: debes brillar azul suave — sin blob gigante en
+   la niebla.
+5. Spindash: SIN CAMBIOS (bola 3 capas + luz intactas).
+6. Amy/Sally/Cream/Eggman/Tails/Speed: SIN CAMBIOS.
+
+Arbol: sonic.inc v6.23-OM / manager 3.77.16 / Amy v101-OM /
+Speed_sonic v3.3 / Tails v5.25-B / Sally v6.2 / Cream v6.1 /
+Eggman v3.1.

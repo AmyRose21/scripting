@@ -1,0 +1,167 @@
+SUITE 3.77.30 — KNUCKLES OM (EL AVATAR) + FIX DE LAS RANURAS AL CAMBIAR PERSONAJE
+====================================================================
+Fecha: 2026-10-09 | Manager 3.77.30 | Knuckles.inc v65-OM | Rouge.inc (despacho)
+Archivos que cambian: Knuckles.inc + Sonic_ability_manager.sp + Rouge.inc (nada mas)
+
+PEDIDO (textual del owner)
+--------------------------
+"2 cosas 1 un fix Las habilidades ejemplo amy cuando ella aparece ok las
+habilidades son ajustadas y todo pero si cambio ejemplo metal la habilidad
+que iba en la 3 pareciera irse a la 4 y la 3 queda como una habilidad que
+amy poseia y sale un mensaje que no se puede usar.
+2 Incluiremos a knuckles Revisa lua de knuckles Para poder solucionar y
+hacer el añadido y todo el resto ya lo sabes... Con metal te la rifaste
+rapido Sorprendeme con knuckles"
+
+====================================================================
+FIX 1 — LAS RANURAS SE DESALINEABAN AL CAMBIAR DE PERSONAJE
+====================================================================
+DIAGNOSTICO (por que pasaba)
+----------------------------
+OnPlayerSelectCharacter bindeaba Z/X para todos, pero la C solo se la
+daba a Sonic / Tails / Sage / Amy. Dos consecuencias:
+  * Knuckles, Rouge y Metal JAMAS recibian el bind de su habilidad 3
+    (tecla C): su habilidad existia pero nadie se la ponia a la tecla.
+  * Quien viniendo de AMY conservaba pegados los binds de la fila de
+    ella: c=sm_amymodo (por eso la C "quedaba como una habilidad que
+    amy poseia y sale un mensaje que no se puede usar"), v=ability3
+    (por eso la habilidad 3 "pareciera irse a la 4": el Overdrive de
+    Metal dispara desde la V, la cuarta posicion de la fila) y
+    b=ability4 (el aviso "solo Amy").
+El anuncio de "[Controles] Z | X" tampoco mencionaba la C para
+Knuckles/Rouge/Metal.
+
+FIX (manager 3.77.30)
+---------------------
+Fila de binds COMPLETA e IDEMPOTENTE en cada seleccion de personaje
+(los binds viejos de otro personaje no sobreviven nunca mas):
+  * Z = sm_sjs_ability1 y X = sm_sjs_ability2 SIEMPRE.
+  * AMY mantiene su fila propia: c=sm_amymodo, v=ability3, b=ability4.
+  * TODOS LOS DEMAS: c=sm_sjs_ability3 (su habilidad 3 o el aviso
+    informativo del dispatcher si su personaje sigue con 2).
+  * Fuera de Amy, V y B vuelven a su estado NEUTRAL (unbind): no
+    quedan apuntando a comandos de otro personaje.
+De paso, anuncio de la habilidad 3 al escoger: Knuckles (Meteoro +
+planeo/pareg + postura), Metal (Overdrive + levitacion) y Rouge
+(Onda Negra) — Amy/Sonic/Tails/Sage ya lo tenian.
+
+====================================================================
+AÑADIDO 2 — EL AVATAR DE KNUCKLES (5o AVATAR DEL SUITE)
+====================================================================
+QUE DICE EL LUA GMOD (mineria de noodles_om_pills_survivors_knuckles.lua
++ knuckles_ui_om.lua + om_noodles_effects_knuckles.lua, 1.855/80/483 lineas)
+--------------------------------------------------------------------
+  * Modelo: models/Noodles/OM/knuckles.mdl escala 1 (l.51-57).
+  * noragdoll = false (l.59): al morir deja ragdoll del modelo.
+  * El knuckles NO define animrates -> el framework reproduce TODO a
+    rate 1.0 (lecccion aprendida en el walk de Metal v5.2).
+  * Secuencias usadas: idle/walk/run/jump/fall + glide (planeo,
+    ShouldAlternate.fall l.231) + latch (pared l.227) + FallAttack
+    (picada l.229) + los 5 PillAnim one-shot: PunchAnim (l.326),
+    GroundSmash (l.1073), attack = lanzamiento aereo (l.1781),
+    LatchOff (l.1585) + variantes lowhealth HP<=60 (l.213-241).
+  * UI: pulso ROJO de carga (fade simetrico EXACTO duration 0.5*0.5
+    = 0.25s / fade 0.25*0.5 = 0.125s), BLANCO de bloqueo, VERDE de
+    cancelacion, halo blanco del bloqueo (knuckles_block_outline).
+  * Sonidos (AdvancedPillSound, todos a soundLevel 87):
+    punchstart (carga), swing (lanzamiento), punchstun (impacto),
+    counter (postura), CounterBounce vol 0.65 (rebote de bloqueo),
+    Latch (pared), KnucklesCancel (cancelar).
+
+IMPLEMENTACION (Knuckles.inc v64 -> v65-OM)
+-------------------------------------------
+(1) EL AVATAR — patron Metal v5.4 / sonic v6.30 COMPLETO:
+      * Doble copia R (la que ven los demas; viaja por TP con
+        tails_avatar_tp + reloj vivo = interpolada suave) y L
+        (parentada, contra-rotada contra los eye angles del dueno).
+      * Follow per-tick: yaw suave 900 grados/s con deadband 3
+        grados, Tails_ExpDamp 0.05, snap al nacer, pitch/roll NUNCA.
+      * Pulso de pausa en cada montaje (Tails_PauseFix, el mismo
+        sistema de los otros 4 avatares).
+      * Cuerpo del survivor a RENDER_NONE (guardado y restaurado en
+        TODOS los caminos), re-afirmado por la FSM.
+      * FSM de 10 Hz (T_KnuxAvatarThink): montaje / auto-reparacion
+        de la copia L / muerte del avatar (incap o cambio = fuera).
+      * Gate g_bKnuxModelOK (PrecacheModel del VPK om_): sin el .mdl
+        el avatar NUNCA se monta y todo lo demas del Knuckles sigue
+        igual. Convar knux_avatar 1 para apagarlo a gusto.
+(2) FSM DE ANIMACION — las 15 secuencias del lua, con prioridades:
+      Meteoro (ASCENT=glide / AIM=latch "hover estilo agarre de
+      pared" / DIVE=FallAttack) -> pared (latch) -> picada del smash
+      aereo (FallAttack) -> planeo (glide) -> aire (jump con la
+      ventana anti-parpadeo del FL_ONGROUND / fall) -> suelo
+      (idle/walk/run con variantes lowhealth HP<=60; walk al rate
+      1.0 CONSTANTE del GMod, run al ritmo de la velocidad).
+      + ONE-SHOTS de habilidad (Knux_AvatarOneShot con lock): el
+      PunchAnim del dash punch, el GroundSmash del aterrizaje, el
+      attack del lanzamiento aereo y el LatchOff al soltarse de la
+      pared — los 4 PillAnim del lua en su punto exacto.
+(3) TINTES DEL knuckles_ui_om.lua (matematica EXACTA: 0.25s con
+    fades simetricos de 0.125s):
+      * Pulso ROJO repetido mientras carga el puno (cada 0.6s).
+      * Pulso BLANCO al BLOQUEAR con la contra (lengua/carry/slam/
+        fling/vomito/tank — los 6 sitios) + CounterBounce.wav.
+      * Pulso VERDE al cancelar la carga con [R] + KnucklesCancel.
+      * Postura azul 200,200,255 mientras dura la contra (el mismo
+        tinte que el port siempre puso en el cuerpo — ahora sobre el
+        avatar, que es lo que se ve).
+(4) SONIDOS AUTENTICOS om/knuckles/ del VPK con gates individuales
+    y fallback al stock de siempre (receta Metal v4.1/v5.2): sin VPK
+    suenan los de siempre, CERO dependencia nueva.
+(5) MUERTE: ragdoll prop_ragdoll knuckles.mdl (15s) + ventana
+    anti-corpse 2s/200u (Knuckles_OnEntityCreated, despachado por el
+    OnEntityCreated central de Rouge.inc — Knuckles se incluye antes).
+(6) CICLO DE VIDA: Knuckles_OnPlayerDeath NUEVO (lo llama el manager
+    en el cambio de personaje/desconexion: estado + avatar fuera SIN
+    ragdoll); la muerte REAL pasa por el player_death POST que ya
+    tenia el modulo (ragdoll + anti-corpse).
+
+QUE NO CAMBIA
+-------------
+Cero logica de habilidades (puno/counter/slam/glide/pareg/meteoro
+intactos), cero cvars de gameplay nuevos (solo knux_avatar), cero
+materiales nuevos (el avatar usa el knuckles.mdl del VPK om_ que ya
+tienes montado), 14 includes byte-identicos a la .29.
+
+PLAN DE PRUEBA (2 minutos)
+--------------------------
+ A. Escoge a Knuckles: te ves como el Knuckles real (avatar R/L).
+    El chat te anuncia la C (Meteoro) y el avatar.
+ B. Amy -> Metal sin reconectar: la C debe ser Overdrive (NO el modo
+    de Amy), la V y la B ya no disparan nada. Metal -> Knuckles: la C
+    debe ser el Meteoro.
+ C. Corre (run a ritmo de velocidad), camina despacio (walk calmo,
+    rate 1.0) y salta: el jump no se corta al rozar escalones.
+ D. Salta y mantente cayendo: planeo (glide). Cerca de una pared en
+    el aire: se agarra (latch) con el Latch.wav; salto para soltarte
+    (LatchOff) — prueba la cadena de 3.
+ E. Z (carga): pulso ROJO repetido + punchstart.wav. CLICK en suelo:
+    PunchAnim + swing. CLICK en el aire: attack + picada FallAttack y
+    al aterrizar GroundSmash + punchstun.
+ F. X (postura): avatar AZUL. Que un smoker te lance la lengua:
+    pulso BLANCO + CounterBounce. [R] en plena carga: pulso VERDE.
+ G. Herido a <=60 de vida: idle/walk/run cambian a las variantes
+    lowhealth del modelo (hombros caidos).
+ H. Muere: ragdoll de Knuckles 15s y NO aparece el corpse del
+    survivor. Cambiate de personaje: el avatar se va limpio.
+ I. Con VPK om_ DESMONTADO (o knux_avatar 0): todo funciona igual
+    que la .29 (cuerpo visible, sonidos stock, sin tintes).
+
+RECETAS DE CALIBRACION
+----------------------
+ * knux_avatar 0/1 — apagar/encender el avatar (default 1).
+ * tails_avatar_tp 0/1 — la copia R parentada (como antes) o por TP
+   interpolado (default 1; afecta a TODOS los avatares).
+ * Duraciones de los one-shots: KNUX_LOCK_PUNCH/SMASH/ATTACK/LATCHOFF
+   (0.55/0.90/0.50/0.45s) en el cabezal de Knuckles.inc.
+ * Ritmo del pulso de carga: KNUX_TINT_PULSE_EVERY (0.6s).
+
+NOTAS
+-----
+ * om_noodles_effects_knuckles.lua (efectos cliente del punch del
+   GMod) revisado: son renders de efectos con materiales propios del
+   addon — NO portables a SourceMod sin los .vmt; el port ya tiene
+   sus anillos/sprites VFX de siempre. Sin cambios.
+ * Los 3 rar que hay en include/ (Knuckles/2/3.rar) son respaldo
+   historico del propio Knuckles.inc (685-893 lineas vs las 2.363
+   actuales) — no contienen lua nuevo.

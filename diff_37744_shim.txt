@@ -1,0 +1,158 @@
+--- download/suite_37743_la_habilidad_manda/knuckles_parry_state.nut	2026-10-10 10:00:28.635643084 +0000
++++ download/suite_37744_directo_smx/knuckles_parry_state.nut	2026-10-10 11:14:45.608038379 +0000
+@@ -1,42 +1,35 @@
+ /* ============================================================
+-   KNUCKLES PARRY STATE  v2.0  (el puente de estado VScript->smx)
++   KNUCKLES PARRY STATE  v2.1  (API externa -> entradas del .nut)
+    ============================================================
+-   LA ARQUITECTURA NUEVA (la que pidió el owner): este .nut ya NO
+-   ejecuta nada de física ni auras. Solo AVISA al Parry.smx v2.0
+-   cuándo Knuckles está en ventana de parry (ON) y cuándo deja de
+-   estarlo (OFF = "la orden de apagado"). El plugin hace TODO el
+-   trabajo, nativo, con la lógica de proyectiles que ya tenía:
+-
+-       VScript manda estado    ->  knxparry_state <jug> 1 [seg]
+-       VScript orden de apago  ->  knxparry_state <jug> 0
+-
+-   Mientras la ventana esté abierta, el plugin devuelve todo
+-   proyectil HOSTIL que venga hacia Knuckles (receta Amy: solo lo
+-   que se mueve hacia él):
+-     - PIEDRA DEL TANK -> devuelta al tank + 500 de daño al llegar
+-     - SALIVA DEL SPITTER -> devuelta al spitter + cambio de dueño
+-       (el puddle pasa a ser tuyo y lastima a los SI)
+-     - PROPS CON VPHYS (coches puñeteados, barriles) -> al tank
++   v2.1 (suite 3.77.44): ESTE ARCHIVO YA NO LLAMA AL Parry.smx NI A
++   LA CONSOLA — llama DIRECTO a la entrada ChCh_KnxNotify del
++   chch_parrying.nut v2.8 (la entrada de Knuckles; la de Amy es
++   ChCh_AmyNotify), el MISMO patron que el manager usa desde la
++   3.77.44 (patron supertank / SetAmyMode: la entrada ES la
++   identidad). El puente de consola knxparry_state murio con el
++   registro de personajes: si algo fallaba en esa cadena de 5
++   eslabones, "el Vscript jamas se enterara" (owner). Aqui ya no hay
++   cadena: entrada directa y punto.
+ 
+-   API (llámala desde TU parry en VScript, el super tank, un
++   API (llamala desde TU parry en VScript, el super tank, un
+    logic_script, o la consola):
+ 
+-       KnucklesParryWindow(player)          // ON, duración por convar
++       KnucklesParryWindow(player)          // ON, 8 s (la postura de Knuckles)
+        KnucklesParryWindow(player, 3.0)     // ON por 3 segundos
+        KnucklesParryWindow(player, 0.0)     // ON hasta la orden de apagado
+        KnucklesParryEnd(player)             // OFF (la orden de apagado)
+        KnucklesParryActive(player)          // true si sigue en ventana
+        KnucklesParryAura(...)               // alias de Window (compat v1.x)
+ 
+-   Para probar desde consola (con el .nut cargado):
++   Para probar desde consola (con el chch_parrying.nut cargado):
+        script KnucklesParryWindow(Entities.GetByIndex(1))
+-   ...o SIN el .nut, directo:
+-       knxparry_state 1 1 2.0        (abre 2 s en el jugador 1)
+-       knxparry_state 1 0            (la orden de apagado)
++       script ChCh_KnxNotify(1, 1, 8.0)     // lo mismo, directo a la entrada
++       script ChCh_KnxNotify(1, 0)          // LA ORDEN DE APAGADO
+ 
+    INSTALACIÓN: left4dead2/scripts/vscripts/knuckles_parry_state.nut
+-   Requiere Parry.smx v2.0+ (el del paquete). Si tenías el
+-   knuckles_parry_aura.nut viejo (v1.0), BÓRRALO: ya no se usa.
++   Requiere chch_parrying.nut v2.8 (el del paquete). El Parry.smx
++   v2.6 lo carga al empezar el mapa (es solo la API externa: sin el,
++   el parry del suite funciona igual — la postura llama sola).
+    ============================================================ */
+ 
+ // instala UNA vez por mapa (re-ejecutar el archivo es no-op)
+@@ -47,20 +40,23 @@
+     ::KNX_STATE <-
+     {
+         windows = {}   // entIdx del player -> { until } (espejo local)
+-        debug   = false   // true = log en consola de cada comando enviado
++        debug   = false   // true = log en consola de cada entrada llamada
+     }
+ 
+     // ---------------------- PUENTE --------------------------
+-    ::KNX_Send <- function(cmd)
++    // v2.1: YA NO es SendToServerConsole — es la ENTRADA DIRECTA del
++    // chch_parrying.nut v2.8 (ChCh_KnxNotify). Mismo canal que usa el
++    // manager con la postura. Si el .nut no esta cargado, avisa 1 vez.
++    ::KNX_Call <- function(idx, on, dur)
+     {
+-        local ok = true;
+-        try { SendToServerConsole(cmd); }
+-        catch (e)
++        local root = getroottable();
++        if ("ChCh_KnxNotify" in root)
+         {
+-            ok = false;
+-            ::print("[KNX-STATE] ERROR: este VScript no tiene SendToServerConsole\n");
++            root.ChCh_KnxNotify(idx, on, dur);
++            return true;
+         }
+-        if (::KNX_STATE.debug) ::print("[KNX-STATE] -> " + cmd + (ok ? "" : " (FALLO)") + "\n");
++        ::print("[KNX-STATE] chch_parrying.nut v2.8 no esta cargado — la entrada ChCh_KnxNotify no existe\n");
++        return false;
+     }
+ 
+     // versión del plugin compañero ("" si no está)
+@@ -70,8 +66,9 @@
+     }
+ 
+     // ---------------------- API PUBLICA ---------------------
+-    // abre la ventana de parry en un player (dur = null -> la del
+-    // convar uk_parry_window; dur = 0 -> hasta la orden de apagado)
++    // abre la ventana de parry en un player (dur = null -> 8.0 s, la
++    // duracion de la postura de Knuckles; dur = 0 -> hasta la orden de
++    // apagado)
+     ::KnucklesParryWindow <- function(player, dur = null)
+     {
+         if (player == null || !player.IsValid()) return false;
+@@ -80,22 +77,20 @@
+ 
+         if (dur == null)
+         {
+-            local pd = 2.0;
+-            try { pd = Convars.GetFloat("uk_parry_window"); } catch (e) {}
+-            if (pd <= 0.0) pd = 2.0;
+-            ::KNX_Send(format("knxparry_state %d 1", idx));
+-            ::KNX_STATE.windows.rawset(idx, { until = Time() + pd });
++            local d = 8.0;   // knux_counter_duration (la postura de Knuckles)
++            ::KNX_Call(idx, 1, d);
++            ::KNX_STATE.windows.rawset(idx, { until = Time() + d });
+         }
+         else
+         {
+             local d = 0.0;
+             try { d = dur.tofloat(); } catch (e) { d = 0.0; }
+             if (d < 0.0) d = 0.0;
+-            ::KNX_Send(format("knxparry_state %d 1 %.2f", idx, d));
++            ::KNX_Call(idx, 1, d);
+             ::KNX_STATE.windows.rawset(idx, { until = Time() + (d > 0.0 ? d : 30.0) });
+         }
+ 
+-        if (::KNX_STATE.debug) ::print("[KNX-STATE] ventana abierta en ent " + idx + "\n");
++        if (::KNX_STATE.debug) ::print("[KNX-STATE] ventana abierta en ent " + idx + " (entrada ChCh_KnxNotify)\n");
+         return true;
+     }
+ 
+@@ -105,7 +100,7 @@
+         if (player == null || !player.IsValid()) return false;
+ 
+         local idx = player.GetEntityIndex();
+-        ::KNX_Send(format("knxparry_state %d 0", idx));
++        ::KNX_Call(idx, 0, 0.0);
+         if (::KNX_STATE.windows.rawin(idx)) ::KNX_STATE.windows.rawdelete(idx);
+ 
+         if (::KNX_STATE.debug) ::print("[KNX-STATE] ventana cerrada en ent " + idx + "\n");
+@@ -125,9 +120,9 @@
+     ::KnucklesParryAura <- ::KnucklesParryWindow;
+ 
+     // ---------------------- BANNER --------------------------
+-    local pv = ::KNX_PluginVersion();
+-    if (typeof pv == "string" && pv.len() > 0 && pv[0] == '2')
+-        ::printl("[KNX] knuckles_parry_state.nut v2.0 listo (puente de estado -> Parry.smx " + pv + ")");
++    local root = getroottable();
++    if ("ChCh_KnxNotify" in root)
++        ::printl("[KNX] knuckles_parry_state.nut v2.1 listo (API -> entrada ChCh_KnxNotify del chch_parrying.nut)");
+     else
+-        ::printl("[KNX] knuckles_parry_state.nut v2.0: Parry.smx v2.0+ NO detectado (uk_parry_version). El .nut avisa el estado; sin el plugin no hay quien ejecute.");
++        ::printl("[KNX] knuckles_parry_state.nut v2.1: chch_parrying.nut NO detectado — instala el v2.8 del suite en scripts/vscripts/");
+ }

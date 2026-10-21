@@ -1,0 +1,125 @@
+--- suite_37739_rock_avatar_fix/include/Metal.inc	2026-10-10 06:16:24.624360979 +0000
++++ suite_37740_adopcion_avatar/include/Metal.inc	2026-10-10 07:30:18.131095967 +0000
+@@ -1,8 +1,16 @@
+ /*
+  * ======================================================
+- *  [MODULO] Metal Sonic - The Ultimate Machine (v5.5-OM - RONDA 5: BOOMER FUSE + WITCH DE PARED)
++ *  [MODULO] Metal Sonic - The Ultimate Machine (v5.6-OM - ADOPCION DEL AVATAR EN EL MONTAJE + FIN DEL BARRIDO EN CALIENTE)
+  *
+- *  v5.5 (suite 3.77.38 — reporte del owner 2026-10-10):
++ *  v5.6 (suite 3.77.40 — orden del owner 2026-10-10: "tu barrido de
++ *  avatares esta haciendo reiniciar mi avatar a cada rato... BUSCA
++ *  OTRA MANERA"): el avatar de Metal ya NUNCA es barrido en caliente.
++ *  (1) REEMPLAZO LIMPIO en Metal_CreateAvatar: un montaje doble mata
++ *  al R/L viejo en vez de dejarlo huerfano; (2) ADOPCION: todo prop
++ *  "metal_avatar_om"/"_l"/"metalom_avatar" que esta FSM no rastrea
++ *  muere en el instante del montaje. El unico barrido restante del
++ *  suite corre en el arranque del mapa (cuando no existe ningun
++ *  avatar vivo). v5.5 (suite 3.77.38 — reporte del owner 2026-10-10):
+  *   (1) DANO DE LA EMBESTIDA +55% ("si vez el dano el esta muy por
+  *       debajo de otros supervivientes"): catch 4.0 -> 6.2, tick de
+  *       arrastre 4.0 -> 6.2, golpe de estampado 9.75 -> 15.1. El
+@@ -3868,6 +3876,68 @@
+ 
+ // Monta el avatar completo (R + L + cuerpo oculto). pulsePause SOLO para
+ // montajes de ciclo de vida (spawn/seleccion/reparacion tardia de la FSM).
++// =====================================================================
++// v5.6-OM (manager 3.77.40): ADOPCION EN EL MONTAJE — el reemplazo del
++// barrido en caliente (orden del owner 2026-10-10: "tu barrido de
++// avatares esta haciendo reiniciar mi avatar a cada rato... BUSCA OTRA
++// MANERA"). Esta FSM es la UNICA creadora de props con los nombres de
++// abajo: un prop asi que ELLA no rastrea es un huerfano por definicion
++// (lo fabrico una vida anterior, un montaje doble del pasado o una
++// version vieja del suite) y muere en el instante exacto del montaje.
++// Un avatar rastreado es INTOCABLE: no existe ningun timer que lo mire.
++// =====================================================================
++bool Metal_IsMyAvatarRef(int ref)
++{
++    // v3.77.40: el 0 es "sin avatar"; un ref NEGATIVO puede ser
++    // perfectamente legitimo (bit alto del serial del handle).
++    if (ref == 0 || ref == INVALID_ENT_REFERENCE) return false;
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_iMetalAvatar[i] == ref) return true;
++        if (g_iMetalAvatarL[i] == ref) return true;
++    }
++    return false;
++}
++
++void Metal_KillGhostAvatarProps()
++{
++    static const char sGhostNames[][] = { "metal_avatar_om", "metal_avatar_om_l", "metalom_avatar" };
++    static const char sClasses[][] = { "prop_dynamic_override", "prop_dynamic" };
++    int ghosts[8];
++    int ng = 0;
++    char nameBuf[64];
++
++    // primero se recolecta, luego se mata — el FindEntityByClassname
++    // tras un Kill a mitad de loop es tierra de nadie en L4D2
++    for (int c = 0; c < sizeof(sClasses); c++)
++    {
++        int ent = -1;
++        while ((ent = FindEntityByClassname(ent, sClasses[c])) != -1)
++        {
++            if (!IsValidEntity(ent)) continue;
++            GetEntPropString(ent, Prop_Data, "m_iName", nameBuf, sizeof(nameBuf));
++            if (nameBuf[0] == '\0') continue;
++
++            for (int n = 0; n < sizeof(sGhostNames); n++)
++            {
++                if (!StrEqual(nameBuf, sGhostNames[n], false)) continue;
++                if (Metal_IsMyAvatarRef(EntIndexToEntRef(ent))) break;
++                if (ng < sizeof(ghosts)) ghosts[ng++] = EntIndexToEntRef(ent);
++                break;
++            }
++        }
++    }
++
++    for (int g = 0; g < ng; g++)
++    {
++        int e = EntRefToEntIndex(ghosts[g]);
++        if (e > 0 && IsValidEntity(e)) AcceptEntityInput(e, "Kill");
++    }
++
++    if (ng > 0)
++        PrintToServer("[Metal v5.6-OM] Adopcion del montaje: %d huerfano(s) del avatar eliminado(s).", ng);
++}
++
+ void Metal_CreateAvatar(int client, bool pulsePause = true)
+ {
+     if (!g_bMetalModelOK) return;
+@@ -3876,6 +3946,34 @@
+ 
+     // v5.0: la copia R nace en modo TP si tails_avatar_tp (la que ven
+     // los DEMAS viaja por teleport por tick + interpolacion de red)
++    // v5.6-OM (manager 3.77.40): REEMPLAZO LIMPIO — orden del owner
++    // 2026-10-10: en caliente YA NO EXISTE barrido. Si este cliente ya
++    // tenia un R o L vivo (montaje doble por orden raro de eventos),
++    // muere AQUI enterito: jamas vuelve a quedar un prop sin dueno (la
++    // fabrica de huerfanos del "= 0" sin Kill queda cerrada).
++    {
++        int oldR = EntRefToEntIndex(g_iMetalAvatar[client]);
++        if (g_iMetalAvatar[client] != 0 && oldR > 0 && IsValidEntity(oldR))
++        {
++            SDKUnhook(oldR, SDKHook_SetTransmit, Metal_TransmitAvatarR);
++            AcceptEntityInput(oldR, "Kill");
++        }
++        g_iMetalAvatar[client] = 0;
++
++        int oldL = EntRefToEntIndex(g_iMetalAvatarL[client]);
++        if (g_iMetalAvatarL[client] != 0 && oldL > 0 && IsValidEntity(oldL))
++        {
++            SDKUnhook(oldL, SDKHook_SetTransmit, Metal_TransmitAvatarL);
++            AcceptEntityInput(oldL, "Kill");
++        }
++        g_iMetalAvatarL[client] = 0;
++    }
++
++    // v5.6-OM: ADOPCION — todo prop de ESTE modulo que la FSM no rastrea
++    // es un huerfano: muere en este instante del montaje, no en un
++    // timer a ciegas.
++    Metal_KillGhostAvatarProps();
++
+     int av = Metal_CreateAvatarProp(client, METAL_OM_MODEL, METAL_AVATAR_NAME, Tails_AvatarTPOn());
+     if (av == 0) return;
+ 

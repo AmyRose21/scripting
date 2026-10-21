@@ -1,0 +1,878 @@
+--- /home/z/my-project/download/suite_37726_fx_cura/include/Metal.inc	2026-10-09 04:35:44.687094945 +0000
++++ /home/z/my-project/builds/OM37727/scripting/include/Metal.inc	2026-10-09 05:50:24.368180414 +0000
+@@ -1,6 +1,70 @@
+ /*
+  * ======================================================
+- *  [MODULO] Metal Sonic - The Ultimate Machine (v5.1-OM - FX DEL SELF REPAIR)
++ *  [MODULO] Metal Sonic - The Ultimate Machine (v5.2-OM - AJUSTES 2-10 DEL AVATAR)
++ *
++ *  v5.2 (suite 3.77.27 — revision del owner 8.5/10, ajustes 2 a 10,
++ *   "Ok esta bn por el momento... Ahora hace falta algo ah si...", 9
++ *   puntos en un solo pedido):
++ *   (1) ATASCOS: watchdog en DASH y DRAGGING — si la embestida DEBERIA
++ *       estar empujando (750 uu/s) y Metal lleva METAL_STUCK_TIME sin
++ *       superar 80 uu/s (enemigos enormes que taponan, geometria que
++ *       el trace de pared no ve como muro), la carga se LIBERA limpia
++ *       (fin natural con frenado suave) en vez de quedarse pegado
++ *       hasta agotar los 8s. El catch ahora tambien STAGGERA al
++ *       oponente (punto 7): un tank/charger dejara de presionar en el
++ *       instante del contacto.
++ *   (2) SONIDOS MAS FUERTES: TODOS los sonidos de habilidad suben al
++ *       soundLevel 87 del AdvancedPillSound del lua (el mod emite a
++ *       87 — el port v5.1 usaba el default 75 del EmitSoundToAll, por
++ *       eso se oian flojos). Loop del dash incluido (watchdog y
++ *       arranque).
++ *   (3) COOLDOWNS -30% (pedido literal): embestida 25 -> 17.5s (y su
++ *       cancel 12.5 -> 8.75), Overdrive 30 -> 21s, Self Repair
++ *       24 -> 16.8s.
++ *   (4) OVERDRIVE SIN INMOVILIZAR: fuera el sobrecalentamiento con
++ *       MOVETYPE_NONE 1.5s al terminar ("ya no inmovilizara a metal")
++ *       — el buff simplemente expira y sigue corriendo.
++ *   (5) ANIMaciones: SALTO con ventana del one-shot (receta Sonic: el
++ *       "jump" del metal.mdl ya no se corta a la primera — vive hasta
++ *       0.5s o hasta que el ciclo del modelo termine de verdad) + el
++ *       WALK vuelve al rate 1.0 CONSTANTE del GMod (Metal NO define
++ *       animrates en su lua — noodles_om_pills_survivors2.lua trae los
++ *       animrates de Tails (walk 1.8/run 1.1); metal no -> rate 1,
++ *       noodles_om_pills_base.lua l.936-944. El v5.0 jugaba el walk a
++ *       1.8*(s/85) = piernas muy rapidas "a comparacion de los demas")
++ *       + INMUNIDAD ANTI-CONTROL TOTAL durante TODA la embestida
++ *       (windup->rebote): Metal_ControlImmune() en los 8 forwards del
++ *       manager (tank puno/roca, fling, stagger, pounce, jockey ride,
++ *       charger, tongue) — "stagger de ningun tipo ni agarrado ni
++ *       nada".
++ *   (6) SELF REPAIR CON SOPORTE: si hay un Tails o un Eggman VIVO a
++ *       menos de 250u (el radio del tails_heal_boost del suite), el
++ *       tick se acelera x2 (cada 1s en vez de 2s) — "la reparacion
++ *       esta heredada a curarse mas rapido si esta con eggman o tails".
++ *   (7) EMBESTIDA LIBERA EL CONTROL AGARRADO (bug del jockey montado:
++ *       "metal se ha llevado a un jokey de un survivor y este siguio
++ *       montado aun si no estaba su cuerpo"): el catch STAGGERA al
++ *       oponente (el interrupt vanilla) y si el oponente tenia a
++ *       alguien agarrado, PinRelease_Cleanse lo libera POR EL CAMINO
++ *       DEL MOTOR (L4D2_Jockey_EndRide etc. — jockey desmontado ya, no
++ *       "montado fantasma") + el OM_Stun lo deja congelado y quieto en
++ *       el sitio (como el owner suponia que ya pasaba).
++ *   (8) OVERDRIVE LEVITA (Espacio mantenido) + INTERACTUA CON LA
++ *       EMBESTIDA: mientras la C esta activa, mantener Espacio =
++ *       levitar (vel[2] = 220). Con la embestida en el aire (antes
++ *       imposible): escritura horizontal directa dir*750 conservando
++ *       la Z — la embestida vuela a la altura que la levitacion
++ *       sostenga. Bloqueo mutuo C<->Z ELIMINADO (la combinacion es
++ *       intencional: C + Espacio + Z = dash aereo).
++ *   (9) 1 VIDA + AUTO-DESTRUCCION (la Sin-Incap ya existia desde v3.1):
++ *       la explosion de muerte ahora es LA DEL GMOD (l.756: esfera
++ *       230, dano 50, DMG_CLUB) con el stun de 5.5s pedido por el
++ *       owner ("5seg y medio"; el GMod usa 7) + RAGDOLL: cada special
++ *       afectado sale VOLANDO con su doble prop_ragdoll (receta Sonic
++ *       v6.11 Sonic_SpawnFlingRagdoll: estatua oculta + doble con
++ *       vphysics + onda env_physexplosion; al pasar el stun reaparece
++ *       DONDE cayo el doble) + los 2 sonidos extra del lua
++ *       (Explosion.wav + MetalBloodSound.wav, soundLevel 87).
+  *
+  *  v5.1 (suite 3.77.26 — revision del owner 8.5/10, ajuste 1: "el
+  *   efecto de cura revisaste bn el efecto que usa metal en Gmod? el
+@@ -303,11 +367,24 @@
+ #if !defined _om_stun_included
+     #include <OM_Stun>     // v4.0: sistema de STUN portado del mod GMod
+ #endif
++#if !defined _pin_release_included
++    #include <Pin_Release> // v5.2: liberar agarres por el camino del MOTOR (ajuste 7)
++#endif
+ 
+ #if !defined METALSONIC_INDEX
+     #define METALSONIC_INDEX 8
+ #endif
+ 
++// v5.2: indices de los personajes del aura de soporte del Self Repair
++// (ajuste 6). Tails.inc ya los define (va antes en el manager); el
++// guard los hace inocuos y a la vez auto-contenidos.
++#if !defined TAILS_INDEX
++    #define TAILS_INDEX 1
++#endif
++#if !defined EGGMAN_INDEX
++    #define EGGMAN_INDEX 9
++#endif
++
+ #if !defined TEAM_INFECTED
+     #define TEAM_INFECTED 3
+ #endif
+@@ -361,15 +438,16 @@
+ #define METAL_BOUNCE_STUN           1.4   // v4.0 GMod: OM_NoMovement 1.4s tras el rebote
+ #define METAL_BOUNCE_SLIDE          0.25  // v4.0: slide fisico del golpe antes del freeze
+ 
+-#define METAL_CHARGE_COOLDOWN       25.0
+-#define METAL_CHARGE_CD_CANCELLED   12.5  // CD reducido si cancelan windup (50%)
++#define METAL_CHARGE_COOLDOWN       17.5  // v5.2 ajuste 3: -30% (era 25 = heal_cooldownSucess del GMod)
++#define METAL_CHARGE_CD_CANCELLED   8.75  // v5.2 ajuste 3: -30% (era 12.5; 50% del normal)
+ 
+ #define METAL_CANCEL_SPEED_BOOST    1.25  // Multiplicador de velocidad al cancelar windup
+ #define METAL_CANCEL_BOOST_TIME     2.0   // Duracion del speed boost
+ 
+-#define METAL_OVERDRIVE_COOLDOWN    30.0
++#define METAL_OVERDRIVE_COOLDOWN    21.0  // v5.2 ajuste 3: -30% (era 30)
+ #define METAL_OVERDRIVE_DURATION    5.0
+ #define METAL_OVERDRIVE_SPEED_MULT  1.30   // v3.6: +30% de VELOCIDAD REAL (aditivo: SUMA con !speed y adrenalina)
++#define METAL_OD_LEVITATE_SPEED     220.0 // v5.2 ajuste 8: velocidad de levitacion (Espacio mantenido con la C activa)
+ #define METAL_AURA_RADIUS           200.0
+ #define METAL_AURA_TICK             0.3
+ #define METAL_AURA_DMG_INF          15.0
+@@ -378,14 +456,35 @@
+ #define METAL_SONAR_MIN_DELAY       0.1
+ #define METAL_SONAR_MAX_DELAY       0.5
+ 
++// v5.2 ajuste 2: EL NIVEL DE SONIDO DEL MOD. Todas las habilidades del
++// Metal en GMod emiten con soundLevel 87 (AdvancedPillSound del lua);
++// el port usaba el default 75 (SNDLEVEL_NORMAL) = se oian flojos.
++#define METAL_SND_LEVEL             87
++
++// v5.2 ajuste 1: WATCHDOG DE ATASCOS. Si en DASH/DRAGGING la velocidad
++// real no supera METAL_STUCK_SPEED durante METAL_STUCK_TIME (gracia de
++// METAL_STUCK_GRACE tras el lanzamiento), la carga se libera limpia.
++#define METAL_STUCK_SPEED           80.0
++#define METAL_STUCK_TIME            0.6
++#define METAL_STUCK_GRACE           0.5
++
++// v5.2 ajuste 9: LA AUTO-DESTRUCCION DEL GMOD (l.756+): esfera 230,
++// dano 50 DMG_CLUB — y el stun de 5.5s pedido por el owner ("5seg y
++// medio"; alla StunDur 7) con RAGDOLL volador por victima.
++#define METAL_DEATH_RADIUS          230.0
++#define METAL_DEATH_DMG             50.0
++#define METAL_DEATH_STUN            5.5
++
+ #define METAL_LOW_HP_THRESHOLD      0.30  // 30% de HP maximo
+ 
+ // =======================
+ // v5.0: SELF REPAIR (X) — numeros EXACTOS del lua GMod
+ // (convars OUTCOMEMEMORIES_N_MetalSonic_heal_* del registro oficial)
+ // =======================
+-#define METAL_HEAL_COOLDOWN        24.0   // heal_cooldownSucess
++#define METAL_HEAL_COOLDOWN        16.8   // v5.2 ajuste 3: -30% (era 24 = heal_cooldownSucess del lua)
+ #define METAL_HEAL_TICK             2.0   // healingCooldown_OM: un tick cada 2s
++#define METAL_HEAL_AURA_MULT        2.0   // v5.2 ajuste 6: x2 de velocidad de tick con Tails/Eggman a 250u (= tails_heal_boost default)
++#define METAL_HEAL_AURA_RADIUS      250.0 // v5.2 ajuste 6: mismo radio del tails_heal_boost del suite
+ #define METAL_HEAL_AMOUNT           7     // heal_healamount (+7 HP por tick)
+ #define METAL_HEAL_TOTAL_CAP        70    // TotalHeals tope (10 ticks)
+ #define METAL_HEAL_HP_CAP           150   // para sola si HP pasa de 150
+@@ -465,6 +564,12 @@
+ // v3.3: trail de la embestida (FX del dash)
+ float g_fMetalNextDashFX[MAXPLAYERS + 1];
+ 
++// v5.2 ajuste 1: watchdog de atascos del dash/arrastre
++float g_fMetalStuckSince[MAXPLAYERS + 1];     // 0 = moviendose bien
++
++// v5.2 ajuste 5: ventana del one-shot de salto (receta Sonic fix Poppy)
++float g_fMetalJumpStart[MAXPLAYERS + 1];      // t0 del jump para la FSM
++
+ // v3.1: pasivas "Sin Incap" / "Explota al morir"
+ bool  g_bMetalSelfDestructPending[MAXPLAYERS + 1]; // Detonacion pendiente (auto-dano)
+ bool  g_bMetalLethalHit[MAXPLAYERS + 1];           // Golpe letal recibido (sin incap)
+@@ -488,6 +593,8 @@
+ bool  g_bMetalSndBump = false;              // om/metal/wallbump.wav
+ bool  g_bMetalSndEnd = false;               // om/metal/metalchargeend.wav
+ bool  g_bMetalSndBoom = false;              // om/metal/explodesfx.wav
++bool  g_bMetalSndBoom2 = false;             // v5.2: om/metal/Explosion.wav (la muerte toca 3 del lua)
++bool  g_bMetalSndBlood = false;             // v5.2: om/metal/MetalBloodSound.wav (3er sonido del lua)
+ bool  g_bMetalSndPunch = false;             // v4.2: om/knuckles/punchstun.wav (3er golpe del slam)
+ int   g_iMetalWindupIcon[MAXPLAYERS + 1];   // env_sprite del icono de carga
+ int   g_iMetalDashFxTick[MAXPLAYERS + 1];   // contador (arcos/estela)
+@@ -599,6 +706,10 @@
+         g_bMetalSndBump   = PrecacheSound("om/metal/wallbump.wav", true);
+         g_bMetalSndEnd    = PrecacheSound("om/metal/metalchargeend.wav", true);
+         g_bMetalSndBoom   = PrecacheSound("om/metal/explodesfx.wav", true);
++        // v5.2 ajuste 9: los otros DOS sonidos de la muerte del lua
++        // (l.594-604: ExplodeSfx + Explosion + MetalBloodSound)
++        g_bMetalSndBoom2  = PrecacheSound("om/metal/Explosion.wav", true);
++        g_bMetalSndBlood  = PrecacheSound("om/metal/MetalBloodSound.wav", true);
+         g_bMetalSndPunch  = PrecacheSound("om/knuckles/punchstun.wav", true);
+ 
+         AddFileToDownloadsTable("materials/om/metal_chargeglow.vmt");
+@@ -621,6 +732,8 @@
+         if (g_bMetalSndBump)   AddFileToDownloadsTable("sound/om/metal/wallbump.wav");
+         if (g_bMetalSndEnd)    AddFileToDownloadsTable("sound/om/metal/metalchargeend.wav");
+         if (g_bMetalSndBoom)   AddFileToDownloadsTable("sound/om/metal/explodesfx.wav");
++        if (g_bMetalSndBoom2)  AddFileToDownloadsTable("sound/om/metal/Explosion.wav");
++        if (g_bMetalSndBlood)  AddFileToDownloadsTable("sound/om/metal/MetalBloodSound.wav");
+         if (g_bMetalSndPunch)  AddFileToDownloadsTable("sound/om/knuckles/punchstun.wav");
+ 
+         // v5.0: sonidos del SELF REPAIR (mismo VPK)
+@@ -680,6 +793,8 @@
+     g_iMetalSlamHitsFired[client]     = 0;   // v4.0: golpes del slam disparados
+     g_fMetalCancelBoostEnd[client]    = 0.0;
+     g_fMetalNextDashFX[client]        = 0.0;
++    g_fMetalStuckSince[client]        = 0.0;  // v5.2: watchdog de atascos fuera
++    g_fMetalJumpStart[client]         = 0.0;  // v5.2: ventana del jump fuera
+     g_iMetalDashFxTick[client]        = 0;    // v4.1
+     g_fMetalLoopStart[client]         = 0.0;  // v4.1
+     Metal_KillWindupIcon(client);             // v4.1: icono de windup fuera
+@@ -874,17 +989,20 @@
+     // era para la EMBESTIDA, que lo conserva intacto. La velocidad es
+     // un extra ADITIVO en el stack del Speed_sonic: SUMA con !speed y
+     // con el chute de adrenalina, jamas los pisa. Cero lagged.)
++    // v5.2 ajuste 4: al terminar YA NO INMOVILIZA (fuera el "reactor
++    // sobrecalentado" con MOVETYPE_NONE 1.5s — pedido literal "el
++    // movimiento de la habilidad C ya sobrecalentamiento ya no
++    // inmovilizara a metal") y ajuste 8: LEVITACION mientras dure —
++    // Espacio mantenido = despegue (vel[2] = 220, receta del vuelo de
++    // Tails: escritura directa por TeleportEntity cada frame).
+     if (g_bMetalOverdrive[client])
+     {
+         if (now >= g_fMetalOverdriveEndTime[client])
+         {
+-            // Fin natural: quitar el bono de velocidad y sobrecalentar
+-            // el reactor (canonico v3.4: 1.5s inmovil con MOVETYPE_NONE).
++            // Fin natural: solo quitar el bono — sigue moviendose
+             g_bMetalOverdrive[client] = false;
+             Speed_StackSet(client, SPEED_STACK_METAL_OD, 0.0);
+-            PrintCenterText(client, "Reactor sobrecalentado. Inmovilizado.");
+-            SetEntityMoveType(client, MOVETYPE_NONE);
+-            CreateTimer(1.5, T_Metal_OverheatEnd, GetClientUserId(client));
++            PrintCenterText(client, "Overdrive completado.");
+         }
+         else
+         {
+@@ -894,6 +1012,25 @@
+             // aura electrica canonica.
+             Speed_StackSet(client, SPEED_STACK_METAL_OD, METAL_OVERDRIVE_SPEED_MULT - 1.0);
+ 
++            // v5.2 ajuste 8: LEVITACION — Espacio mantenido despega a
++            // Metal (conserva el componente horizontal de verdad). Solo
++            // en los estados libres (idle/dash/arrastre): el windup, el
++            // slam y el rebote son momentos congelados por diseno, y la
++            // REPARACION tambien lo esta (NoMovement del lua).
++            int levState = g_iMetalChargeState[client];
++            if ((GetClientButtons(client) & IN_JUMP)
++                && !g_bMetalHealing[client]
++                && (levState == METAL_STATE_IDLE
++                    || levState == METAL_STATE_DASH
++                    || levState == METAL_STATE_DRAGGING)
++                && GetEntProp(client, Prop_Send, "m_isIncapacitated") == 0)
++            {
++                float lev[3];
++                GetEntPropVector(client, Prop_Data, "m_vecVelocity", lev);
++                lev[2] = METAL_OD_LEVITATE_SPEED;
++                TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, lev);
++            }
++
+             if (now >= g_fMetalNextAuraTick[client])
+             {
+                 g_fMetalNextAuraTick[client] = now + METAL_AURA_TICK;
+@@ -1035,9 +1172,9 @@
+ 
+             // v4.1: ping1.wav REAL del mod al soltar la embestida
+             if (g_bMetalSndPing)
+-                EmitSoundToAll("om/metal/ping1.wav", client);
++                EmitSoundToAll("om/metal/ping1.wav", client, _, METAL_SND_LEVEL);
+             else
+-                EmitSoundToAll("npc/attack_helicopter/aheli_charge_up.wav", client);
++                EmitSoundToAll("npc/attack_helicopter/aheli_charge_up.wav", client, _, METAL_SND_LEVEL);
+ 
+             // v3.3 FIX CRITICO: el WINDUP congela con lagged movement 0.0 y
+             // esta transicion JAMAS lo restauraba -> durante el DASH la
+@@ -1056,9 +1193,9 @@
+             // el dash (cero silencio aunque el cue no corra). Stop en TODOS
+             // los finales via Metal_StopLoopSound.
+             if (g_bMetalSndLoop)
+-                EmitSoundToAll("om/metal/metalchargeloopsound.wav", client, SNDCHAN_STATIC);
++                EmitSoundToAll("om/metal/metalchargeloopsound.wav", client, SNDCHAN_STATIC, METAL_SND_LEVEL);
+             else
+-                EmitSoundToAll("ambient/machines/electric_loop.wav", client);
++                EmitSoundToAll("ambient/machines/electric_loop.wav", client, _, METAL_SND_LEVEL);
+             g_fMetalLoopStart[client] = now;
+ 
+             // ============================================================
+@@ -1074,6 +1211,7 @@
+             // ============================================================
+             Metal_DashColEnter(client);
+             Metal_DashSpeedSet(client, METAL_DASH_SPEED);
++            g_fMetalStuckSince[client] = 0.0;   // v5.2: watchdog a cero
+ 
+             // Launch instantaneo 750: con el tope YA alzado por el stack,
+             // un unico impulso horizontal queda clampeado por el motor al
+@@ -1138,11 +1276,38 @@
+             // v4.1: watchdog del loop (wav 3.41s; re-arranca en el mismo canal)
+             if (g_bMetalSndLoop && now - g_fMetalLoopStart[client] >= 3.0)
+             {
+-                EmitSoundToAll("om/metal/metalchargeloopsound.wav", client, SNDCHAN_STATIC);
++                EmitSoundToAll("om/metal/metalchargeloopsound.wav", client, SNDCHAN_STATIC, METAL_SND_LEVEL);
+                 g_fMetalLoopStart[client] = now;
+             }
+         }
+ 
++        // ============================================================
++        // v5.2 ajuste 8: DASH AEREO. En el aire el auto-forward del
++        // RunCmd no sostiene 750 (el motor frena el wishspeed con la
++        // acceleraion aerea) — escribir la componente horizontal
++        // DIRECTO cada frame (dir * 750) conservando la Z: la
++        // levitacion de la C (Espacio) la sostiene, sin Espacio la
++        // gravedad lo devuelve al piso y la embestida sigue por suelo.
++        // v5.2 ajuste 1: WATCHDOG DE ATASCOS — la embestida DEBERIA ir
++        // a 750; si no supera 80 uu/s durante 0.6s (enemigos enormes
++        // que taponan, geometria que no es "pared" para el trace), la
++        // carga se libera limpia en vez de quedarse pegado 8s.
++        // ============================================================
++        if (!(GetEntityFlags(client) & FL_ONGROUND))
++        {
++            float airDir[3], airVel[3];
++            Metal_GetMoveDir(client, airDir);
++            GetEntPropVector(client, Prop_Data, "m_vecVelocity", airVel);
++            airVel[0] = airDir[0] * METAL_DASH_SPEED;
++            airVel[1] = airDir[1] * METAL_DASH_SPEED;
++            TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, airVel);
++            g_fMetalStuckSince[client] = 0.0;   // en el aire no hay atasco
++        }
++        else if (Metal_StuckCheck(client, now))
++        {
++            return;
++        }
++
+         // Buscar objetivo (GMod: esfera de 100u alrededor del pecho)
+         if (target == -1)
+         {
+@@ -1188,6 +1353,24 @@
+         float dir[3];
+         Metal_GetMoveDir(client, dir);
+ 
++        // v5.2 ajustes 1+8: watchdog de atascos (el arrastre tambien va a
++        // 750 — si el enemigo enorme tapono un paso estrecho, soltar) +
++        // ARRASTRE AEREO (la levitacion de la C sostiene la altura y el
++        // arrastre sigue volando; sin Espacio cae al piso y sigue).
++        if (!(GetEntityFlags(client) & FL_ONGROUND))
++        {
++            float airVel[3];
++            GetEntPropVector(client, Prop_Data, "m_vecVelocity", airVel);
++            airVel[0] = dir[0] * METAL_DRAG_SPEED;
++            airVel[1] = dir[1] * METAL_DRAG_SPEED;
++            TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, airVel);
++            g_fMetalStuckSince[client] = 0.0;
++        }
++        else if (Metal_StuckCheck(client, now))
++        {
++            return;
++        }
++
+         // v4.0 GMod: el infectado va ADELANTE (forward x 65) MIRANDO a
+         // Metal (yaw + 180), clavado al frente (SetPos cada frame del mod).
+         float mPos[3], hold[3], tAng[3], zeroVel[3], eyeAng[3];
+@@ -1507,9 +1690,9 @@
+     // v4.1: wallslam.wav REAL del mod (GMod: WallSlam en cada golpe) +
+     // destello con el arte de impacto del punch del mod + arcos.
+     if (g_bMetalSndSlam)
+-        EmitSoundToAll("om/metal/wallslam.wav", client);
++        EmitSoundToAll("om/metal/wallslam.wav", client, _, METAL_SND_LEVEL);
+     else
+-        EmitSoundToAll("player/tank/hit/hulk_punch_2.wav", client);
++        EmitSoundToAll("player/tank/hit/hulk_punch_2.wav", client, _, METAL_SND_LEVEL);
+     TE_SetupSparks(fxPos, NULL_VECTOR, 6, 3);
+     TE_SendToAll();
+     if (g_bMetalAssets)
+@@ -1531,12 +1714,43 @@
+     if (g_iMetalSlamHitsFired[client] >= 3)
+     {
+         if (g_bMetalSndPunch)
+-            EmitSoundToAll("om/knuckles/punchstun.wav", client);
++            EmitSoundToAll("om/knuckles/punchstun.wav", client, _, METAL_SND_LEVEL);
+         if (g_bMetalSndEnd)
+-            EmitSoundToAll("om/metal/metalchargeend.wav", client);
++            EmitSoundToAll("om/metal/metalchargeend.wav", client, _, METAL_SND_LEVEL);
+     }
+ }
+ 
++// ============================================================
++// v5.2 ajuste 1: WATCHDOG DE ATASCOS (DASH/DRAGGING). Devuelve true
++// si ACABA de liberar la carga (el caller hace return inmediato).
++// La embestida deberia ir a 750 uu/s: si la velocidad real no supera
++// METAL_STUCK_SPEED de forma CONTINUA durante METAL_STUCK_TIME, algo
++// no-pared (enemigo enorme, borde, prop del mapa) lo esta taponando —
++// liberar limpio (fin natural con frenado suave) en vez de esperar
++// los 8s enteros atascado contra el obstaculo.
++// ============================================================
++bool Metal_StuckCheck(int client, float now)
++{
++    if (Metal_Speed2D(client) < METAL_STUCK_SPEED)
++    {
++        if (g_fMetalStuckSince[client] <= 0.0)
++        {
++            g_fMetalStuckSince[client] = now;
++            return false;
++        }
++        if (now - g_fMetalStuckSince[client] >= METAL_STUCK_TIME)
++        {
++            g_fMetalStuckSince[client] = 0.0;
++            Metal_CancelCharge(client);
++            PrintCenterText(client, "Embestida liberada (atascado).");
++            return true;
++        }
++        return false;
++    }
++    g_fMetalStuckSince[client] = 0.0;   // volvio a moverse: reiniciar
++    return false;
++}
++
+ // v4.0 GMod: ATRAPA al infectado (el Mutaul_OMStunCode del catch): stun
+ // de 0.8 x 2 = 1.6s + dano 4 + chispas. La embestida NO termina aqui:
+ // el GMod mantiene la velocidad de carga ARRASTRANDO al enemigo por
+@@ -1549,6 +1763,36 @@
+     g_fMetalAccumulatedDragDmg[client] = 0.0;
+     g_fMetalStateEndTime[client]       = now + 10.0; // limite de seguridad
+ 
++    // ============================================================
++    // v5.2 ajuste 7: EL CATCH STAGGERA AL OPONENTE Y LIBERA SU CONTROL
++    // AGARRADO — bug del owner: "metal se ha llevado a un jokey de un
++    // survivor y resulta que aunque se lo llevo este siguio montado
++    // aun si no estaba su cuerpo especificamente hay". El v5.0 solo
++    // OM_Stuneaba y teletransportaba al jockey: el ESTADO de ride
++    // segua vivo en el survivor (montado fantasma). Ahora:
++    //   (a) si el oponente tenia a alguien agarrado (jockey montado,
++    //       hunter ensartado, smoker arrastrando, charger cargando):
++    //       PinRelease_Cleanse(victima) = el camino COMPLETO del motor
++    //       (L4D2_Jockey_EndRide etc. — desmonta de verdad, corta la
++    //       musica de agarre y STAGGERA al atacante anti re-grab) —
++    //       "para que libere todos sus efectos de control (como
++    //       nativamente hace)";
++    //   (b) si no tenia a nadie: SIStagger_Auto directo (el interrupt
++    //       vanilla del impacto — un charger a media carga o un tank
++    //       a media swing se cortan en seco).
++    // Despues el OM_Stun de siempre lo deja congelado y quieto en el
++    // sitio mientras Metal lo arrastra ("como esta congelado y quieto
++    // xq supongo que el stun de metal lo forza a estar en un mismo
++    // lugar no?" — si: lagged 0 + anim pausada + teleport de arrastre).
++    // ============================================================
++    float mPos[3];
++    GetClientAbsOrigin(client, mPos);
++    int pinVictim = Metal_ControlVictimOf(target);
++    if (pinVictim > 0)
++        PinRelease_Cleanse(pinVictim);
++    else
++        SIStagger_Auto(target, client, mPos);
++
+     // STUN del catch (1.6s) — OM_Stun trae el freeze + los EFECTOS
+     OM_Stun(target, METAL_CATCH_STUN, client, METAL_CATCH_DMG, DMG_OM_CLUB, true);
+ 
+@@ -1566,9 +1810,9 @@
+     TE_SendToAll();
+ 
+     if (g_bMetalSndElec)
+-        EmitSoundToAll("om/metal/eletricsound.wav", client);
++        EmitSoundToAll("om/metal/eletricsound.wav", client, _, METAL_SND_LEVEL);
+     else
+-        EmitSoundToAll("ambient/energy/zap1.wav", client);
++        EmitSoundToAll("ambient/energy/zap1.wav", client, _, METAL_SND_LEVEL);
+     if (g_bMetalAssets)
+     {
+         Metal_FxFlash(flashPos, "materials/om/metal_elec.vmt", 1.0, 0.4);
+@@ -1672,9 +1916,9 @@
+     PrintCenterText(client, "¡Estampando contra la pared!");
+     // v4.1: wallbump.wav REAL del mod al clavarse contra la pared
+     if (g_bMetalSndBump)
+-        EmitSoundToAll("om/metal/wallbump.wav", client);
++        EmitSoundToAll("om/metal/wallbump.wav", client, _, METAL_SND_LEVEL);
+     else
+-        EmitSoundToAll("player/tank/hit/hulk_punch_1.wav", client);
++        EmitSoundToAll("player/tank/hit/hulk_punch_1.wav", client, _, METAL_SND_LEVEL);
+ }
+ 
+ // v4.0 GMod: rebote sin infectado — impulso 250 hacia atras + 1.4s de
+@@ -1706,9 +1950,9 @@
+     PrintCenterText(client, "¡Rebote! Recuperandote %.1fs.", METAL_BOUNCE_STUN);
+     // v4.1: wallbump.wav REAL del mod (rebote sin infectado)
+     if (g_bMetalSndBump)
+-        EmitSoundToAll("om/metal/wallbump.wav", client);
++        EmitSoundToAll("om/metal/wallbump.wav", client, _, METAL_SND_LEVEL);
+     else
+-        EmitSoundToAll("player/survivor/hit/crowbar_swing_miss1.wav", client);
++        EmitSoundToAll("player/survivor/hit/crowbar_swing_miss1.wav", client, _, METAL_SND_LEVEL);
+ }
+ 
+ // v3: Busca un infectado especial dentro del radio de agarre
+@@ -1737,6 +1981,53 @@
+     return best;
+ }
+ 
++// ============================================================
++// v5.2 ajuste 7: la victima que el oponente tiene AGARRADA ahora
++// mismo (leida del lado del ATACANTE: los enlaces que el motor
++// mantiene mientras el hunter ensarta / el jockey monta / el smoker
++// arrastra / el charger carga o machaca). Devuelve el survivor o -1.
++// ============================================================
++int Metal_ControlVictimOf(int attacker)
++{
++    if (attacker <= 0 || attacker > MaxClients) return -1;
++    if (!IsClientInGame(attacker) || !IsPlayerAlive(attacker)) return -1;
++
++    static const char pins[5][] = {
++        "m_pounceVictim",   // hunter ensartado
++        "m_jockeyVictim",   // jockey montado (el bug del owner)
++        "m_tongueVictim",   // smoker arrastrando
++        "m_carryVictim",    // charger cargando en brazos
++        "m_pummelVictim"    // charger machacando
++    };
++
++    for (int p = 0; p < 5; p++)
++    {
++        if (!HasEntProp(attacker, Prop_Send, pins[p])) continue;
++        int victim = GetEntPropEnt(attacker, Prop_Send, pins[p]);
++        if (victim > 0 && victim <= MaxClients && IsClientInGame(victim)
++            && IsPlayerAlive(victim) && GetClientTeam(victim) == TEAM_SURVIVOR)
++            return victim;
++    }
++    return -1;
++}
++
++// ============================================================
++// v5.2 ajuste 5: INMUNIDAD ANTI-CONTROL durante TODA la embestida
++// ("durante Su embestida el no deberia poder ser aturdido. stagger de
++//  ningun tipo ni agarrado ni nada"). Vale para windup, dash,
++// arrastre, wall slam y rebote. El manager la consulta en los 8
++// forwards anti-control (puno/roca del tank, fling, stagger, pounce,
++// jockey ride, charger, tongue). El windup sigue interrumpible por
++// DANO (diseno GMod) — solo el CONTROL queda blindado.
++// ============================================================
++bool Metal_ControlImmune(int client)
++{
++    if (client <= 0 || client > MaxClients) return false;
++    if (!IsClientInGame(client) || !IsPlayerAlive(client)) return false;
++    if (g_iPlayerCharIdx[client] != METALSONIC_INDEX) return false;
++    return g_iMetalChargeState[client] != METAL_STATE_IDLE;
++}
++
+ // =======================
+ // GESTION DE DANO Y AUTO-DESTRUCCION
+ // =======================
+@@ -1825,7 +2116,7 @@
+     PrintCenterText(client, "¡Carga interrumpida! Speed boost activado.");
+     // v4.1: metalchargeend.wav REAL del mod (carga interrumpida)
+     if (g_bMetalSndEnd)
+-        EmitSoundToAll("om/metal/metalchargeend.wav", client);
++        EmitSoundToAll("om/metal/metalchargeend.wav", client, _, METAL_SND_LEVEL);
+     else
+         EmitSoundToClient(client, "player/survivor/hit/crowbar_swing_miss1.wav");
+ }
+@@ -1856,6 +2147,18 @@
+ // v3.1: Explosion de muerte (pasiva "Explota al morir").
+ // Se llama SOLO desde Metal_Event_PlayerDeath (evento de muerte real).
+ // Ya NO fuerza el suicidio: el jugador ya esta muerto cuando llega aqui.
++// v5.2 ajuste 9: LA EXPLOSION DEL GMOD DE VERDAD (lua l.756+):
++//   - radio 230 (alla ents.FindInSphere(pos, 230); el v5.1 usaba 500);
++//   - dano 50 DMG_CLUB POR VICTIMA (alla Damage 50; el v5.1 no danoia);
++//   - stun 5.5s (pedido del owner: "aturdiendolos por 5seg y medio";
++//     alla StunDur 7) con el paquete OM completo (estatua + estrellas);
++//   - RAGDOLL VOLADOR por victima (alla CreateRagdolLCharacter_OM +
++//     fling dir*800 + angvel rand*1600): receta Sonic v6.11
++//     Sonic_SpawnFlingRagdoll — doble prop_ragdoll con vphysics real
++//     + onda env_physexplosion (empuje puro); la estatua real queda
++//     oculta y al pasar el stun reaparece DONDE cayo el doble;
++//   - los 3 sonidos del lua (l.582-604): ExplodeSfx + Explosion +
++//     MetalBloodSound (volume 2 / soundLevel 87 alla = METAL_SND_LEVEL).
+ void Metal_Detonate(int client)
+ {
+     if (!IsClientInGame(client)) return;
+@@ -1867,29 +2170,52 @@
+     TE_SendToAll();
+     // v4.1: explodesfx.wav REAL del mod (Metal_Detonate) + destello grande
+     if (g_bMetalSndBoom)
+-        EmitSoundToAll("om/metal/explodesfx.wav", client);
++        EmitSoundToAll("om/metal/explodesfx.wav", client, _, METAL_SND_LEVEL);
+     else
+-        EmitSoundToAll("ambient/explosions/explode_3.wav", client);
++        EmitSoundToAll("ambient/explosions/explode_3.wav", client, _, METAL_SND_LEVEL);
++    // v5.2: los otros DOS sonidos de la muerte del lua (l.594-604)
++    if (g_bMetalSndBoom2)
++        EmitSoundToAll("om/metal/Explosion.wav", client, _, METAL_SND_LEVEL);
++    if (g_bMetalSndBlood)
++        EmitSoundToAll("om/metal/MetalBloodSound.wav", client, _, METAL_SND_LEVEL);
+     if (g_bMetalAssets)
+         Metal_FxFlash(pos, "materials/om/metal_elec.vmt", 2.0, 0.5);
+ 
++    int ragCount = 0;
+     for (int i = 1; i <= MaxClients; i++)
+     {
+         if (IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == TEAM_INFECTED)
+         {
+             float tPos[3];
+             GetClientAbsOrigin(i, tPos);
+-            if (GetVectorDistance(pos, tPos) <= 500.0)
++            if (GetVectorDistance(pos, tPos) <= METAL_DEATH_RADIUS)
+             {
+-                // v4.0: stun OM de 5s CON efectos (estrellas + chispas +
+-                // tinte + freeze), port del sistema del mod GMod. La
+-                // recuperacion es AUTOMATICA al expirar (cero timers).
+-                OM_Stun(i, 5.0, client, 0.0, DMG_OM_CLUB, true);
++                // v5.2: el stun 5.5s + dano 50 (el gran dano del GMod) —
++                // el paquete OM completo (estrellas + chispas + freeze).
++                // La recuperacion es AUTOMATICA al expirar (cero timers).
++                if (!OM_Stun(i, METAL_DEATH_STUN, client, METAL_DEATH_DMG, DMG_OM_CLUB, true))
++                    continue;
++
++                // v5.2: RAGDOLL VOLADOR — sale despedido EN DIRECCION
++                // CONTRARIA a Metal ("lanzarlos"), como el fling del lua
++                if (OM_IsStunned(i))
++                {
++                    float fDir[3];
++                    fDir[0] = tPos[0] - pos[0];
++                    fDir[1] = tPos[1] - pos[1];
++                    fDir[2] = 0.0;
++                    float len = SquareRoot(fDir[0] * fDir[0] + fDir[1] * fDir[1]);
++                    if (len < 1.0) { fDir[0] = GetRandomFloat(-1.0, 1.0); fDir[1] = GetRandomFloat(-1.0, 1.0); len = 1.0; }
++                    fDir[0] /= len;
++                    fDir[1] /= len;
++                    Sonic_SpawnFlingRagdoll(i, fDir);
++                    ragCount++;
++                }
+             }
+         }
+     }
+ 
+-    PrintToChatAll("\x04[Metal Sonic]\x01 ha sido destruido: ¡explosion final!");
++    PrintToChatAll("\x04[Metal Sonic]\x01 ha sido destruido: ¡explosion final! (%d infectados lanzados)", ragCount);
+ }
+ 
+ public Action T_Metal_UnstunInfected(Handle timer, int userid)
+@@ -1916,11 +2242,10 @@
+         PrintCenterText(client, "Ya estas en carga.");
+         return Plugin_Handled;
+     }
+-    if (g_bMetalOverdrive[client])
+-    {
+-        PrintCenterText(client, "No puedes cargar durante Overdrive.");
+-        return Plugin_Handled;
+-    }
++    // v5.2 ajuste 8: el bloqueo "No puedes cargar durante Overdrive"
++    // SE RETIRA — la combinacion C + Espacio + Z es el DASH AEREO
++    // intencional (la levitacion sostiene la altura y la embestida
++    // vuela; sin Espacio cae al piso y sigue por suelo).
+     // v5.0: en plena reparacion no se arranca la carga (lua l.1611 al reves)
+     if (g_bMetalHealing[client])
+     {
+@@ -1949,9 +2274,9 @@
+     // fallback aheli de HL2. El icono de carga (metal_load del GMod ->
+     // om/metal_chargeglow) lo crea/pulsa el ChargeThink.
+     if (g_bMetalSndCharge)
+-        EmitSoundToAll("om/metal/metal_chargeup.wav", client);
++        EmitSoundToAll("om/metal/metal_chargeup.wav", client, _, METAL_SND_LEVEL);
+     else
+-        EmitSoundToAll("npc/attack_helicopter/aheli_charge_up.wav", client);
++        EmitSoundToAll("npc/attack_helicopter/aheli_charge_up.wav", client, _, METAL_SND_LEVEL);
+ 
+     return Plugin_Handled;
+ }
+@@ -1978,9 +2303,9 @@
+ 
+     // v4.1: metalchargeend.wav REAL del mod al agotar/cancelar la carga
+     if (g_bMetalSndEnd)
+-        EmitSoundToAll("om/metal/metalchargeend.wav", client);
++        EmitSoundToAll("om/metal/metalchargeend.wav", client, _, METAL_SND_LEVEL);
+     else
+-        EmitSoundToAll("ambient/energy/zap1.wav", client);
++        EmitSoundToAll("ambient/energy/zap1.wav", client, _, METAL_SND_LEVEL);
+     Metal_KillWindupIcon(client);
+ 
+     // (v4.0: el target ya NO necesita restaurar nada aqui — OM_Stun nunca
+@@ -2010,11 +2335,9 @@
+     if (!Metal_IsValidClient(client)) return Plugin_Handled;
+     if (g_iPlayerCharIdx[client] != METALSONIC_INDEX) return Plugin_Handled;
+     if (g_bMetalOverdrive[client]) return Plugin_Handled;
+-    if (g_iMetalChargeState[client] != METAL_STATE_IDLE)
+-    {
+-        PrintCenterText(client, "No puedes usar Overdrive durante una carga.");
+-        return Plugin_Handled;
+-    }
++    // v5.2 ajuste 8: el bloqueo "No puedes usar Overdrive durante una
++    // carga" SE RETIRA — el Overdrive ahora COMBINA con la embestida
++    // (la levitacion con Espacio convierte la embestida en dash aereo)
+ 
+     float now = GetEngineTime();
+     if (now < g_fMetalOverdriveCD[client])
+@@ -2037,22 +2360,14 @@
+     // del cliente corre a 1x y el rubber-band se lo comia).
+     Speed_StackSet(client, SPEED_STACK_METAL_OD, METAL_OVERDRIVE_SPEED_MULT - 1.0);
+ 
+-    EmitSoundToAll("ambient/energy/zap1.wav", client);
+-    PrintCenterText(client, "V. MAXIMUM OVERDRIVE ACTIVADO");
++    EmitSoundToAll("ambient/energy/zap1.wav", client, _, METAL_SND_LEVEL);
++    PrintCenterText(client, "V. MAXIMUM OVERDRIVE ACTIVADO (Espacio = levitar)");
+ 
+     return Plugin_Handled;
+ }
+ 
+-public Action T_Metal_OverheatEnd(Handle timer, int userid)
+-{
+-    int client = GetClientOfUserId(userid);
+-    if (client > 0 && IsClientInGame(client))
+-    {
+-        SetEntityMoveType(client, MOVETYPE_WALK);
+-        PrintCenterText(client, "Reactor enfriado.");
+-    }
+-    return Plugin_Stop;
+-}
++// (v5.2 ajuste 4: T_Metal_OverheatEnd ELIMINADO — el Overdrive ya no
++//  inmoviliza al terminar, no hay nada que restaurar)
+ 
+ // =======================
+ // HABILIDAD 2 (X): SELF REPAIR — v5.0
+@@ -2113,9 +2428,9 @@
+ 
+     // lua l.1635-1643: "Metal self repair activation (2).wav"
+     if (g_bMetalSndHealAct)
+-        EmitSoundToAll("om/metal/Metal self repair activation (2).wav", client);
++        EmitSoundToAll("om/metal/Metal self repair activation (2).wav", client, _, METAL_SND_LEVEL);
+     else
+-        EmitSoundToAll("ui/pickup_medkit.wav", client);
++        EmitSoundToAll("ui/pickup_medkit.wav", client, _, METAL_SND_LEVEL);
+ 
+     PrintCenterText(client, "SELF REPAIR: reparando (+%d cada %.0fs)...", METAL_HEAL_AMOUNT, METAL_HEAL_TICK);
+     return Plugin_Handled;
+@@ -2169,6 +2484,33 @@
+     g_iMetalHealLight[client] = 0;
+ }
+ 
++// ============================================================
++// v5.2 ajuste 6: EL AURA DE SOPORTE del Self Repair — "la reparacion
++// esta heredado a curarse mas rapido si esta con eggman o tails no?".
++// Si hay un Tails o un Eggman VIVO a menos de 250u (el mismo radio del
++// tails_heal_boost del suite), el tick se acelera x2 (cada 1s en vez
++// de 2s — misma proporcion que el boost de curacion de Tails).
++// ============================================================
++bool Metal_SupportAuraActive(int client)
++{
++    float mPos[3];
++    GetClientAbsOrigin(client, mPos);
++
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (i == client) continue;
++        if (!IsClientInGame(i) || !IsPlayerAlive(i)) continue;
++        if (GetClientTeam(i) != TEAM_SURVIVOR) continue;
++        if (g_iPlayerCharIdx[i] != TAILS_INDEX && g_iPlayerCharIdx[i] != EGGMAN_INDEX) continue;
++
++        float tPos[3];
++        GetClientAbsOrigin(i, tPos);
++        if (GetVectorDistance(mPos, tPos) <= METAL_HEAL_AURA_RADIUS)
++            return true;
++    }
++    return false;
++}
++
+ // El ciclo del heal (lo llama Metal_PreThink cada frame mientras vive)
+ void Metal_HealThink(int client, float now)
+ {
+@@ -2220,7 +2562,13 @@
+     }
+ 
+     if (now < g_fMetalHealNextTick[client]) return;
+-    g_fMetalHealNextTick[client] = now + METAL_HEAL_TICK;
++
++    // v5.2 ajuste 6: CON SOPORTE (Tails/Eggman a 250u) el tick corre x2
++    // de rapido — "curarse mas rapido si esta con eggman o tails"
++    float tick = Metal_SupportAuraActive(client)
++        ? METAL_HEAL_TICK / METAL_HEAL_AURA_MULT
++        : METAL_HEAL_TICK;
++    g_fMetalHealNextTick[client] = now + tick;
+ 
+     // lua l.984/1008: tope de HP o tope de acumulado -> cierre limpio
+     int hp = GetClientHealth(client);
+@@ -2262,9 +2610,9 @@
+ 
+     // lua l.997-1005: Heal.wav por tick
+     if (g_bMetalSndHeal)
+-        EmitSoundToAll("om/metal/Heal.wav", client);
++        EmitSoundToAll("om/metal/Heal.wav", client, _, METAL_SND_LEVEL);
+     else
+-        EmitSoundToAll("items/smallmedkit1.wav", client);
++        EmitSoundToAll("items/smallmedkit1.wav", client, _, METAL_SND_LEVEL);
+ 
+     PrintCenterText(client, "REPARANDO... +%d HP (%d/%d)", METAL_HEAL_AMOUNT, g_iMetalHealTotal[client], METAL_HEAL_TOTAL_CAP);
+ 
+@@ -2294,9 +2642,9 @@
+     SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
+ 
+     if (g_bMetalSndHealFin)
+-        EmitSoundToAll("om/metal/healfinished.wav", client);
++        EmitSoundToAll("om/metal/healfinished.wav", client, _, METAL_SND_LEVEL);
+     else
+-        EmitSoundToAll("items/healthcharger.wav", client);
++        EmitSoundToAll("items/healthcharger.wav", client, _, METAL_SND_LEVEL);
+ 
+     if (g_iMetalHealTotal[client] >= METAL_HEAL_AMOUNT)
+     {
+@@ -2960,10 +3308,36 @@
+     }
+     else if (!(GetEntityFlags(client) & FL_ONGROUND))
+     {
+-        // AIRE: sube = jump, cae = fall
++        // AIRE (v5.2 ajuste 5 — receta Sonic "ventana del jump completa"):
++        // sube = jump; cae = fall PERO si el one-shot de jump todavia
++        // esta vivo (arranco hace < 0.5s o el ciclo del modelo no
++        // termino), el jump SIGUE — el "jump" del metal.mdl ya no se
++        // corta a la primera (fix del "salto a veces interrumpido")
+         float vel[3];
+         GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
+-        state = (vel[2] > 40.0) ? 3 : 4;
++        if (vel[2] > 40.0)
++        {
++            state = 3;
++        }
++        else
++        {
++            bool jumpLive = false;
++            if (g_iMetalAnimState[client] == 3)
++            {
++                float jt = now - g_fMetalJumpStart[client];
++                if (jt < 0.5)      jumpLive = true;
++                else if (jt < 1.5 && !Metal_JumpAnimDone(av)) jumpLive = true;
++            }
++            state = jumpLive ? 3 : 4;
++        }
++    }
++    else if (g_iMetalAnimState[client] == 3 && !Metal_JumpAnimDone(av)
++             && now - g_fMetalJumpStart[client] < 0.5)
++    {
++        // v5.2 ajuste 5: FL_ONGROUND parpadea al saltar rozando escalones
++        // / paredes — mientras el one-shot del jump este vivo (<= 0.5s),
++        // NO bajar a walk/run aunque el flag diga "en suelo" un instante
++        state = 3;
+     }
+     else
+     {
+@@ -2973,8 +3347,12 @@
+         else if (s < 150.0 || (GetClientButtons(client) & IN_DUCK))
+         {
+             state = 1;
+-            rate = 1.8 * (s / 85.0);
+-            if (rate > 2.5) rate = 2.5;
++            // v5.2 ajuste 5: WALK al rate 1.0 CONSTANTE del GMod — Metal
++            // NO define animrates en su lua (noodles_om_pills_base.lua
++            // l.936-944: sin animrates -> rate 1 para TODO). El v5.0 lo
++            // jugaba a 1.8*(s/85) = "bastante rapida a comparacion de los
++            // demas" (Tails SI define walk 1.8; metal no).
++            rate = 1.0;
+         }
+         else
+         {
+@@ -2987,6 +3365,8 @@
+ 
+     if (state != g_iMetalAnimState[client])
+     {
++        // v5.2: el t0 del jump para su ventana (receta Sonic)
++        if (state == 3) g_fMetalJumpStart[client] = now;
+         SetVariantString(g_sMetalAnimSeq[state]);
+         AcceptEntityInput(av, "SetAnimation");
+         if (g_iMetalAvatarL[client] != 0)
+@@ -3021,6 +3401,17 @@
+     return SquareRoot(vel[0] * vel[0] + vel[1] * vel[1]);
+ }
+ 
++// v5.2 ajuste 5: el one-shot del jump termino? (m_flCycle del prop —
++// la misma sonda del Sonic_JumpAnimDone: el ciclo lo avanza el server
++// en prop_dynamic)
++bool Metal_JumpAnimDone(int av)
++{
++    if (av <= 0 || !IsValidEntity(av)) return true;
++    if (HasEntProp(av, Prop_Data, "m_flCycle"))
++        return GetEntPropFloat(av, Prop_Data, "m_flCycle") >= 0.95;
++    return true;
++}
++
+ // =====================================================================
+ // MUERTE DEL AVATAR (player_death POST propio — receta Sonic v3.76.2)
+ // =====================================================================

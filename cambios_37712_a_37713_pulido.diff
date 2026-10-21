@@ -1,0 +1,817 @@
+=== DIFF 3.77.12 -> 3.77.13 PULIDO DEL LOOK + EFECTO DE GOLPE ===
+=== (sonic.inc v6.19->v6.20 / Amy.inc v100->v101 / Speed_sonic v3.2->v3.3 / manager 3.77.12->3.77.13) ===
+
+=== include/sonic.inc (v6.19-OM -> v6.20-OM) ===
+--- /home/z/my-project/download/suite_37712_trails_nativo/include/sonic.inc	2026-10-08 05:30:02.150551855 +0000
++++ /home/z/my-project/builds/OM37713/scripting/include/sonic.inc	2026-10-08 07:23:01.096736091 +0000
+@@ -294,7 +294,7 @@
+  *      sonicom_peel_speed 800 / sonicom_peel_charge 3.0 / sonicom_peel_duration 8
+  *      sonicom_peel_cd_rescue 25 / sonicom_peel_cd_fail 45 / sonicom_peel_rescue 1
+  *      sonicom_peel_carry 1 / sonicom_peel_carry_max 3  (v6.14: lleva jugadores)
+- *      sonicom_trails 1 / sonicom_trails_mat 0  (v6.19: nativo por default — los mats del sonicball se ven bugeados en los beams del L4D2; 1 = autenticos opt-in)
++ *      sonicom_trails 1 / sonicom_trails_mat 0  (v6.19 nativo por default; v6.20: 1 = AUTENTICOS via env_spritetrail + fix del render de fbef0102 — el MISMO renderer del SpriteTrail de GMod)
+  *      sonicom_rings 1 / sonicom_rings_max 50
+  *    (los defaults GMod: Dropdash_cooldownSucess 27 / cooldownLand 35 /
+  *     maxhits 3 / ringgain 10 / Peelout charge 3s / duration 8s /
+@@ -354,7 +354,32 @@
+     #define SONIC_INDEX 0
+ #endif
+ 
+-#define SONIC_OM_VERSION "v6.19-OM"   // v6.19: TRAILS A MATERIAL NATIVO (default) — analisis del pack de materiales ORIGINALES del OM subido por el owner (2026-10-08): los .vmt del sonicball son legítimos (UnlitGeneric $translucent $vertexcolor/$vertexalpha, VTF 7.2 RGBA8888) pero diseniados para el renderer del SpriteTrail de GMod: bluetrail.vtf = barra vertical nucleo-blanco/halo-azul (perfil transversal), bluestartrail2.vtf = 98% TRANSPARENTE con destellos sueltos (la 'capa ancha' es casi aire), blue2/Sonicred = chips 2x2 shared_t/t2. En los TE beams del L4D2 la textura se mapea al reves (U a lo largo del beam) = look bugeado (reporte del owner); el laserbeam radial nativo es inmune a la orientacion. NATIVO default con la geometria 3-capas GMod completa (halo 70->40 + nucleo 40->1 + magenta 40->1, aditivas como alla) y el peel gana los 2 pies ROJOS nativos. FIX descargas: Sonic_AddMatToDownloads ahora encola el $basetexture REAL (blue.vmt->bluetrail.vtf etc.; el v6.17 encolaba un blue.vtf INEXISTENTE = damero en clientes). sonicom_trails_mat default 0 (1 = autentico opt-in). v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o autentico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migracion al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueno/demas (el beam del dueno sigue su copia L, el de los demas la R — leccion del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: unica forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseno de materiales v6.17 INTACTO: FileExists -> autenticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTENTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidio ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aqui offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximacion documentada). Deteccion por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo).
++// v6.20: PULIDO DEL LOOK + EFECTO DE GOLPE + AUTENTICO env_spritetrail REVIVIDO —
++//   el owner trajo el fix del env_spritetrail (fbef0102 smd_spritetrail_fix,
++//   original de FrozDark: en L4D2 la estela se dibuja ~1 s y se CONGELA — la
++//   entidad sigue viva; un SetScale diferido 0.5 s via AddOutput+FireUser1 la
++//   revive y dibuja para siempre. La necrologia del v6.18 quedaba a medias: la
++//   entidad SI dibuja, solo se dormia). MODO AUTENTICO (mat 1) vuelve a
++//   env_spritetrail + fix = el MISMO renderer del util.SpriteTrail de GMod
++//   (alla tambien crea env_spritetrail) con los .vmt originales del sonicball.
++//   FEEDBACK del owner 2026-10-08: (1) PIES ROJOS del peel visibles como
++//   estelas de pie: el trail principal SUBE a +20z en un info_target parentado
++//   (la receta trailOrigin del GMod L1211-1215 — el BeamFollow directo al
++//   avatar lo dibujaba AL RAS DEL SUELO, el origen del avatar son los pies, y
++//   la franja de 16u se tragaba las estelas rojas) y los pies pasan a 6->1 /
++//   0.75s exactos del GMod (L1232-1258); (2) azul MAS POTENTE (alpha 200->250,
++//   vida 0.55->0.75 del GMod) + BRILLO AZUL EN LA OSCURIDAD pedido:
++//   light_dynamic azul parentado (a la bola en el spin, al player en el peel)
++//   + glow01 azul suave pegado a la bola (fullbright: se ve hasta en lo mas
++//   oscuro); (3) trail de la bola REESCALADO A LA BOLA REAL (sonicball a escala
++//   1.25 = ~32u: halo 70->40 pasa a 34->19 apenas mas ancho que la bola, nucleo
++//   y magenta 40->1 pasan a 24->1 — "el trail es literalmente mas grande que la
++//   ball"); (4) EFECTO DE GOLPE del spindash portado del sonic_spindashhit del
++//   GMod (sonic.lua L234 + effects L203-253): flash sonic_drop_impact en la
++//   victima +50z (el PNG del pack convertido a VTF 7.2 RGBA8888 256x256 + VMT —
++//   sin el, glow01 nativo), anillo expansivo 10->165 en 0.45s, chispas y PULSO
++//   de la bola (alla sonic_attack_glow_duration 0.25s).
++#define SONIC_OM_VERSION "v6.20-OM"   // v6.19: TRAILS A MATERIAL NATIVO (default) — analisis del pack de materiales ORIGINALES del OM subido por el owner (2026-10-08): los .vmt del sonicball son legítimos (UnlitGeneric $translucent $vertexcolor/$vertexalpha, VTF 7.2 RGBA8888) pero diseniados para el renderer del SpriteTrail de GMod: bluetrail.vtf = barra vertical nucleo-blanco/halo-azul (perfil transversal), bluestartrail2.vtf = 98% TRANSPARENTE con destellos sueltos (la 'capa ancha' es casi aire), blue2/Sonicred = chips 2x2 shared_t/t2. En los TE beams del L4D2 la textura se mapea al reves (U a lo largo del beam) = look bugeado (reporte del owner); el laserbeam radial nativo es inmune a la orientacion. NATIVO default con la geometria 3-capas GMod completa (halo 70->40 + nucleo 40->1 + magenta 40->1, aditivas como alla) y el peel gana los 2 pies ROJOS nativos. FIX descargas: Sonic_AddMatToDownloads ahora encola el $basetexture REAL (blue.vmt->bluetrail.vtf etc.; el v6.17 encolaba un blue.vtf INEXISTENTE = damero en clientes). sonicom_trails_mat default 0 (1 = autentico opt-in). v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o autentico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migracion al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueno/demas (el beam del dueno sigue su copia L, el de los demas la R — leccion del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: unica forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseno de materiales v6.17 INTACTO: FileExists -> autenticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTENTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidio ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aqui offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximacion documentada). Deteccion por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo).
+ 
+ // =======================
+ // RECURSOS (VPK de recursos del owner; mismas rutas que GMod OM)
+@@ -388,6 +413,11 @@
+ #define SONIC_BALL_MAT_FADE  "materials/models/noodles/om/sonicball/blue.vmt"
+ #define SONIC_PEEL_MAT_MAIN  "materials/models/noodles/om/sonicball/blue2.vmt"
+ #define SONIC_PEEL_MAT_FOOT  "materials/models/noodles/om/sonicball/Sonicred.vmt"
++// v6.20: material del FLASH DEL GOLPE del spindash — port del efecto
++// sonic_spindashhit del GMod (icons/sonic_drop_impact.png en el pack de
++// materiales del owner; el PNG directo solo lo lee GMod => convertido a
++// VTF 7.2 RGBA8888 256x256 + VMT UnlitGeneric, mismo formato del pack)
++#define SONIC_HITFX_MAT      "materials/icons/sonic_drop_impact.vmt"
+ 
+ // =======================
+ // FSM DEL AVATAR: 20 estados (secuencias del sonic.mdl)
+@@ -535,6 +565,23 @@
+ int   g_iSonicPeelTrailO[MAXPLAYERS + 1];      // (4) v6.18: slot TE del trail del peel para el DUENO (copia L)
+ int   g_iSonicPeelFootL[MAXPLAYERS + 1];       // (4) v6.17: trail ROJO pie izq del peel (Sonicred.vmt)
+ int   g_iSonicPeelFootR[MAXPLAYERS + 1];       // (4) v6.17: trail ROJO pie der del peel (Sonicred.vmt)
++// v6.20: AUTENTICO env_spritetrail (fix fbef0102) + brillo azul + info_targets
++int   g_iSonicBallSTrR[MAXPLAYERS + 1];        // v6.20: EntRef trail ancho autentico (env_spritetrail) de la bola
++int   g_iSonicBallSTrW[MAXPLAYERS + 1];        // v6.20: idem capa fina
++int   g_iSonicBallSTrM[MAXPLAYERS + 1];        // v6.20: idem capa magenta
++int   g_iSonicPeelSTrail[MAXPLAYERS + 1];      // v6.20: EntRef trail peel autentico (env_spritetrail, copia R)
++int   g_iSonicPeelSTrailO[MAXPLAYERS + 1];     // v6.20: idem copia L (solo el dueno)
++int   g_iSonicPeelTgt[MAXPLAYERS + 1];         // v6.20: EntRef info_target +20z del trail del peel (copia R)
++int   g_iSonicPeelTgtO[MAXPLAYERS + 1];        // v6.20: idem copia L
++int   g_iSonicBallGlow[MAXPLAYERS + 1];        // v6.20: EntRef env_sprite glow azul de la bola (brillo en la oscuridad)
++int   g_iSonicBallLight[MAXPLAYERS + 1];       // v6.20: EntRef light_dynamic azul de la bola
++int   g_iSonicPeelLight[MAXPLAYERS + 1];       // v6.20: EntRef light_dynamic azul del peel (parent al player)
++bool  g_bSonicHitFxMat = false;                // v6.20: icons/sonic_drop_impact.vmt presente en el server
++int   g_iSonicHitFxMat = 0;                    // v6.20: index precacheado del flash del golpe del spindash
++// v6.20: filtros SetTransmit de los env_spritetrail autenticos (split
++// dueno/demas — el mismo mecanismo de las copias R/L del avatar)
++int   g_iSonicSTOnly[4096];                    // entindex -> userid que PUEDE verlo (0 = todos)
++int   g_iSonicSTExcl[4096];                    // entindex -> userid EXCLUIDO (0 = nadie)
+ 
+ // =======================
+ // AVATAR OM (patron Tails: R + L + EF_NOINTERP + pausa)
+@@ -746,7 +793,7 @@
+     // v6.6 (informe 1 del owner)
+     g_cvSonicSpinRadiusCommons = CreateConVar("sonicom_spin_radius_commons", "140", "Sonic OM: radio del barrido AoE de la bola contra COMUNES (0 = off). Especiales y witch siguen con el alcance del toque — el rango extra es SOLO para comunes [owner: 'sufrimos mucho con los comunes']", _, true, 0.0, true, 400.0);
+     g_cvSonicTrails = CreateConVar("sonicom_trails", "1", "Sonic OM: trails visuales (env_spritetrail) de la bola y la carrera del Peel Out — el look de los SpriteTrail del GMod", _, true, 0.0, true, 1.0);
+-    g_cvSonicTrailsMat = CreateConVar("sonicom_trails_mat", "0", "Sonic OM v6.19: material de los trails — 0 (default) = laserbeam NATIVO del juego con la geometria 3-capas del GMod (halo 70->40 + nucleo 40->1 + magenta 40->1). Los .vmt del sonicball del pack OM estan disenados para el SpriteTrail de GMod y en los beams del L4D2 se ven bugeados (analisis del pack original 2026-10-08: mapeo de textura al reves + capa ancha 98% transparente) — 1 = intentarlos igual (opt-in) si estan en el servidor. Sin los archivos SIEMPRE cae al nativo", _, true, 0.0, true, 1.0);
++    g_cvSonicTrailsMat = CreateConVar("sonicom_trails_mat", "0", "Sonic OM v6.20: material de los trails — 0 (default) = laserbeam NATIVO del juego con la geometria 3-capas del GMod escalada a la bola (halo 34->19 + nucleo 24->1 + magenta 24->1). 1 = AUTENTICOS via env_spritetrail + FIX del render (fbef0102): el MISMO renderer del SpriteTrail de GMod con los .vmt originales del sonicball, si estan en el servidor (sueltos en materials/ o en VPK). Sin los archivos SIEMPRE cae al nativo. Nota: en los beams TE del L4D2 los .vmt originales se mapean al reves (por eso el nativo es el default)", _, true, 0.0, true, 1.0);
+     g_cvSonicDodgeGraceDot = CreateConVar("sonicom_dodge_grace_dot", "0.3", "Sonic OM: segundos de gracia CORTA tras esquivar durante los que el vomito del boomer no vuelve a cobrar y el spit del spitter no entra [owner: la eva se consumia demasiado rapido]", _, true, 0.0, true, 2.0);
+ 
+     // comandos directos (ademas de Z/X/C del manager)
+@@ -796,6 +843,17 @@
+     if (g_bSonicPeelMatMain) { g_iSonicTEMatPeel = PrecacheModel(SONIC_PEEL_MAT_MAIN, true); Sonic_AddMatToDownloads(SONIC_PEEL_MAT_MAIN); }
+     if (g_bSonicPeelMatFoot) { g_iSonicTEMatFoot = PrecacheModel(SONIC_PEEL_MAT_FOOT, true); Sonic_AddMatToDownloads(SONIC_PEEL_MAT_FOOT); }
+ 
++    // v6.20: material del FLASH DEL GOLPE del spindash (port del
++    // sonic_spindashhit del GMod: icons/sonic_drop_impact — el PNG del
++    // pack convertido a VTF+VMT para L4D2). Sin el: glow01 nativo
++    // (cero dependencia, como siempre)
++    g_bSonicHitFxMat = FileExists(SONIC_HITFX_MAT, true);
++    if (g_bSonicHitFxMat)
++    {
++        g_iSonicHitFxMat = PrecacheModel(SONIC_HITFX_MAT, true);
++        Sonic_AddMatToDownloads(SONIC_HITFX_MAT);
++    }
++
+     // v6.18: index del fallback nativo + slots del motor TE del mapa
+     // anterior fuera (sus TEs murieron con el mapa; los slot ids por
+     // jugador se ponen a cero en el loop de abajo). OJO: SONIC_TRAIL_SPRITE
+@@ -1430,6 +1488,211 @@
+ }
+ 
+ // ---------------------------------------------------------------------
++// v6.20: EL FIX DEL env_spritetrail (smd_spritetrail_fix de fbef0102,
++// plugin original de FrozDark — lo trajo el owner 2026-10-08). La
++// NECROLOGIA del v6.18 quedaba a medias: el env_spritetrail en L4D2 SI
++// dibuja... pero solo ~1 s, y despues se CONGELA (la entidad sigue viva:
++// "el objeto no se elimina"). El fix de la comunidad: un SetScale
++// diferido 0.5 s (AddOutput OnUser1 + FireUser1) re-despierta la estela
++// y dibuja para siempre. Con esto el MODO AUTENTICO vuelve a
++// env_spritetrail = el MISMO renderer para el que GMod disenho los .vmt
++// del sonicball (alla util.SpriteTrail crea un env_spritetrail).
++// ---------------------------------------------------------------------
++void Sonic_FixSpriteTrail(int tr)
++{
++    SetVariantString("OnUser1 !self:SetScale:1:0.5:1");
++    AcceptEntityInput(tr, "AddOutput");
++    AcceptEntityInput(tr, "FireUser1");
++}
++
++// v6.20: mata un EntRef de entidad creada por nosotros (spritetrail /
++// glow / luz / info_target) y limpia su filtro de transmision
++void Sonic_KillOwnedEnt(int &ref)
++{
++    int e = EntRefToEntIndex(ref);
++    if (e > 0 && IsValidEntity(e))
++    {
++        if (e < 4096) { g_iSonicSTOnly[e] = 0; g_iSonicSTExcl[e] = 0; }
++        AcceptEntityInput(e, "Kill");
++    }
++    ref = 0;
++}
++
++// v6.20: filtro SetTransmit de los env_spritetrail autenticos (split
++// dueno/demas — mismo mecanismo de las copias R/L del avatar)
++public Action Sonic_STTransmit(int ent, int client)
++{
++    if (ent > 0 && ent < 4096)
++    {
++        if (g_iSonicSTOnly[ent] > 0 && GetClientUserId(client) != g_iSonicSTOnly[ent])
++            return Plugin_Handled;
++        if (g_iSonicSTExcl[ent] > 0 && GetClientUserId(client) == g_iSonicSTExcl[ent])
++            return Plugin_Handled;
++    }
++    return Plugin_Continue;
++}
++
++// v6.20: crea un env_spritetrail AUTENTICO parentado (modo mat 1):
++// material por RUTA (mismo formato que usaba el Sonic_MakeTrail v6.17),
++// rendercolor "r g b", ADITIVO (additive=true en los 3 SpriteTrail del
++// GMod), anchos/vida en unidades del motor. Split dueno/demas opcional
++// via SetTransmit. Devuelve EntRef (0 = fallo).
++int Sonic_MakeSpriteTrail(int parent, const char[] mat, float life, float w1, float w2,
++                          const char[] rgb, int onlyUser, int exclUser)
++{
++    if (parent <= 0 || !IsValidEntity(parent)) return 0;
++    int tr = CreateEntityByName("env_spritetrail");
++    if (tr <= 0 || !IsValidEntity(tr)) return 0;
++
++    DispatchKeyValue(tr, "spritename", mat);
++    DispatchKeyValueFloat(tr, "lifetime", life);
++    DispatchKeyValueFloat(tr, "startwidth", w1);
++    DispatchKeyValueFloat(tr, "endwidth", w2);
++    DispatchKeyValue(tr, "rendercolor", rgb);
++    DispatchKeyValue(tr, "renderamt", "255");
++    DispatchKeyValue(tr, "rendermode", "5");   // aditivo (additive=true del GMod)
++
++    // receta avatar (L1223-1247): keyvalues -> DispatchSpawn ->
++    // world-pos -> SetParent (la posicion queda re-basada al espacio
++    // del padre con el offset vivo)
++    float pos[3];
++    GetEntPropVector(parent, Prop_Data, "m_vecOrigin", pos);
++    DispatchSpawn(tr);
++    TeleportEntity(tr, pos, NULL_VECTOR, NULL_VECTOR);
++    SetVariantString("!activator");
++    AcceptEntityInput(tr, "SetParent", parent);
++
++    Sonic_FixSpriteTrail(tr);
++
++    if (onlyUser > 0 || exclUser > 0)
++    {
++        if (tr > 0 && tr < 4096)
++        {
++            g_iSonicSTOnly[tr] = onlyUser;
++            g_iSonicSTExcl[tr] = exclUser;
++        }
++        SDKHook(tr, SDKHook_SetTransmit, Sonic_STTransmit);
++    }
++    return EntIndexToEntRef(tr);
++}
++
++// v6.20: info_target parentado a +zOffs — la receta EXACTA del
++// trailOrigin del GMod (L1211-1215: el trail principal del peel cuelga
++// de un info_target a Vector(0,0,20), no del origen del personaje)
++int Sonic_MakeTrailTarget(int parent, float zOffs)
++{
++    if (parent <= 0 || !IsValidEntity(parent)) return 0;
++    int t = CreateEntityByName("info_target");
++    if (t <= 0 || !IsValidEntity(t)) return 0;
++    float pos[3];
++    GetEntPropVector(parent, Prop_Data, "m_vecOrigin", pos);
++    pos[2] += zOffs;
++    DispatchSpawn(t);
++    TeleportEntity(t, pos, NULL_VECTOR, NULL_VECTOR);
++    SetVariantString("!activator");
++    AcceptEntityInput(t, "SetParent", parent);
++    return EntIndexToEntRef(t);
++}
++
++// v6.20: BRILLO AZUL EN LA OSCURIDAD (pedido del owner): light_dynamic
++// azul parentado — la luz de verdad que ilumina la escena alrededor
++// (paredes/zombies) mientras dura la habilidad
++int Sonic_MakeBlueLight(int parent, float zOffs)
++{
++    if (parent <= 0 || !IsValidEntity(parent)) return 0;
++    int l = CreateEntityByName("light_dynamic");
++    if (l <= 0 || !IsValidEntity(l)) return 0;
++    DispatchKeyValue(l, "_light", "70 130 255 200");
++    DispatchKeyValue(l, "brightness", "2");
++    DispatchKeyValue(l, "distance", "220");
++    DispatchKeyValue(l, "style", "0");
++    float pos[3];
++    GetEntPropVector(parent, Prop_Data, "m_vecOrigin", pos);
++    pos[2] += zOffs;
++    DispatchSpawn(l);
++    TeleportEntity(l, pos, NULL_VECTOR, NULL_VECTOR);
++    AcceptEntityInput(l, "TurnOn");
++    SetVariantString("!activator");
++    AcceptEntityInput(l, "SetParent", parent);
++    return EntIndexToEntRef(l);
++}
++
++// v6.20: glow01 aditivo azul SUAVE parentado a la bola — el "brillo" de
++// la bola misma (UnlitGeneric = fullbright: se ve SIEMPRE, hasta en lo
++// mas oscuro; la luz dinamica ilumina la escena, este la hace brillar)
++int Sonic_MakeBallGlow(int ball)
++{
++    if (ball <= 0 || !IsValidEntity(ball)) return 0;
++    int s = CreateEntityByName("env_sprite");
++    if (s <= 0 || !IsValidEntity(s)) return 0;
++    DispatchKeyValue(s, "model", SONIC_SPRITE_GLOW);
++    DispatchKeyValue(s, "scale", "0.7");
++    DispatchKeyValue(s, "rendermode", "5");
++    DispatchKeyValue(s, "rendercolor", "70 130 255");
++    DispatchKeyValue(s, "renderamt", "140");
++    DispatchKeyValue(s, "spawnflags", "1");   // Start on
++    float pos[3];
++    GetEntPropVector(ball, Prop_Data, "m_vecOrigin", pos);
++    DispatchSpawn(s);
++    TeleportEntity(s, pos, NULL_VECTOR, NULL_VECTOR);
++    SetVariantString("!activator");
++    AcceptEntityInput(s, "SetParent", ball);
++    return EntIndexToEntRef(s);
++}
++
++// v6.20: EFECTO DE GOLPE del spindash — port del sonic_spindashhit del
++// GMod (sonic.lua L234 + effects/om_noodles_effects_sonic.lua L203-253):
++// alla un quad camera-facing con icons/sonic_drop_impact.png que crece
++// 0->165 en 0.45s con fade (rotando a 900 gr/s) en la VICTIMA +50z.
++// Aqui: flash env_sprite (material autentico convertido a VTF si esta
++// en el server, glow01 nativo si no) + anillo expansivo 10->165/0.45s
++// + chispas. La rotacion no es portable (sprite plano) — el crecimiento
++// y el punch visual si.
++void Sonic_SpawnHitFx(const float targetPos[3])
++{
++    float pos[3];
++    pos[0] = targetPos[0];
++    pos[1] = targetPos[1];
++    pos[2] = targetPos[2] + 50.0;   // GMod: GetPos()+Vector(0,0,50)
++
++    // 1) flash: vive 0.45s (MaxLife del efecto GMod) — Kill diferido
++    //    por I/O (truco FireUser1, cero timers)
++    int spr = CreateEntityByName("env_sprite");
++    if (spr > 0 && IsValidEntity(spr))
++    {
++        bool auth = (g_bSonicHitFxMat && g_iSonicHitFxMat > 0);
++        char matPath[PLATFORM_MAX_PATH];
++        if (auth) strcopy(matPath, sizeof(matPath), SONIC_HITFX_MAT);
++        else      strcopy(matPath, sizeof(matPath), SONIC_SPRITE_GLOW);
++        float scale = auth ? 0.65 : 2.5;   // ~165u (256px custom / 64px glow01)
++        DispatchKeyValue(spr, "model", matPath);
++        DispatchKeyValueFloat(spr, "scale", scale);
++        DispatchKeyValue(spr, "rendermode", "5");
++        DispatchKeyValue(spr, "rendercolor", "255 255 255");
++        DispatchKeyValue(spr, "renderamt", "255");
++        DispatchKeyValue(spr, "spawnflags", "1");
++        DispatchSpawn(spr);
++        TeleportEntity(spr, pos, NULL_VECTOR, NULL_VECTOR);
++        SetVariantString("OnUser1 !self:Kill::0.45:1");
++        AcceptEntityInput(spr, "AddOutput");
++        AcceptEntityInput(spr, "FireUser1");
++    }
++
++    // 2) anillo expansivo 10->165 en 0.45s (EndSize/MaxLife del GMod)
++    if (g_iSonicGlowSprite > 0)
++    {
++        int cRing[4] = {200, 225, 255, 235};
++        TE_SetupBeamRingPoint(pos, 10.0, 165.0, g_iSonicGlowSprite, g_iSonicGlowSprite,
++                              0, 15, 0.45, 6.0, 1.0, cRing, 0, 0);
++        TE_SendToAll();
++    }
++
++    // 3) chispas del golpe
++    TE_SetupSparks(pos, NULL_VECTOR, 6, 3);
++    TE_SendToAll();
++}
++
++// ---------------------------------------------------------------------
+ // v6.18: slots TE. Un trail = un slot; UN latido global (0.2s) re-
+ // envia los BeamFollow vivos y estira las polylineas encadenadas.
+ // FOLLOW: el beam se pega a la ENTIDAD (bola/avatar/martillo) y el
+@@ -1657,6 +1920,11 @@
+ // es. v6.18: BeamFollow — Width = ancho en la bola (cabecera), EndWidth
+ // = ancho de la cola: el mismo decaimiento del SpriteTrail de GMod.
+ // La bola no tiene filtro SetTransmit (la ven todos): envio a todos.
++// v6.20: NATIVO sigue de DEFAULT + anchos REESCALADOS A LA BOLA (~32u
++// a escala 1.25). Rama autentica (opt-in, sonicom_trails_mat 1 +
++// materiales en el server): env_spritetrail + FIX (fbef0102) = el
++// renderer del GMod con los .vmt originales; fallback TE si la creacion
++// falla. Las 3 capas EXACTAS del fadeeiie del sonic.lua (L1921-1964).
+ void Sonic_CreateBallTrails(int client)
+ {
+     Sonic_KillBallTrails(client);
+@@ -1664,26 +1932,65 @@
+     int ball = (g_iSonicBall[client] != 0) ? EntRefToEntIndex(g_iSonicBall[client]) : -1;
+     if (ball <= 0 || !IsValidEntity(ball)) return;
+ 
+-    if (g_cvSonicTrailsMat != null && g_cvSonicTrailsMat.BoolValue
+-        && g_bSonicBallMatWide && g_bSonicBallMatFade
+-        && g_iSonicTEMatWide > 0 && g_iSonicTEMatFade > 0)
+-    {
+-        int cWhite[4] = {255, 255, 255, 255};
+-        int cMag[4]   = {255, 0, 255, 255};
+-        g_iSonicBallTrailR[client] = Sonic_TEStartFollow(ball, g_iSonicTEMatWide, 0.75, 70.0, 40.0, 3, cWhite);
+-        g_iSonicBallTrailW[client] = Sonic_TEStartFollow(ball, g_iSonicTEMatFade, 0.5, 40.0, 1.0, 3, cWhite);
+-        g_iSonicBallTrailM[client] = Sonic_TEStartFollow(ball, g_iSonicTEMatFade, 0.5, 40.0, 1.0, 3, cMag);
++    // v6.20: ANCHOS REESCALADOS A LA BOLA REAL — sonicball.mdl es una
++    // esfera de ~26u y el spin la lleva a escala 1.25 (GMod) = ~32u de
++    // diametro; el owner midio el 70 del GMod "literalmente mas grande
++    // que la ball". Mismas proporciones relativas ajustadas a la bola:
++    // halo 70->40 pasa a 34->19 (aura apenas mas ancha que la bola),
++    // nucleo y magenta 40->1 pasan a 24->1. Vidas intactas (0.75/0.5/0.5)
++    bool wantAuth = g_cvSonicTrailsMat != null && g_cvSonicTrailsMat.BoolValue
++                    && g_bSonicBallMatWide && g_bSonicBallMatFade
++                    && g_iSonicTEMatWide > 0 && g_iSonicTEMatFade > 0;
++    bool stOK = false;
++    if (wantAuth)
++    {
++        // v6.20: AUTENTICO = env_spritetrail + FIX (fbef0102): el MISMO
++        // renderer del util.SpriteTrail de GMod con los .vmt originales
++        // del sonicball (el mapeo de textura para el que fueron disenados)
++        g_iSonicBallSTrR[client] = Sonic_MakeSpriteTrail(ball, SONIC_BALL_MAT_WIDE, 0.75, 34.0, 19.0, "255 255 255", 0, 0);
++        g_iSonicBallSTrW[client] = Sonic_MakeSpriteTrail(ball, SONIC_BALL_MAT_FADE, 0.5, 24.0, 1.0, "255 255 255", 0, 0);
++        g_iSonicBallSTrM[client] = Sonic_MakeSpriteTrail(ball, SONIC_BALL_MAT_FADE, 0.5, 24.0, 1.0, "255 0 255", 0, 0);
++        stOK = (g_iSonicBallSTrR[client] != 0 && g_iSonicBallSTrW[client] != 0
++                && g_iSonicBallSTrM[client] != 0);
++        if (!stOK)
++        {
++            // algo fallo al crear: limpiar y caer al TE (el diseno v6.19)
++            Sonic_KillOwnedEnt(g_iSonicBallSTrR[client]);
++            Sonic_KillOwnedEnt(g_iSonicBallSTrW[client]);
++            Sonic_KillOwnedEnt(g_iSonicBallSTrM[client]);
++        }
+     }
+-    else
+-    {
+-        // v6.19: geometria GMod completa sobre laserbeam nativo (default)
+-        int cHalo[4] = {70, 130, 255, 175};   // capa ancha 70->40 azul suave
+-        int cCore[4] = {175, 220, 255, 215};  // capa fina 40->1 nucleo claro
+-        int cMag[4]   = {255, 0, 255, 175};   // 3a capa magenta (Color(255,0,255))
+-        g_iSonicBallTrailR[client] = Sonic_TEStartFollow(ball, g_iSonicTELaser, 0.75, 70.0, 40.0, 3, cHalo);
+-        g_iSonicBallTrailW[client] = Sonic_TEStartFollow(ball, g_iSonicTELaser, 0.5, 40.0, 1.0, 3, cCore);
+-        g_iSonicBallTrailM[client] = Sonic_TEStartFollow(ball, g_iSonicTELaser, 0.5, 40.0, 1.0, 3, cMag);
++
++    if (!stOK)
++    {
++        int mWide = wantAuth ? g_iSonicTEMatWide : g_iSonicTELaser;
++        int mFade = wantAuth ? g_iSonicTEMatFade : g_iSonicTELaser;
++        if (wantAuth)
++        {
++            int cWhite[4] = {255, 255, 255, 255};
++            int cMag[4]   = {255, 0, 255, 255};
++            g_iSonicBallTrailR[client] = Sonic_TEStartFollow(ball, mWide, 0.75, 34.0, 19.0, 3, cWhite);
++            g_iSonicBallTrailW[client] = Sonic_TEStartFollow(ball, mFade, 0.5, 24.0, 1.0, 3, cWhite);
++            g_iSonicBallTrailM[client] = Sonic_TEStartFollow(ball, mFade, 0.5, 24.0, 1.0, 3, cMag);
++        }
++        else
++        {
++            // v6.20: geometria GMod sobre laserbeam nativo (default) con
++            // los anchos escalados + alphas al alza (mas potente)
++            int cHalo[4] = {70, 130, 255, 195};   // capa ancha 34->19 azul suave
++            int cCore[4] = {175, 220, 255, 235};  // capa fina 24->1 nucleo claro
++            int cMag[4]  = {255, 0, 255, 195};    // 3a capa magenta (Color(255,0,255))
++            g_iSonicBallTrailR[client] = Sonic_TEStartFollow(ball, mWide, 0.75, 34.0, 19.0, 3, cHalo);
++            g_iSonicBallTrailW[client] = Sonic_TEStartFollow(ball, mFade, 0.5, 24.0, 1.0, 3, cCore);
++            g_iSonicBallTrailM[client] = Sonic_TEStartFollow(ball, mFade, 0.5, 24.0, 1.0, 3, cMag);
++        }
+     }
++
++    // v6.20: BRILLO AZUL EN LA OSCURIDAD de la bola (pedido del owner):
++    // glow01 azul suave pegado a la bola (fullbright, se ve siempre) +
++    // light_dynamic azul que ilumina la escena alrededor en lo oscuro
++    g_iSonicBallGlow[client]  = Sonic_MakeBallGlow(ball);
++    g_iSonicBallLight[client] = Sonic_MakeBlueLight(ball, 0.0);
+ }
+ 
+ void Sonic_KillBallTrails(int client)
+@@ -1691,6 +1998,12 @@
+     Sonic_TEStop(g_iSonicBallTrailR[client]);
+     Sonic_TEStop(g_iSonicBallTrailW[client]);
+     Sonic_TEStop(g_iSonicBallTrailM[client]);
++    // v6.20: entidades del autentico (env_spritetrail) + brillo azul
++    Sonic_KillOwnedEnt(g_iSonicBallSTrR[client]);
++    Sonic_KillOwnedEnt(g_iSonicBallSTrW[client]);
++    Sonic_KillOwnedEnt(g_iSonicBallSTrM[client]);
++    Sonic_KillOwnedEnt(g_iSonicBallGlow[client]);
++    Sonic_KillOwnedEnt(g_iSonicBallLight[client]);
+ }
+ 
+ // v6.18: la carrera del peel con los materiales del GMod — trail
+@@ -1703,6 +2016,17 @@
+ // en RENDER_NONE y un beam sobre un cuerpo invisible "sale del
+ // aire": la misma leccion del trail del speed v5.20) con el mismo
+ // split SetTransmit. Fallback: el laserbeam del v6.6.
++// v6.20: la carrera del peel — MISMO diseno GMod con la receta EXACTA
++// del trailOrigin: el trail principal blue2.vmt (16->1, vida 0.75,
++// blanco, L1221-1231) cuelga de un info_target parentado a +20z (alla
++// L1211-1215) — el BeamFollow directo al avatar lo dibujaba AL RAS DEL
++// SUELO (el origen del avatar son los PIES) y la franja de 16u se
++// tragaba las estelas rojas. Los DOS trails de pies ROJOS (Sonicred.vmt
++// 6->1, vida 0.75 — valores GMod EXACTOS L1232-1258; en los attachments
++// 2/3 del puppet alla; aqui polylineas encadenadas con offset lateral
++// +-8u al tobillo). Split R/L (SetTransmit en autentico / solo-excl en
++// TE). v6.20: azul MAS POTENTE (alpha 200->250, vida 0.55->0.75) +
++// light_dynamic azul en el player (brillo en la oscuridad).
+ void Sonic_CreatePeelTrail(int client)
+ {
+     Sonic_KillPeelTrail(client);
+@@ -1717,57 +2041,108 @@
+     int avOwner, avOthers;
+     bool tieneAvatar = Sonic_GetAvatarEnts(client, avOwner, avOthers);
+ 
+-    if (g_cvSonicTrailsMat != null && g_cvSonicTrailsMat.BoolValue
+-        && g_bSonicPeelMatMain && g_iSonicTEMatPeel > 0)
++    // v6.20: info_target a +20z por copia — el trail principal (beam o
++    // spritetrail) sigue a ESTO, no al origen del avatar
++    if (tieneAvatar && avOwner == avOthers)
+     {
+-        if (tieneAvatar && avOwner == avOthers)
+-        {
+-            // avatar unico: un solo beam para todos
+-            g_iSonicPeelTrail[client] = Sonic_TEStartFollow(avOthers, g_iSonicTEMatPeel, 0.75, 16.0, 1.0, 3, cWhite);
+-        }
+-        else if (tieneAvatar)
++        g_iSonicPeelTgt[client] = Sonic_MakeTrailTarget(avOthers, 20.0);
++    }
++    else if (tieneAvatar)
++    {
++        g_iSonicPeelTgt[client]  = Sonic_MakeTrailTarget(avOthers, 20.0);
++        g_iSonicPeelTgtO[client] = Sonic_MakeTrailTarget(avOwner, 20.0);
++    }
++    else
++    {
++        g_iSonicPeelTgt[client] = Sonic_MakeTrailTarget(client, 20.0);
++    }
++    int tgt  = (g_iSonicPeelTgt[client]  != 0) ? EntRefToEntIndex(g_iSonicPeelTgt[client])  : 0;
++    int tgtO = (g_iSonicPeelTgtO[client] != 0) ? EntRefToEntIndex(g_iSonicPeelTgtO[client]) : 0;
++
++    bool wantAuth = g_cvSonicTrailsMat != null && g_cvSonicTrailsMat.BoolValue
++                    && g_bSonicPeelMatMain && g_iSonicTEMatPeel > 0;
++    bool stOK = false;
++    if (wantAuth && tgt > 0)
++    {
++        // v6.20: AUTENTICO = env_spritetrail sobre el info_target (la
++        // receta EXACTA del GMod: SpriteTrail(trailOrigin, ...)) con el
++        // fix de fbef0102 y el split R/L por SetTransmit
++        if (tieneAvatar && avOwner != avOthers && tgtO > 0)
+         {
+-            // dual R/L: el dueno recibe el beam de SU copia (L) y los
+-            // demas el de la R (el mismo split de SetTransmit)
+-            g_iSonicPeelTrailO[client] = Sonic_TEStartFollow(avOwner, g_iSonicTEMatPeel, 0.75, 16.0, 1.0, 3, cWhite, userid, 0);
+-            g_iSonicPeelTrail[client]  = Sonic_TEStartFollow(avOthers, g_iSonicTEMatPeel, 0.75, 16.0, 1.0, 3, cWhite, 0, userid);
++            g_iSonicPeelSTrailO[client] = Sonic_MakeSpriteTrail(tgtO, SONIC_PEEL_MAT_MAIN, 0.75, 16.0, 1.0, "255 255 255", userid, 0);
++            g_iSonicPeelSTrail[client]  = Sonic_MakeSpriteTrail(tgt,  SONIC_PEEL_MAT_MAIN, 0.75, 16.0, 1.0, "255 255 255", 0, userid);
+         }
+         else
+         {
+-            g_iSonicPeelTrail[client] = Sonic_TEStartFollow(client, g_iSonicTEMatPeel, 0.75, 16.0, 1.0, 3, cWhite);
++            g_iSonicPeelSTrail[client] = Sonic_MakeSpriteTrail(tgt, SONIC_PEEL_MAT_MAIN, 0.75, 16.0, 1.0, "255 255 255", 0, 0);
+         }
+-
+-        if (g_bSonicPeelMatFoot && g_iSonicTEMatFoot > 0)
++        stOK = (g_iSonicPeelSTrail[client] != 0 || g_iSonicPeelSTrailO[client] != 0);
++        if (!stOK)
+         {
+-            g_iSonicPeelFootL[client] = Sonic_TEStartChain(userid, -1, g_iSonicTEMatFoot, 0.5, 5.0, 5.0, 0, cWhite);
+-            g_iSonicPeelFootR[client] = Sonic_TEStartChain(userid, 1, g_iSonicTEMatFoot, 0.5, 5.0, 5.0, 0, cWhite);
++            Sonic_KillOwnedEnt(g_iSonicPeelSTrail[client]);
++            Sonic_KillOwnedEnt(g_iSonicPeelSTrailO[client]);
+         }
+     }
+-    else
++
++    if (!stOK)
+     {
+-        int cP[4] = {150, 200, 255, 200};
+-        if (tieneAvatar && avOwner == avOthers)
++        // TE BeamFollow (nativo o fallback del autentico) — v6.20: azul
++        // MAS POTENTE (alpha 250) y la vida del GMod (0.55 -> 0.75)
++        int model = wantAuth ? g_iSonicTEMatPeel : g_iSonicTELaser;
++        int cP[4] = {170, 215, 255, 250};
++        if (tgt > 0)
+         {
+-            g_iSonicPeelTrail[client] = Sonic_TEStartFollow(avOthers, g_iSonicTELaser, 0.55, 16.0, 2.0, 3, cP);
+-        }
+-        else if (tieneAvatar)
+-        {
+-            g_iSonicPeelTrailO[client] = Sonic_TEStartFollow(avOwner, g_iSonicTELaser, 0.55, 16.0, 2.0, 3, cP, userid, 0);
+-            g_iSonicPeelTrail[client]  = Sonic_TEStartFollow(avOthers, g_iSonicTELaser, 0.55, 16.0, 2.0, 3, cP, 0, userid);
++            if (tieneAvatar && avOwner != avOthers && tgtO > 0)
++            {
++                g_iSonicPeelTrailO[client] = Sonic_TEStartFollow(tgtO, model, 0.75, 16.0, 1.0, 3, cP, userid, 0);
++                g_iSonicPeelTrail[client]  = Sonic_TEStartFollow(tgt,  model, 0.75, 16.0, 1.0, 3, cP, 0, userid);
++            }
++            else
++            {
++                g_iSonicPeelTrail[client] = Sonic_TEStartFollow(tgt, model, 0.75, 16.0, 1.0, 3, cP);
++            }
+         }
+         else
+         {
+-            g_iSonicPeelTrail[client] = Sonic_TEStartFollow(client, g_iSonicTELaser, 0.55, 16.0, 2.0, 3, cP);
++            // info_target fallo (raro): el avatar/client directo como la
++            // v6.19 — mejor un beam bajo que ninguno
++            if (tieneAvatar && avOwner == avOthers)
++            {
++                g_iSonicPeelTrail[client] = Sonic_TEStartFollow(avOthers, model, 0.75, 16.0, 1.0, 3, cP);
++            }
++            else if (tieneAvatar)
++            {
++                g_iSonicPeelTrailO[client] = Sonic_TEStartFollow(avOwner, model, 0.75, 16.0, 1.0, 3, cP, userid, 0);
++                g_iSonicPeelTrail[client]  = Sonic_TEStartFollow(avOthers, model, 0.75, 16.0, 1.0, 3, cP, 0, userid);
++            }
++            else
++            {
++                g_iSonicPeelTrail[client] = Sonic_TEStartFollow(client, model, 0.75, 16.0, 1.0, 3, cP);
++            }
+         }
++    }
+ 
+-        // v6.19: los DOS pies rojos del GMod (Sonicred 6->1, alla en los
+-        // attachments 2/3 del puppet L1232-1258) ahora TAMBIEN en el
++    // PIES ROJOS — UNA estela por pie (GMod L1232-1258: Sonicred 6->1,
++    // vida 0.75, attachments 2/3). v6.20: ancho 5->6 y vida 0.5->0.75
++    // (valores GMod EXACTOS) — ahora que el trail principal va arriba
++    // (+20z) los pies se ven como lo que son
++    if (wantAuth && g_bSonicPeelMatFoot && g_iSonicTEMatFoot > 0)
++    {
++        g_iSonicPeelFootL[client] = Sonic_TEStartChain(userid, -1, g_iSonicTEMatFoot, 0.75, 6.0, 2.0, 0, cWhite);
++        g_iSonicPeelFootR[client] = Sonic_TEStartChain(userid, 1, g_iSonicTEMatFoot, 0.75, 6.0, 2.0, 0, cWhite);
++    }
++    else
++    {
+         // nativo: laserbeam tintado de rojo (el Sonicred.vmt autentico es
+         // un chip 2x2 con $color2 [0.9 0 0] — color plano, mismo resultado)
+-        int cRed[4] = {235, 60, 60, 220};
+-        g_iSonicPeelFootL[client] = Sonic_TEStartChain(userid, -1, g_iSonicTELaser, 0.5, 5.0, 5.0, 0, cRed);
+-        g_iSonicPeelFootR[client] = Sonic_TEStartChain(userid, 1, g_iSonicTELaser, 0.5, 5.0, 5.0, 0, cRed);
++        int cRed[4] = {235, 60, 60, 235};
++        g_iSonicPeelFootL[client] = Sonic_TEStartChain(userid, -1, g_iSonicTELaser, 0.75, 6.0, 2.0, 0, cRed);
++        g_iSonicPeelFootR[client] = Sonic_TEStartChain(userid, 1, g_iSonicTELaser, 0.75, 6.0, 2.0, 0, cRed);
+     }
++
++    // v6.20: BRILLO AZUL en la oscuridad del peel: luz dinamica azul en
++    // el PLAYER (sigue la posicion real — la luz es de mundo, sin split)
++    g_iSonicPeelLight[client] = Sonic_MakeBlueLight(client, 40.0);
+ }
+ 
+ void Sonic_KillPeelTrail(int client)
+@@ -1776,6 +2151,12 @@
+     Sonic_TEStop(g_iSonicPeelTrailO[client]);
+     Sonic_TEStop(g_iSonicPeelFootL[client]);
+     Sonic_TEStop(g_iSonicPeelFootR[client]);
++    // v6.20: entidades nuevas (spritetrails autenticos + info_targets + luz)
++    Sonic_KillOwnedEnt(g_iSonicPeelSTrail[client]);
++    Sonic_KillOwnedEnt(g_iSonicPeelSTrailO[client]);
++    Sonic_KillOwnedEnt(g_iSonicPeelTgt[client]);
++    Sonic_KillOwnedEnt(g_iSonicPeelTgtO[client]);
++    Sonic_KillOwnedEnt(g_iSonicPeelLight[client]);
+ }
+ 
+ // v6.3: oculta el avatar R+L SIN tocar nada mas. Las entidades
+@@ -3363,8 +3744,24 @@
+     }
+ 
+     EmitSoundToAll(SONIC_SND_HIT, client, SNDCHAN_AUTO, SNDLEVEL_NORMAL);
+-    TE_SetupBeamRingPoint(targetPos, 10.0, 90.0, g_iSonicGlowSprite, g_iSonicGlowSprite, 0, 15, 0.25, 4.0, 1.0, {80, 120, 255, 180}, 0, 0);
+-    TE_SendToAll();
++
++    // v6.20: EFECTO DE GOLPE completo (port del sonic_spindashhit del
++    // GMod, pedido del owner: "los impactos del spindash tienen tambien
++    // un efecto de golpe") — reemplaza el mini-anillo 10->90/0.25s
++    Sonic_SpawnHitFx(targetPos);
++
++    // v6.20: PULSO de la bola al golpear (alla: GlowingBallThingy recibe
++    // sonic_attack_glow_duration 0.25s — la bola brilla mas un instante)
++    int ballPulse = (g_iSonicBall[client] != 0) ? EntRefToEntIndex(g_iSonicBall[client]) : -1;
++    if (ballPulse > 0 && IsValidEntity(ballPulse) && g_iSonicGlowSprite > 0)
++    {
++        float bp[3];
++        GetEntPropVector(ballPulse, Prop_Data, "m_vecOrigin", bp);
++        int cPulse[4] = {120, 170, 255, 235};
++        TE_SetupBeamRingPoint(bp, 4.0, 42.0, g_iSonicGlowSprite, g_iSonicGlowSprite,
++                              0, 15, 0.25, 5.0, 1.5, cPulse, 0, 0);
++        TE_SendToAll();
++    }
+ 
+     g_iSonicSpinHits[client]++;
+ 
+
+=== include/Amy.inc (v100-OM -> v101-OM) ===
+--- /home/z/my-project/download/suite_37712_trails_nativo/include/Amy.inc	2026-10-08 05:30:02.150551855 +0000
++++ /home/z/my-project/builds/OM37713/scripting/include/Amy.inc	2026-10-08 07:18:25.238263982 +0000
+@@ -928,6 +928,11 @@
+ #define AMY_VISION_RED_B          0
+ #define AMY_VISION_GLOWTYPE       3      // glow SOLIDO (constante, como el azul de un objetivo)
+ 
++// v101-OM (manager 3.77.13): TRAIL DEL MARTILLO A COLOR ROSA — pedido
++//   del owner ("ajuste al trail de amy ahora el efecto sera de color
++//   rosa"): mismo motor y misma geometria (laserbeam 25->2, vida 0.3,
++//   alpha subido 200->220 para que el rosa se lea bien tambien en
++//   mapas oscuros), solo cambia el tinte: {255,105,180} (pink clasico).
+ // v100-OM (manager 3.77.11): TRAIL DEL MARTILLO AL MOTOR TE — el
+ //   env_spritetrail de sonic.inc no renderizaba en L4D2 (invisible
+ //   con cualquier material, nativo o autentico; el owner lo confirmo
+@@ -935,7 +940,7 @@
+ //   motor nuevo de sonic.inc (Sonic_TEStartFollow: laserbeam 25->2,
+ //   vida 0.3, blanco alpha 200 — el mismo look de la v92, ahora SI
+ //   visible). Historial v99-OM y anteriores: en la linea de abajo.
+-#define AMY_INC_VERSION          "v100-OM"
++#define AMY_INC_VERSION          "v101-OM"
+ // v99-OM (manager 3.77.10): MIGRACION MECANICA de firma del Sonic_MakeTrail compartido (v6.17 del sonic.inc: ahora recibe sprite + offset[3] + alpha) — el trail del martillo lanzado mantiene EXACTAMENTE su look (laserbeam nativo, blanco, 25->2, vida 0.3, Z+8). CERO cambio de comportamiento. El GMod original usa models/noodles/om/amy/white.vmt para ese trail — si el owner confirma que lo tiene, se cablea autentico con fallback en una futura version. v98-OM (manager 3.77.7): AVATAR REMOTO POR TP — pedido del owner ("los avatares DE OTROS al sistema del tails follow, modo TP; localmente igual, con su pausa"): la copia R (la que ven los demas) viaja por TeleportEntity por tick + reloj vivo SIN EF_NOINTERP (receta tails_follow / Tails v5.25; convar compartido tails_avatar_tp, default 1, 0 = R parentada como antes): los clientes de los demas la INTERPOLAN = suave sin depender de la pausa (que solo re-encaja la vista del dueno). La copia L queda INTACTA (parentada + EF_NOINTERP + pulso). v97-OM (manager 3.77.5): DEFENSA vs PROPS INMOVILES — veredicto del owner: "los inmoviles importan, recuerda que normalmente los props no se mueven (con excepciones, pero es mejor cubrir ambas cosas)": ELIMINADO el filtro de 60 u/s de la v96 — cualquier prop al radio de la ventana (quieto o volando) la consume y suelta el aura que lo repele (sin stun); orden del escaneo intacto (especial/tank > witch > comun > prop > piedra del tank); typo "repeledido"->"repelido". v96-OM (manager 3.77.4): CUATRO FIXES — (1) rate del runattack de la pose de defensa y del runthrow = curvas del run/walk normal (antes curva del walk = 3.6x en carrera); (2) HITBOX AEREO del martillo lanzado 35% mayor (amyom_throw_hitbox 1.35, scan 30 Hz del vuelo de ida, mismos stun+ragdoll/dano que el Touch, una vez por victima); (3) CVARS al cargar/recargar: reconciliacion de Sonic_Suite.cfg — los cvars del suite que falten se AGREGAN AL FINAL sin tocar las lineas existentes + prefijo amyom_ dentro del auto-guardado; (4) DEFENSA REWORK: la Z solo abre la POSE, el AURA sale AL IMPACTAR (especial/tank/witch -> aura + contra stun + cartas; comun -> aura; prop -> aura que lo repele, sin stun). (manager 3.77.3): v95-OM (manager 3.77.3): FIX JUMP/FALL ENMASCARADOS — la rama de AIRE viva debajo de throw armado/ventana/sin martillo desde la v92-OM (reporte: "el jump y fall no se reproducen"); ahora va justo tras incap, como el framework pills (L775-794: el aire es estado base, los alternates solo sustituyen idle/walk/run) + sentinel de fallbacks 0 -> -1 (el 0 ES AMY_OM_ST_IDLE). v94-OM: AIRE CON MARTILLO — jump/fall segun martillo (HammerJump/FallAnimHammer con el; normales sin el; Lua L1631-1640/L221-224; estados JUMPH/FALLH + fallbacks). v93-OM (manager 3.77.1): CHAINS — el martillo del MODELO (submodelo "hammer" del amy.mdl) desaparece de verdad cuando Amy no lo lleva: bodygroup "Chains" = el SetBodygroup(1,1)/(1,0) del Lua del OM (bit 0 de m_nBody), aplicado a las DOS copias del avatar en cada lanzar/recuperar y al ragdoll de muerte; FIX nombres reales del Lua sin martillo (walk_axeless/run_axeless CON guion bajo — la v92-OM buscaba "walkaxeless"/"runaxeless", que NO existen) + fallbacks AXE->base. v92-OM (manager 3.77.0): LAS 4 RANURAS — Z swing fusionado con el area + VENTANA DE DEFENSA (contra pre-sonic 3.5s+cartas, sin ragdoll), X CARTAS DEL TAROT nuevas (2 de 6: Moon/Sun/Emperor/Strength/World/Fool), V (habilidad 3) LANZAMIENTO de martillo (hammer.mdl masa 50 poder 3000, impacto = stun + ragdoll falso VOLANDO), B (habilidad 4) cartas del SUPER TANK intactas, C sigue cambiando area<->dash, + AVATAR amy.mdl patron Tails/Sonic. v91: FIX CINEMATICAS
+ 
+ // ============================================================
+@@ -10132,13 +10137,13 @@
+     g_hAmyOMHammerScan[client] = CreateTimer(0.03, T_AmyOMHammerScan, GetClientUserId(client),
+                                              TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+ 
+-    // trail blanco (GMod: SpriteTrail 25->2, vida 0.3, blanco; alla usa
+-    // amy/white.vmt — aqui laserbeam nativo, mismo look de la v92).
+-    // v6.18/v100: motor TE BeamFollow (el env_spritetrail no renderiza
+-    // en L4D2); mismo look 25->2 / 0.3s / blanco alpha 200
++    // trail ROSA (GMod: SpriteTrail 25->2, vida 0.3, blanco con
++    // amy/white.vmt — aqui laserbeam nativo. v101: el owner pidio el
++    // efecto en color ROSA). v6.18/v100: motor TE BeamFollow
++    // (el env_spritetrail no renderiza en L4D2)
+     if (g_cvAmyOMTrails != null && g_cvAmyOMTrails.BoolValue && g_iSonicTELaser > 0)
+     {
+-        int cHam[4] = {255, 255, 255, 200};
++        int cHam[4] = {255, 105, 180, 220};   // v101: ROSA (antes blanco)
+         g_iAmyOMHammerTrail[client] = Sonic_TEStartFollow(hammer, g_iSonicTELaser, 0.3, 25.0, 2.0, 3, cHam);
+     }
+ 
+
+=== include/Speed_sonic.inc (v3.2 -> v3.3: SIN AURA) ===
+--- /home/z/my-project/incoming/scripting3_v97/scripting/include/Speed_sonic.inc	2026-10-07 03:24:14.000000000 +0000
++++ /home/z/my-project/builds/OM37713/scripting/include/Speed_sonic.inc	2026-10-08 07:19:30.289418806 +0000
+@@ -1,6 +1,17 @@
+ /*
+  * ======================================================
+- *  [MODULO] Speed Sonic - Zapatos de Velocidad v3.2
++ *  [MODULO] Speed Sonic - Zapatos de Velocidad v3.3
++ *
++ *  v3.3 (manager 3.77.13) - SIN AURA (pedido del owner
++ *  2026-10-08: "ajustas el speed para que desde ahora no
++ *  muestre el aura alrededor del modelo oculto del survivor
++ *  ni tampoco el del avatar — solo se vera el trail"): el glow
++ *  outline (m_iGlowType 3 + color) se retiró por completo — se
++ *  dibuja SOBRE el cuerpo invisible (L4D2 dibuja el contorno
++ *  aunque el modelo viaje en RENDER_NONE) y sobre las 2 copias
++ *  del avatar = el "aura" que molestaba. Speed_SetBoostGlow
++ *  queda como NO-OP documentado; el TRAIL de colores (BeamFollow
++ *  sobre el avatar) queda como unico efecto persistente.
+  *
+  *  v3.2 - STACK ADITIVO COMPARTIDO + ADRENALINA (feedback del owner
+  *  09/30: "el MAX solo servia como dano y velocidad en si... no debe
+@@ -1163,56 +1174,36 @@
+     EmitSoundToAll("ambient/energy/zap2.wav", client, SNDCHAN_AUTO, SNDLEVEL_NORMAL, SND_NOFLAGS, 0.7);
+ }
+ 
+-// Convierte RGBA a int para glowColorOverride
+-int Speed_RGBToInt(int color[4])
++// Convierte RGBA a int para glowColorOverride (v3.3: stock — tras
++// retirar el aura ya no tiene llamadas, se conserva por si vuelve)
++stock int Speed_RGBToInt(int color[4])
+ {
+     return (color[2] << 16) | (color[1] << 8) | color[0];
+ }
+ 
++// v3.3 (manager 3.77.13) / PEDIDO DEL OWNER 2026-10-08: "ajustas el
++// speed para que desde ahora no muestre el aura alrededor del modelo
++// oculto del survivor ni tampoco el del avatar — solo se vera el
++// trail". El glow outline (m_iGlowType 3) se dibuja SOBRE el cuerpo
++// invisible (L4D2 dibuja el contorno aunque el modelo viaje en
++// RENDER_NONE) y sobre las 2 copias del avatar = el "aura". Queda como
++// NO-OP documentado: las llamadas de activacion/desactivacion siguen
++// existiendo (inofensivas) y el TRAIL de colores (BeamFollow) queda
++// como unico efecto persistente del boost. El historial del porque
++// existia (v6.6, consciente del avatar) queda abajo a proposito.
+ // v6.6 Sonic: aplicador de glow consciente del avatar. Tails Y
+ // Sonic viajan con el cuerpo en RENDER_NONE — el glow (m_iGlowType)
+ // al CLIENTE dibuja el contorno de un cuerpo invisible = no se ve
+ // (ES "el error que antes tenia tails pero que ahora lo tiene
+-// sonic"). Con avatar vivo el glow va a SUS entidades (R para los
++// sonic"). Con avatar vivo el glow iba a SUS entidades (R para los
+ // demas, L para el dueno); sin avatar, al player como siempre.
+ void Speed_SetBoostGlow(int client, bool on)
+ {
+-    int color[4];
+-    color[0] = g_PlayerColor[client][0];
+-    color[1] = g_PlayerColor[client][1];
+-    color[2] = g_PlayerColor[client][2];
+-    color[3] = 255;
+-    int gc = on ? Speed_RGBToInt(color) : 0;
+-
+-    int avOwner = -1, avOthers = -1;
+-    bool hasAvatar = false;
+-    if (Tails_GetAvatarEnts(client, avOwner, avOthers)
+-        || Sonic_GetAvatarEnts(client, avOwner, avOthers))
+-        hasAvatar = true;
+-
+-    int targets[3];
+-    int n = 0;
+-    if (hasAvatar)
+-    {
+-        targets[n++] = avOthers;
+-        if (avOwner != avOthers) targets[n++] = avOwner;
+-    }
+-    targets[n++] = client;   // cubre tambien el caso sin avatar
+-
+-    for (int k = 0; k < n; k++)
+-    {
+-        int ent = targets[k];
+-        if (ent <= 0 || !IsValidEntity(ent)) continue;
+-        if (!HasEntProp(ent, Prop_Send, "m_iGlowType")) continue;
+-        SetEntProp(ent, Prop_Send, "m_iGlowType", on ? 3 : 0);
+-        SetEntProp(ent, Prop_Send, "m_glowColorOverride", gc);
+-        if (HasEntProp(ent, Prop_Send, "m_nGlowRange"))
+-            SetEntProp(ent, Prop_Send, "m_nGlowRange", on ? 3500 : 0);
+-    }
+-
+-    // flashing solo existe en players
+-    if (HasEntProp(client, Prop_Send, "m_bFlashing"))
+-        SetEntProp(client, Prop_Send, "m_bFlashing", on ? 1 : 0);
++    // v3.3: NO-OP intencional (pedido del owner): no tocar
++    // m_iGlowType / m_glowColorOverride / m_nGlowRange / m_bFlashing
++    // en NINGUN objetivo (player ni avatares) — el aura se retira.
++    // El trail de colores (Speed_CreateColorTrail) sigue intacto.
++    #pragma unused client, on
+ }
+ 
+ // Trail de color que sigue al jugador
+
+=== Sonic_ability_manager.sp (3.77.12 -> 3.77.13) ===
+--- /home/z/my-project/download/suite_37712_trails_nativo/Sonic_ability_manager.sp	2026-10-08 05:30:02.149551853 +0000
++++ /home/z/my-project/builds/OM37713/scripting/Sonic_ability_manager.sp	2026-10-08 07:18:25.244263995 +0000
+@@ -1419,6 +1419,28 @@
+ //   Sonicred de pies encadenadas, martillo de Amy al mismo motor.
+ //   Diseno v6.17 intacto (FileExists -> fallback laserbeam, convars
+ //   sonicom_trails / sonicom_trails_mat). Historial 3.77.10-: abajo.
++// v3.77.13 (sonic.inc v6.20-OM + Amy.inc v101-OM + Speed_sonic v3.3):
++//   PULIDO DEL LOOK + EFECTO DE GOLPE + AUTENTICO env_spritetrail
++//   REVIVIDO — lote de feedback del owner (2026-10-08) + su hallazgo
++//   del smd_spritetrail_fix de fbef0102 (original FrozDark): la
++//   estela del env_spritetrail en L4D2 SI se dibuja pero se congela
++//   a los ~1 s; un SetScale diferido por FireUser1 la revive. El
++//   MODO AUTENTICO (sonicom_trails_mat 1) vuelve a env_spritetrail
++//   + fix = el MISMO renderer del SpriteTrail de GMod con los .vmt
++//   originales. CAMBIOS: (1) pies ROJOS del peel visibles — el trail
++//   principal sube a +20z en un info_target (receta trailOrigin del
++//   GMod; antes al ras del suelo se los tragaba) y los pies pasan a
++//   6->1 / 0.75s GMod exactos; (2) azul MAS POTENTE (alpha 250, vida
++//   0.75) + BRILLO AZUL EN LA OSCURIDAD: light_dynamic azul en la
++//   bola (spin) y en el player (peel) + glow01 azul en la bola;
++//   (3) trail de la bola REESCALADO (~32u real: halo 34->19, nucleo
++//   y magenta 24->1 — antes 70/40 gigante); (4) EFECTO DE GOLPE del
++//   spindash (sonic_spindashhit del GMod): flash sonic_drop_impact
++//   (PNG del pack convertido a VTF+VMT) + anillo 10->165/0.45s +
++//   chispas + pulso de la bola; (5) AMY v101: trail del martillo a
++//   color ROSA; (6) SPEED v3.3: SIN AURA — glow outline retirado del
++//   survivor oculto y del avatar, solo queda el trail. Cero cvars
++//   nuevos. Historial 3.77.12-: abajo.
+ // v3.77.12 (con sonic.inc v6.19-OM): TRAILS A MATERIAL NATIVO
+ //   (default) — el owner trajo el pack de MATERIALES ORIGINALES
+ //   del OM y reporto que los sprites del sonicball 'aparecen
+@@ -1441,7 +1463,7 @@
+ //   Amy sin cambios (v100-OM: su martillo ya iba en laserbeam
+ //   nativo — por eso a ella nunca se le vio malo). Historial
+ //   3.77.11-: abajo.
+-#define PLUGIN_VERSION "3.77.12"
++#define PLUGIN_VERSION "3.77.13"
+ // v3.77.10 (con sonic.inc v6.17-OM): TRAILS CON MATERIALES AUTENTICOS DEL GMOD — el owner verifico que tiene los .vmt del sonicball del pack OM y pregunto si los usabamos: NO los usabamos (el v6.6 habia traducido el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (blue_2ndlayer.vmt ancha 70->40 + blue.vmt 40->0 + blue.vmt 40->0 con tinte MAGENTA) y el peel el blue2.vmt 16->1 + los DOS trails de pies ROJOS Sonicred.vmt (alla en attachments 2/3 del puppet; aqui offsets fijos al tobillo — el env_spritetrail no sigue huesos). Deteccion FileExists estilo star_stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = nativo). Cvar auto-agregado al Sonic_Suite.cfg por la reconciliacion de la 3.77.4. v3.77.9 (con sonic.inc v6.16-OM): BOLA A ALTURA GMOD — fix visual del owner ("el modelo de la bola aparece media undida en el suelo"): sonicball.mdl es una esfera CENTRADA en su origen (~13u de radio) y el origen del survivor esta a los PIES, asi que parentada con offset (0,0,0) su centro caia a nivel del suelo = media hundida. El ent_om_hedgehog_dropballs.lua de GMod nunca la puso en el origen: hacia ply:GetPos()+Vector(0,0,15) por tick y SetModelScale(1.25) — los 2 ajustes que el port v6.0 no llevaba. Ahora convars sonicom_ball_z 15 / sonicom_ball_scale 1.25 (aplican al nacer la bola; 0/1 = look viejo). SOLO la bola: avatares humanos R/L y trails intactos. Cvars nuevos auto-agregados al Sonic_Suite.cfg por la reconciliacion de la 3.77.4. v3.77.8 (Sally v6.2 + Cream v6.1 + Eggman v3.1): FIN de la auto-generacion individual de cfgs — pedido del owner: "sally amy cream eggman se siguen auto generando con la misma lista que tiene el suite... lo mejor es matar de raiz su auto generacion individual". Causa: cada AutoExecConfig de un modulo escribia TODOS los cvars del PLUGIN entero ("ConVars for plugin Sonic_ability_manager.smx") = cada archivo individual era un duplicado de la lista completa del suite. Eliminados los ULTIMOS 3 con llamada viva (Sally_Abilities/Cream_Abilities/Eggman_Abilities; Tails/Speed/sonic_jump/Knuckles/Amy/Rouge ya muertos desde la v3.75) + SANEADOR SuiteCfg_DeleteLegacyFiles: al cargar/recargar el plugin BORRA del server los 9 cfg individuales residuales. Unica config: Sonic_Suite.cfg (auto-guardada + reconciliada). Sin cambios de cvars ni de gameplay. v3.77.7 (Tails v5.25-B + sonic v6.15-OM + Amy v98-OM): AVATAR REMOTO POR TP — pedido del owner: "los avatares DE OTROS al sistema del tails follow (modo TP); localmente igual (con su pausa)". La copia R (la que ven los demas) de los 3 avatares viaja por teleport por tick + reloj vivo SIN EF_NOINTERP (tails_avatar_tp 1 default; 0 = como antes): los demas la INTERPOLAN = suave sin depender de la pausa (solo re-encaja la vista del dueno). La copia L queda INTACTA (parentada+pulso). La bola del spin queda parentada y su R oculta viaja pegada. v3.77.6 (con sonic.inc v6.14-OM): PEEL OUT LLEVA JUGADORES (pedido: "el peel out segun los lua de GMod puede llevar supervivientes = otros jugadores"): durante la carrera del peel, tocar a un companion SANO lo MONTA detras de Sonic (hasta 3 asientos; sonicom_peel_carry / _carry_max) — viaja pegado a su estela a la velocidad de la carrera (arrastre por frame desde el PreThink), dispara montado y salta para bajarse; desembarco al frenar, suelta de emergencia si Sonic es interrumpido o el pasajero queda atras. El rescate de incap queda INTACTO (incap = levantar, sano = llevar). Cvars nuevos auto-agregados al cfg por la reconciliacion de la 3.77.4.
+ #define PLUGIN_VERSION_PREV_37613 "3.76.13"   // v3.76.13 (con sonic.inc v6.13-OM): el owner reenvio los Lua del GMod OM ("los lua de gmod por si acaso lo perdiste") — se releieron completos para responder de una vez por todas su pregunta "¿como mueve GMod a los ragdolls falsos? no existe algo que genere un impulso 1 vez y el motor se encargue del resto?". RESPUESTA (sonic.lua L435-485 + status.lua L85-394): GMod SI aplica un impulso UNA SOLA VEZ (SetVelocity 700 + AddAngleVelocity por hueso del prop_ragdoll) y el vphysics hace el resto — eso ya era la v5.36/v5.37 nuestra (onda env_physexplosion = mismo camino interno). LO QUE FALTO y se porto: el OM NUNCA re-aparece a la victima pegada a una pared — busca un HUECO (TraceHull) y ESPIRALA alrededor (status.lua L245-287): v6.13 Sonic_RagSafeSpot = victima/witch del ritual despiertan en el hueco valido mas cercano (fallback: el punto tal cual). v6.13: Sonic_RagSafeSpot puerto textual para la victima del golpe final y la witch del ritual — si el doble cayo contra una pared/escalera/rincon, la victima despierta en el hueco valido mas cercano en vez de atascada en la geometria. Fallback si no hay hueco en 96u: el punto tal cual (v6.12 = mismo fallback del GMod). El vuelo (onda), el rebote (-450/+500) y el fix anti-atasco (DEBRIS) quedan INTACTOS.
+ 

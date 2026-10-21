@@ -1,0 +1,136 @@
+=====================================================================
+ SONIC SUITE 3.77.13 — "PULIDO DEL LOOK + EFECTO DE GOLPE +
+ AUTENTICO SPRITETRAIL REVIVIDO"
+ sonic.inc v6.20-OM / Amy.inc v101-OM / Speed_sonic v3.3 / manager 3.77.13
+=====================================================================
+
+QUE SON ESTOS ARCHIVOS
+----------------------
+  Sonic_ability_manager.smx   <- el plugin compilado (a plugins/)
+  Sonic_ability_manager.sp    <- fuente del manager (3.77.13)
+  include/sonic.inc           <- v6.20-OM (TODOS los ajustes de abajo)
+  include/Amy.inc             <- v101-OM (trail del martillo ROSA)
+  include/Speed_sonic.inc     <- v3.3 (SIN AURA — solo trail)
+  include/Tails.inc           <- v5.25-B (intacto, identico a la 3.77.12)
+  include/Sally.inc           <- v6.2   (intacto)
+  include/Cream.inc           <- v6.1   (intacto)
+  include/Eggman.inc          <- v3.1   (intacto)
+  cambios_37712_a_37713_pulido.diff  <- diff completo vs la 3.77.12
+
+EL HALLAZGO: TU FIX DEL env_spritetrail (fbef0102) — SI ERA ESO
+-----------------------------------------------------------------
+Tenias razon y mi diagnostico de la 3.77.11 quedaba a medias: el
+env_spritetrail en L4D2 SI dibuja... pero solo ~1 segundo, y despues
+se CONGELA (la entidad sigue viva ocupando su lugar). El bug esta
+documentado (video del readme: "visible for about 1 second and then
+disappears. But actually the entity is not removed") y el fix de la
+comunidad (FrozDark/fbef0102) son 3 lineas: un SetScale diferido
+0.5s via AddOutput+FireUser1 re-despierta la estela y dibuja PARA
+SIEMPRE.
+
+Lo integre DIRECTO dentro del plugin (Sonic_FixSpriteTrail, se
+aplica a cada env_spritetrail que creamos) — no hace falta instalar
+el smd_spritetrail_fix.smx aparte.
+
+=> CONSECUENCIA: el modo AUTENTICO (sonicom_trails_mat 1) ahora usa
+   env_spritetrail + fix = el MISMO renderer del util.SpriteTrail de
+   GMod (alla tambien crea un env_spritetrail) con los .vmt
+   ORIGINALES del sonicball. El mapeo de textura es para el que
+   fueron disenados = se deberian ver como en GMod. EL NATIVO
+   (default, 0) sigue en los TE beams de la 3.77.12 — ambos caminos
+   viven.
+
+TUS AJUSTES (1 por 1)
+---------------------
+(1) PIES ROJOS del peel — "la parte roja debe ir a los pies (1 en
+    cada pie)". Encontre la causa: en el GMod el trail AZUL principal
+    cuelga de un info_target a +20z de altura (trailOrigin, lua
+    L1211-1215); nosotros lo dibujabamos al RAS DEL SUELO (el origen
+    del avatar son los pies) y la franja azul de 16u se TRAGABA las
+    estelas rojas de los pies. AHORA: el trail azul sube a +20z
+    (receta GMod exacta) y los pies quedan abajo, visibles, UNA
+    estela por pie — ademas pasan a los valores GMod exactos:
+    ancho 6 (antes 5) y vida 0.75s (antes 0.5).
+
+(2) AZUL MAS POTENTE — "debe verse un poco mas potente la luz".
+    Alpha 200 -> 250 y la vida sube a la del GMod (0.55 -> 0.75s).
+    En la bola tambien subi los alphas de las 3 capas.
+
+(3) BRILLO AZUL EN LA OSCURIDAD — "si es que eso se puede". SI se
+    puede, con dos capas:
+      * light_dynamic AZUL parentado: a la BOLA durante el spin y al
+        PLAYER durante el peel — ilumina de verdad la escena (paredes,
+        zombies) alrededor mientras dura la habilidad.
+      * glow01 azul suave pegado a la bola (fullbright: se ve
+        SIEMPRE, hasta en lo mas negro del mapa).
+
+(4) TRAIL DE LA BOLA MAS CHICO — "literalmente mas grande que la
+    ball". Medidas reales: sonicball.mdl = esfera de ~26u y el spin
+    la lleva a escala 1.25 = ~32u de diametro; el trail del GMod era
+    de 70u de ancho = el doble. REESCALADO: halo 70->40 pasa a
+    34->19 (apenas mas ancho que la bola), nucleo y magenta 40->1
+    pasan a 24->1. Mismas proporciones, ajustadas a TU bola.
+
+(5) EFECTO DE GOLPE del spindash — "esta en el lua del GMod". SI:
+    es el efecto "sonic_spindashhit" (sonic.lua L234 + el efecto
+    L203-253): un sprite sonic_drop_impact que crece 0->165 en 0.45s
+    con fade en la VICTIMA (+50z). PORTADO:
+      * flash sonic_drop_impact en la victima (convierti el PNG de tu
+        pack a VTF+VMT de L4D2 — el PNG directo solo lo lee GMod;
+        estan en el pack de materiales ACTUALIZADO, abajo)
+      * anillo expansivo 10->165 en 0.45s + chispas
+      * PULSO de la bola al golpear (alla sonic_attack_glow_duration:
+        la bola brilla un instante)
+      * sin los archivos: glow01 nativo (cero dependencia)
+      * la rotacion de 900 gr/s del GMod no es portable (sprite
+        plano), el crecimiento y el punch si.
+
+(6) AMY ROSA — "el efecto sera de color rosa". Trail del martillo
+    blanco -> ROSA {255,105,180} con alpha subido a 220. Misma
+    geometria (25->2, 0.3s).
+
+(7) SPEED SIN AURA — "no mostrara el aura alrededor del modelo
+    oculto del survivor ni tampoco el del avatar, solo se vera el
+    trail". El aura era el glow outline (m_iGlowType 3) que se
+    aplicaba al survivor oculto Y a las 2 copias del avatar
+    (L4D2 dibuja el contorno aunque el cuerpo este invisible).
+    RETIRADO por completo (Speed_SetBoostGlow queda como no-op
+    documentado). El trail de colores queda como unico efecto
+    persistente. El ring + chispas del arranque y las imagenes
+    fantasma momentaneas siguen (son de un instante, no un aura
+    permanente) — si tambien los quieres fuera, me dices.
+
+COMO PROBARLO (plan corto)
+--------------------------
+ 1. Sube el .smx (y si quieres recompilar tu lado, el .sp + los 7
+    include). Recarga el plugin.
+ 2. SPINDASH (Z): el trail de la bola ahora abraza la bola (no la
+    tapa), en zonas oscuras la bola BRILLA azul e ilumina alrededor.
+    Golpea un especial: flash + anillo + chispas en el + pulso de la
+    bola.
+ 3. PEEL (X): el trail azul va a media pierna (+20z, como GMod) y
+    los DOS PIES rojos se ven abajo, uno por pie. Zona oscura: luz
+    azul alrededor.
+ 4. AMY: lanza el martillo — trail rosa.
+ 5. SPEED (boost): SOLO el trail de colores, sin ningun outline/aura
+    ni en tu modelo ni en el de los demas.
+ 6. MODO AUTENTICO (opcional, el que habilita TU fix): sube el pack
+    de materiales ACTUALIZADO (link nuevo abajo) y pon
+    sonicom_trails_mat 1 en el Sonic_Suite.cfg. La bola y el peel
+    usan los .vmt originales con el renderer GMod. Si algo se ve
+    raro, 0 y vuelves al nativo.
+
+PACK DE MATERIALES ACTUALIZADO (v2)
+-----------------------------------
+https://filebin.net/tails-v517-opciones-9xk2/suite_37712_mats_sonicball.zip
+Mismo link, ahora con 10 archivos: los 8 de siempre + los 2 NUEVOS
+del efecto de golpe (materials/icons/sonic_drop_impact.vmt y .vtf).
+Si ya habias subido los 8, solo agrega la carpeta icons/ y listo.
+
+NOTAS FINALES
+-------------
+* Cero cvars nuevos, cero cambios de gameplay — todo es visual.
+* Sin los materiales en el server TODO funciona igual con glow01/
+  laserbeam nativos (cero dependencia, como siempre).
+* Tails/Sally/Cream/Eggman intactos (byte a byte identicos a la
+  3.77.12).

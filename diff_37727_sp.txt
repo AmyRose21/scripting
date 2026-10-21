@@ -1,0 +1,156 @@
+--- /home/z/my-project/download/suite_37726_fx_cura/Sonic_ability_manager.sp	2026-10-09 04:35:44.686094940 +0000
++++ /home/z/my-project/builds/OM37727/scripting/Sonic_ability_manager.sp	2026-10-09 05:51:48.629563162 +0000
+@@ -1420,6 +1420,60 @@
+ //   Sonicred de pies encadenadas, martillo de Amy al mismo motor.
+ //   Diseno v6.17 intacto (FileExists -> fallback laserbeam, convars
+ //   sonicom_trails / sonicom_trails_mat). Historial 3.77.10-: abajo.
++// v3.77.27 (con Metal.inc v5.2-OM): AJUSTES 2-10 DEL AVATAR DE METAL —
++//   segunda ronda de la revision 8.5/10 (9 puntos en un pedido, tras
++//   el ajuste 1 = FX de cura de la 3.77.26):
++//   (1) ATASCOS ("metal puede quedarse atascado en ciertos escenarios
++//       o lugares debido al tamano del enemigo"): watchdog en DASH y
++//       DRAGGING — la embestida va a 750; si no supera 80 uu/s de
++//       forma CONTINUA durante 0.6s, la carga se LIBERA limpia (fin
++//       natural con frenado suave) en vez de quedarse pegado los 8s.
++//   (2) SONIDOS MAS FUERTES: todos los sonidos de habilidad del Metal
++//       suben al soundLevel 87 del AdvancedPillSound del lua (el port
++//       usaba el default 75 = se oian flojos). Loop, chargeup, ping,
++//       elec, slam, punch, bump, end, heal y explosion incluidos.
++//   (3) COOLDOWNS -30% (pedido literal): embestida 25 -> 17.5 (cancel
++//       12.5 -> 8.75), Overdrive 30 -> 21, Self Repair 24 -> 16.8.
++//   (4) OVERDRIVE SIN INMOVILIZAR: fuera el "reactor sobrecalentado"
++//       con MOVETYPE_NONE 1.5s al terminar — el buff expira y Metal
++//       sigue moviendose.
++//   (5) ANIMACIONES + BLINDAJE: (a) SALTO con la ventana del one-shot
++//       de Sonic (el jump del metal.mdl ya no se corta "a veces" —
++//       vive hasta 0.5s o hasta que el ciclo termine, y el
++//       FL_ONGROUND que parpadea rozando escalones ya no lo pisa);
++//       (b) WALK al rate 1.0 CONSTANTE del GMod (Metal NO define
++//       animrates en su lua — "la animacion de caminar es bastante
++//       rapida a comparacion de los demas" porque el v5.0 la jugaba a
++//       1.8x escala sonic); (c) durante TODA la embestida Metal NO
++//       puede ser aturdido NI agarrado ("stagger de ningun tipo ni
++//       agarrado ni nada"): Metal_ControlImmune en los 8 forwards
++//       anti-control de ESTE manager (puno del tank, roca, fling,
++//       stagger, pounce del hunter, ride del jockey, charger, tongue).
++//   (6) SELF REPAIR HEREDADO AL AURA DE SOPORTE ("la reparacion esta
++//       heredado a curarse mas rapido si esta con eggman o tails
++//       no?"): con un Tails o un Eggman VIVO a 250u (el radio del
++//       tails_heal_boost), el tick de reparacion corre x2 de rapido
++//       (cada 1s en vez de 2s).
++//   (7) EMBESTIDA LIBERA EL CONTROL (bug del jockey: "metal se ha
++//       llevado a un jokey de un survivor y aunque se lo llevo este
++//       siguio montado aun si no estaba su cuerpo"): el catch ahora
++//       STAGGERA al oponente y si tenia a alguien agarrado lo libera
++//       POR EL CAMINO DEL MOTOR (PinRelease_Cleanse: L4D2_Jockey_
++//       EndRide etc. — desmonta de verdad, corta la musica, sin
++//       "montado fantasma"); despues el OM_Stun lo congela quieto.
++//   (8) OVERDRIVE LEVITA E INTERACTUA CON LA EMBESTIDA: Espacio
++//       mantenido con la C activa = levitar (vel[2] 220); la embestida
++//       en el aire ahora escribe la componente horizontal dir*750
++//       conservando la Z — C + Espacio + Z = DASH AEREO. Bloqueo
++//       mutuo C<->Z retirado.
++//   (9) 1 VIDA + AUTO-DESTRUCCION GMod (l.756+): la Sin-Incap ya
++//       existia (v3.1); la explosion ahora SI es la del lua: radio
++//       230 (antes 500), dano 50 por victima (antes 0), stun 5.5s
++//       ("5seg y medio" del owner; GMod usa 7) y RAGDOLL VOLADOR por
++//       cada especial (Sonic_SpawnFlingRagdoll v6.11: doble con
++//       vphysics + onda; al pasar el stun reaparece donde cayo el
++//       doble) + los 3 sonidos del lua (ExplodeSfx + Explosion +
++//       MetalBloodSound).
+ // v3.77.26 (con Metal.inc v5.1-OM): FX DEL SELF REPAIR AL ORIGINAL DEL
+ //   GMOD — revision del owner de la 3.77.25 (8.5/10), ajuste 1: "el
+ //   efecto de cura revisaste bn el efecto que usa metal en Gmod? el
+@@ -1814,7 +1868,7 @@
+ //   Amy sin cambios (v100-OM: su martillo ya iba en laserbeam
+ //   nativo — por eso a ella nunca se le vio malo). Historial
+ //   3.77.11-: abajo.
+-#define PLUGIN_VERSION "3.77.26"
++#define PLUGIN_VERSION "3.77.27"
+ // v3.77.10 (con sonic.inc v6.17-OM): TRAILS CON MATERIALES AUTENTICOS DEL GMOD — el owner verifico que tiene los .vmt del sonicball del pack OM y pregunto si los usabamos: NO los usabamos (el v6.6 habia traducido el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (blue_2ndlayer.vmt ancha 70->40 + blue.vmt 40->0 + blue.vmt 40->0 con tinte MAGENTA) y el peel el blue2.vmt 16->1 + los DOS trails de pies ROJOS Sonicred.vmt (alla en attachments 2/3 del puppet; aqui offsets fijos al tobillo — el env_spritetrail no sigue huesos). Deteccion FileExists estilo star_stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = nativo). Cvar auto-agregado al Sonic_Suite.cfg por la reconciliacion de la 3.77.4. v3.77.9 (con sonic.inc v6.16-OM): BOLA A ALTURA GMOD — fix visual del owner ("el modelo de la bola aparece media undida en el suelo"): sonicball.mdl es una esfera CENTRADA en su origen (~13u de radio) y el origen del survivor esta a los PIES, asi que parentada con offset (0,0,0) su centro caia a nivel del suelo = media hundida. El ent_om_hedgehog_dropballs.lua de GMod nunca la puso en el origen: hacia ply:GetPos()+Vector(0,0,15) por tick y SetModelScale(1.25) — los 2 ajustes que el port v6.0 no llevaba. Ahora convars sonicom_ball_z 15 / sonicom_ball_scale 1.25 (aplican al nacer la bola; 0/1 = look viejo). SOLO la bola: avatares humanos R/L y trails intactos. Cvars nuevos auto-agregados al Sonic_Suite.cfg por la reconciliacion de la 3.77.4. v3.77.8 (Sally v6.2 + Cream v6.1 + Eggman v3.1): FIN de la auto-generacion individual de cfgs — pedido del owner: "sally amy cream eggman se siguen auto generando con la misma lista que tiene el suite... lo mejor es matar de raiz su auto generacion individual". Causa: cada AutoExecConfig de un modulo escribia TODOS los cvars del PLUGIN entero ("ConVars for plugin Sonic_ability_manager.smx") = cada archivo individual era un duplicado de la lista completa del suite. Eliminados los ULTIMOS 3 con llamada viva (Sally_Abilities/Cream_Abilities/Eggman_Abilities; Tails/Speed/sonic_jump/Knuckles/Amy/Rouge ya muertos desde la v3.75) + SANEADOR SuiteCfg_DeleteLegacyFiles: al cargar/recargar el plugin BORRA del server los 9 cfg individuales residuales. Unica config: Sonic_Suite.cfg (auto-guardada + reconciliada). Sin cambios de cvars ni de gameplay. v3.77.7 (Tails v5.25-B + sonic v6.15-OM + Amy v98-OM): AVATAR REMOTO POR TP — pedido del owner: "los avatares DE OTROS al sistema del tails follow (modo TP); localmente igual (con su pausa)". La copia R (la que ven los demas) de los 3 avatares viaja por teleport por tick + reloj vivo SIN EF_NOINTERP (tails_avatar_tp 1 default; 0 = como antes): los demas la INTERPOLAN = suave sin depender de la pausa (solo re-encaja la vista del dueno). La copia L queda INTACTA (parentada+pulso). La bola del spin queda parentada y su R oculta viaja pegada. v3.77.6 (con sonic.inc v6.14-OM): PEEL OUT LLEVA JUGADORES (pedido: "el peel out segun los lua de GMod puede llevar supervivientes = otros jugadores"): durante la carrera del peel, tocar a un companion SANO lo MONTA detras de Sonic (hasta 3 asientos; sonicom_peel_carry / _carry_max) — viaja pegado a su estela a la velocidad de la carrera (arrastre por frame desde el PreThink), dispara montado y salta para bajarse; desembarco al frenar, suelta de emergencia si Sonic es interrumpido o el pasajero queda atras. El rescate de incap queda INTACTO (incap = levantar, sano = llevar). Cvars nuevos auto-agregados al cfg por la reconciliacion de la 3.77.4.
+ #define PLUGIN_VERSION_PREV_37613 "3.76.13"   // v3.76.13 (con sonic.inc v6.13-OM): el owner reenvio los Lua del GMod OM ("los lua de gmod por si acaso lo perdiste") — se releieron completos para responder de una vez por todas su pregunta "¿como mueve GMod a los ragdolls falsos? no existe algo que genere un impulso 1 vez y el motor se encargue del resto?". RESPUESTA (sonic.lua L435-485 + status.lua L85-394): GMod SI aplica un impulso UNA SOLA VEZ (SetVelocity 700 + AddAngleVelocity por hueso del prop_ragdoll) y el vphysics hace el resto — eso ya era la v5.36/v5.37 nuestra (onda env_physexplosion = mismo camino interno). LO QUE FALTO y se porto: el OM NUNCA re-aparece a la victima pegada a una pared — busca un HUECO (TraceHull) y ESPIRALA alrededor (status.lua L245-287): v6.13 Sonic_RagSafeSpot = victima/witch del ritual despiertan en el hueco valido mas cercano (fallback: el punto tal cual). v6.13: Sonic_RagSafeSpot puerto textual para la victima del golpe final y la witch del ritual — si el doble cayo contra una pared/escalera/rincon, la victima despierta en el hueco valido mas cercano en vez de atascada en la geometria. Fallback si no hay hueco en 96u: el punto tal cual (v6.12 = mismo fallback del GMod). El vuelo (onda), el rebote (-450/+500) y el fix anti-atasco (DEBRIS) quedan INTACTOS.
+ 
+@@ -2454,7 +2508,7 @@
+ // el build cargado DE VERDAD para verificarlo en 2 segundos.
+ public Action Cmd_ShowSuiteVersion(int client, int args)
+ {
+-    ReplyToCommand(client, "[Sonic Suite] Manager %s (CONFIG UNICA: cfg/sourcemod/Sonic_Suite.cfg, auto-guardada) | Sonic %s (OM: spindash/dropdash + peel out + homing C + anillos + avatar) | Amy %s | Sage %s | Cream v6 | Sally %s | Rouge %s (granadas + Onda Negra v9.1 FIX) | Knuckles %s (puno/slam props + H3 Meteoro v64) | Tails %s (OM: vuelo + cañón 4 modos; H3 = modo; parentado suave, item bomba de bilis) | Metal v5.1-OM (avatar metal.mdl + Z embestida por suelo + X Self Repair al FX original + C Overdrive) (build cargado en memoria)", PLUGIN_VERSION, SONIC_OM_VERSION, AMY_INC_VERSION, SAGE_INC_VERSION, SALLY_INC_VERSION, ROUGE_INC_VERSION, KNUCKLES_INC_VERSION, TAILS_INC_VERSION);
++    ReplyToCommand(client, "[Sonic Suite] Manager %s (CONFIG UNICA: cfg/sourcemod/Sonic_Suite.cfg, auto-guardada) | Sonic %s (OM: spindash/dropdash + peel out + homing C + anillos + avatar) | Amy %s | Sage %s | Cream v6 | Sally %s | Rouge %s (granadas + Onda Negra v9.1 FIX) | Knuckles %s (puno/slam props + H3 Meteoro v64) | Tails %s (OM: vuelo + cañón 4 modos; H3 = modo; parentado suave, item bomba de bilis) | Metal v5.2-OM (avatar metal.mdl + Z embestida por suelo con liberacion de agarres + X Self Repair con aura de soporte Tails/Eggman + C Overdrive con levitacion y sin sobre-calentamiento; ajustes 2-10: watchdog de atascos, sonidos nivel 87, CD -30%, walk GMod 1.0, salto sin cortes, anti-control en la carga, dash aereo C+Z, auto-destruccion GMod con ragdolls) (build cargado en memoria)", PLUGIN_VERSION, SONIC_OM_VERSION, AMY_INC_VERSION, SAGE_INC_VERSION, SALLY_INC_VERSION, ROUGE_INC_VERSION, KNUCKLES_INC_VERSION, TAILS_INC_VERSION);
+     return Plugin_Handled;
+ }
+ 
+@@ -2712,6 +2766,9 @@
+ {
+     if (IsValidClient(player))
+     {
++        // v3.77.27 (ajuste 5): durante TODA la embestida, Metal es inmune
++        // al control ("stagger de ningun tipo ni agarrado ni nada")
++        if (g_iPlayerCharIdx[player] == METALSONIC_INDEX && Metal_ControlImmune(player)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[player] == KNUCKLES_INDEX && Knuckles_CheckTankCounter(tank, player)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[player] == AMY_INDEX && Amy_TankClawCounter(tank, player)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[player] == SONIC_INDEX && g_bSonicHeroMode[player]) return Plugin_Handled;
+@@ -2726,6 +2783,9 @@
+ {
+     if (IsValidClient(client))
+     {
++        // v3.77.27 (ajuste 5): cualquier razon de knockdown (puno/roca del
++        // tank, charger...) no tumba a un Metal en plena embestida
++        if (g_iPlayerCharIdx[client] == METALSONIC_INDEX && Metal_ControlImmune(client)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[client] == KNUCKLES_INDEX && Knuckles_IsPhysicsImmune(client)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[client] == AMY_INDEX && Amy_IsImpulseImmune(client)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[client] == SALLY_INDEX && Sally_IsBubbleActive(client)) return Plugin_Handled;
+@@ -2749,6 +2809,8 @@
+ {
+     if (IsValidClient(client))
+     {
++        // v3.77.27 (ajuste 5): el fling tampoco durante la embestida
++        if (g_iPlayerCharIdx[client] == METALSONIC_INDEX && Metal_ControlImmune(client)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[client] == KNUCKLES_INDEX && Knuckles_IsPhysicsImmune(client)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[client] == AMY_INDEX && Amy_IsImpulseImmune(client)) return Plugin_Handled;
+     }
+@@ -2759,6 +2821,8 @@
+ {
+     if (IsValidClient(target))
+     {
++        // v3.77.27 (ajuste 5): stagger de ningun tipo durante la embestida
++        if (g_iPlayerCharIdx[target] == METALSONIC_INDEX && Metal_ControlImmune(target)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[target] == KNUCKLES_INDEX && Knuckles_IsPhysicsImmune(target)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[target] == AMY_INDEX && Amy_IsImpulseImmune(target)) return Plugin_Handled;
+     }
+@@ -2769,6 +2833,9 @@
+ {
+     if (IsValidClient(victim))
+     {
++        // v3.77.27 (ajuste 5): ni agarrado — el hunter no ensarta a un
++        // Metal en embestida
++        if (g_iPlayerCharIdx[victim] == METALSONIC_INDEX && Metal_ControlImmune(victim)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[victim] == KNUCKLES_INDEX && Knuckles_CheckSpecialCounter(victim, attacker)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[victim] == AMY_INDEX && Amy_GrabCounter(victim, attacker)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[victim] == SONIC_INDEX && g_bSonicHeroMode[victim]) return Plugin_Handled;
+@@ -2780,6 +2847,8 @@
+ {
+     if (IsValidClient(victim))
+     {
++        // v3.77.27 (ajuste 5): el jockey no monta a un Metal en embestida
++        if (g_iPlayerCharIdx[victim] == METALSONIC_INDEX && Metal_ControlImmune(victim)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[victim] == KNUCKLES_INDEX && Knuckles_CheckSpecialCounter(victim, attacker)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[victim] == AMY_INDEX && Amy_GrabCounter(victim, attacker)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[victim] == SONIC_INDEX && g_bSonicHeroMode[victim]) return Plugin_Handled;
+@@ -2791,6 +2860,8 @@
+ {
+     if (IsValidClient(victim))
+     {
++        // v3.77.27 (ajuste 5): el charger no atropella a un Metal en embestida
++        if (g_iPlayerCharIdx[victim] == METALSONIC_INDEX && Metal_ControlImmune(victim)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[victim] == KNUCKLES_INDEX && Knuckles_CheckSpecialCounter(victim, charger)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[victim] == AMY_INDEX && Amy_GrabCounter(victim, charger)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[victim] == SONIC_INDEX && g_bSonicHeroMode[victim]) return Plugin_Handled;
+@@ -2802,6 +2873,8 @@
+ {
+     if (IsValidClient(victim))
+     {
++        // v3.77.27 (ajuste 5): la lengua del smoker tampoco lo agarra
++        if (g_iPlayerCharIdx[victim] == METALSONIC_INDEX && Metal_ControlImmune(victim)) return Plugin_Handled;
+         if (g_iPlayerCharIdx[victim] == KNUCKLES_INDEX && Knuckles_HandleSmokerCounter(victim, smoker)) return Plugin_Handled;
+         // v64: Amy rompe la lengua AL INSTANTE, SIEMPRE (a peticion):
+         // el agarre nunca llega a empezar y el smoker recibe la contra.

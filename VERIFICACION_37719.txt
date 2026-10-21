@@ -1,0 +1,47 @@
+================================================================
+ VERIFICACION 3.77.19 — evidencia de build y forense
+================================================================
+
+BUILD
+-----
+- Compilador: SourcePawn Compiler 1.11.0.6970 (SourceMod 1.11)
+- Script: Sonic_ability_manager.sp (3.77.19) + includes (sonic.inc v6.26-OM)
+- Resultado: COMPILA OK. 28 warnings — LINEA BASE EXACTA de la 3.77.18
+  (misma lista: Doll_System x3, Metal x2, Sally x10, OM_Stun x1 y los
+  tag mismatches historicos del manager) — CERO warnings del codigo
+  nuevo (v6.26 no agrego ni quito ninguno).
+- smx: 373,835 bytes
+  sha256: c7e4ac22910d865672f6238adcdcb0c5b126b788b76b3b828f1334219a96941f
+
+FORENSE DE SIMBOLOS (smx .18 entregada vs .19 nueva)
+----------------------------------------------------
+- funciones: 593 -> 593 (delta 0 — correcto: v6.26 recalibra
+  constantes y quita 1 parametro de SpawnPeelPuff; no toca la tabla)
+- cvars:    208 -> 208 (delta 0)
+- MARCADORES PRESENTES 27/27:
+  3.77.19, v6.26-OM, v101-OM (Amy), v5.25-B (Tails),
+  Sonic_TEStartChain, Sonic_TEStartFollow, Sonic_TETick,
+  Sonic_PeelCloudTick, Sonic_PeelChargeDust, Sonic_SpawnPeelPuff,
+  Sonic_PeelFlash, Sonic_MakeBlueLight, Sonic_MakeTrailTarget,
+  Sonic_WorldOrigin, Sonic_CreatePeelTrail, Sonic_KillPeelTrail,
+  Sonic_CreateBallTrails, Sonic_MakeSpriteTrail, BeamFollow,
+  light_dynamic, info_target, blue2.vmt, Sonicred.vmt, om_bluesmoke,
+  sonic_dashing_effect, sonicom_trails, sonicom_trails_mat
+- MARCADORES AUSENTES 6/6 (versiones viejas y codigo muerto):
+  3.77.18, v6.25-OM, v6.24-OM, 3.77.17, env_steam, Sonic_MakeSteam
+- CONTROL DE CONSTANTES (bytes del data segment):
+  float32 0.01 (0x3C23D70A, el SONIC_TE_TICK nuevo): PRESENTE
+  (0.05f sigue presente por los rangos random del polvo — correcto)
+
+DIFF DE FUENTES
+---------------
+- sonic.inc: 292 lineas de diff (4 bloques: changelog v6.26 + tick +
+  SpawnPeelPuff aditivo + 3-capas spindash + call sites + comentarios)
+- Sonic_ability_manager.sp: solo version (3.77.19) + bloque changelog
+- Los otros 8 includes: IDENTICOS byte a byte a la .18 (sin tocar)
+
+INTEGRIDAD DEL PAQUETE
+----------------------
+- Zip con: smx + .sp + include/ (9 .inc) + materials/icons (6 archivos
+  identicos a la .18) + diff + CAMBIOS + esta VERIFICACION + worklog.md
+- sha256 del zip: ver el reporte de entrega (filebin)

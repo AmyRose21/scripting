@@ -1,0 +1,178 @@
+==========================================================================
+ SUITE 3.77.44 — "DIRECTO DEL SMX AL VSCRIPT (patron supertank)"
+ Orden del owner 2026-10-10 tras la 3.77.43
+==========================================================================
+
+REPORTE DEL OWNER (literal):
+  "el utlimo cambio que hisiste solo hisiste que el Vscript jamas se
+   enterara del tema este Mira... No tienes que poner un indentificador
+   de personaje... Porque sencillamente el parry este Vscript puede
+   identificar si es knuckles o amy quien llama.
+   [el supertank] tiene una entrada especial para amy LLAMADA DESDE EL
+   SMX... y que en si el Vscript reconoce. se te hace tan dificil hacer
+   algo como hisiste con el super tank?... que en si Sea una ventana
+   avierta por 8 seg donde devuelve todo daño con dicho counter?"
+
+DIAGNOSTICO HONESTO: EL OWNER TENIA TODA LA RAZON.
+  La .43 habia dejado la ventana de Knuckles con una cadena de 5
+  eslabones y TODOS tenian que estar vivos a la vez:
+
+    postura -> ServerCommand "knxparry_state" -> Parry.smx
+    -> gate knxparry_chars (lo publicaba el manager)
+    -> RunScriptCode ChCh_KnxNotify
+    -> gate uk_parry_chars DEL PROPIO .NUT (un convar que SOLO
+       mantenia el Parry.smx v2.4+)
+
+  Si UNO fallaba (un Parry.smx viejo, una publicacion que no llego, un
+  convar vacio) el .nut rechazaba la ventana EN SILENCIO — y hasta la
+  llamada DIRECTA de Amy moria en el gate del .nut. De ahi "el Vscript
+  jamas se enterara". Torre de naipes de la A a la Z.
+
+EL FIX ES EL PATRON DEL SUPERTANK (SetAmyMode), SIN INTERMEDIARIOS:
+  El manager llama DIRECTO (RunScriptCode) a la entrada del .nut, y la
+  entrada ES la identidad — igual que SetAmyMode(idx) en el supertank:
+
+    - Knuckles activa la POSTURA (8 s)
+      -> Knux_ParryNotifyNut -> ChCh_KnxNotify(idx, 1, 8.0)
+    - Amy activa la pose de DEFENSA de la Z (su martillo)
+      -> Amy_ParryNotifyNut -> ChCh_AmyNotify(idx, 1, dur)  [ENTRADA
+         NUEVA Y PROPIA DE AMY — ya no comparte la de Knuckles]
+    - El .nut abre la ventana y punto. Un salto. Cero consola, cero
+      registro de personajes, cero convars espejo, cero gates.
+
+  "el parry este Vscript puede identificar si es knuckles o amy quien
+  llama" — EXACTO: la ventana guarda de QUE ENTRADA nacio (bandera
+  amy=true/false) y con eso elige SU sonido (martillo de Amy /
+  punchstun de Knuckles), SU hint y SU contra en el manager
+  (amyparry_strike / knx_parry_blocked).
+
+==========================================================================
+ QUE SE CAMBIO (5 archivos + el shim)
+==========================================================================
+
+1) CHCH_PARRYING.NUT v2.7 -> v2.8
+   - NUEVA ENTRADA DE AMY: ::ChCh_AmyNotify -> KnxAmyNotify. La de
+     Knuckles (::ChCh_KnxNotify) sigue igual de nombre y firma — todo
+     lo que ya la llamaba sigue funcionando.
+   - KnxNotify/KnxAmyNotify comparten el nucleo KnxOpenWindow(idx, on,
+     dur, isAmy): la ventana ahora guarda SU identidad (amy=true/false).
+   - KnxIsAmy lee LA BANDERA DE LA VENTANA (antes: el convar
+     uk_amy_chars que solo mantenia el Parry.smx — el chequeo por
+     modelo que nunca matcheo queda como respaldo de servers raros).
+   - BORRADOS los gates: KnxCanShoveParry (def + 2 llamantes) y TODA
+     lectura de uk_parry_chars / uk_amy_chars. Nadie mas que las
+     entradas decide quien tiene ventana — y las entradas solo las
+     llaman los codigos de Knuckles y Amy.
+   - NUEVO ::ChCh_ParryStatus: el .nut reporta SUS ventanas (quien las
+     tiene, de quien son [AMY/KNUCKLES], segundos restantes) — lo
+     dispara el knx_parry_status del Parry.smx.
+   - TODO lo demas intacto: el loop 30 Hz con bootstrap, watchdog,
+     boomer fuses, roca/saliva/granadas devueltas, enemigos en cono,
+     SONIDOS (punchstun de Knuckles / HammerHit de Amy), los avisos al
+     manager (knx_parry_blocked / amyparry_strike).
+
+2) KNUCKLES.INC v74-OM -> v75-OM
+   - NUEVO Knux_ParryNotifyNut: el puente DIRECTO (logic_script propio
+     "knx_parry_runner" + RunScriptCode con guard) — la MISMA receta
+     de Amy_PublishScriptIdx / SetAmyMode del supertank, ya probada en
+     este server con el tarot.
+   - Los 3 ServerCommand("knxparry_state ...") FUERA:
+     * Command_KnuxCounter (ON, dur = knux_counter_duration = 8 s)
+     * Knux_StopCounter (OFF: toggle manual / expiracion)
+     * Knux_ResetState (OFF: muerte / fin de ronda / cambio de pj)
+   - CERO cambios en el counter de la postura (golpes/tank/SI/witch
+     siguen en el manager como siempre).
+
+3) AMY.INC v103-OM -> v104-OM
+   - Amy_ParryNotifyNut ahora llama a SU entrada ChCh_AmyNotify (antes
+     llamaba ChCh_KnxNotify y su identidad dependia de convars espejo).
+   - La pose Z abre/cierra SU ventana exactamente igual que antes
+     (flanco de subida/bajada del PhaseThink) — solo cambia el destino.
+
+4) SONIC_ABILITY_MANAGER 3.77.43 -> 3.77.44
+   - BORRADO EL REGISTRO DE PERSONAJES: OM_PublishParryChar + sus 10
+     llamadas (spawn, seleccion, cookie, menu, freechars, disconnect).
+     "No tienes que poner un identificador de personaje" — cierto: la
+     entrada que el codigo llama ES la identidad. Es Menos codigo y
+     Menos puntos de fallo.
+   - Version, changelog y sm_sjsver con la doctrina nueva.
+
+5) PARRY.SP v2.5 -> v2.6 (1026 -> 248 lineas: ES SOLO WATCHDOG AHORA)
+   - BORRADOS los puentes muertos: knxparry_state, knxparry_chars,
+     Parry_SetWindow/CloseWindow/NotifyNut, el ejecutor nativo de la
+     ventana (Timer_ParryWindow/WindowScan/WindowDeflect/Watch*) y SUS
+     convars (uk_parry_window, uk_parry_window_radius,
+     uk_parry_window_sound, uk_parry_window_max, uk_parry_sound,
+     uk_parry_chars, uk_amy_chars).
+   - VIVE: el watchdog del loop del .nut (timer propio de 2 s ::
+     ChCh_EnsureLoop), la carga de los 2 .nut al empezar el mapa, y
+     knx_parry_status (handshake + heartbeat + loop + LAS VENTANAS
+     LAS REPORTA EL .NUT via ChCh_ParryStatus).
+   - Compila con 0 (CERO) WARNINGS.
+   - Sin AutoExecConfig: no queda nada configurable aqui (la cfg vieja
+     l4d2_ultrakill_parry.cfg queda dormida; si existe, ya no se lee).
+
+6) KNUCKLES_PARRY_STATE.NUT v2.0 -> v2.1 (el shim de la API externa)
+   - KnucklesParryWindow/End llaman DIRECTO a la entrada ChCh_KnxNotify
+     del .nut (antes mandaban "knxparry_state" a la consola — ese
+     puente ya no existe). Para tus propios scripts/supertank sigue
+     siendo la misma API de siempre.
+
+==========================================================================
+ LA VENTANA DE 8 SEGUNDOS (la receta completa, de punta a punta)
+==========================================================================
+  1. Knuckles activa la postura (la tecla de siempre) -> SONIDO
+     counter.wav + animacion de preparacion + tinte azul.
+  2. EL MISMO INSTANTE: el manager llama ChCh_KnxNotify(idx,1,8.0) ->
+     el .nut abre la ventana 8 s (dura EXACTAMENTE lo que dura la
+     postura: knux_counter_duration).
+  3. Durante esos 8 s el .nut DEVUELVE TODO lo que le tiren:
+     * roca del tank -> devuelta al tank (+500 al llegar)
+     * saliva del spitter -> devuelta (el puddle pasa a ser tuyo)
+     * granadas/molotov/pipe/bile/lanzagranadas -> devueltas
+     * props con fisica que vengan hacia ti -> devueltos
+     * charger/hunter/jockey/smoker en cono -> repelidos (cooldown 1 s)
+     Y el manager CONTRAATACA los golpes normales:
+     * commons -> counter de siempre (100 de dano)
+     * tank -> counter del tank
+     * especiales (basico SI) -> contraataque completo + stagger
+     * witch -> congelada en seco (estatua 2 s)
+     * agarres (smoker/charger/jockey) -> bloqueados y contrarestados
+  4. CADA bloqueo: SONIDO om/knuckles/punchstun.wav + hint + el gesto
+     de bloqueo del avatar (knx_parry_blocked).
+  5. La postura se apaga (8 s / toggle / muerte) -> el manager manda
+     la ORDEN DE APAGADO y la ventana muere con ella.
+
+  Amy igual pero con SU entrada: la Z abre la ventana de su pose, el
+  proyectil que entra al rango dispara la DEFENSA DE MARTILLO (ataque
+  360 + aura + sonido de martillo), y todo lo que la toque sale
+  contrarestado (stun de especiales/tank, witch estatua, comunes al
+  barrido).
+
+==========================================================================
+ INSTALACION (los 5 juntos — son una pieza)
+==========================================================================
+  1. addons/sourcemod/plugins/Sonic_ability_manager.smx   (3.77.44)
+  2. addons/sourcemod/plugins/Parry.smx                    (v2.6)
+  3. addons/sourcemod/scripting/... (fuentes, opcional)
+  4. left4dead2/scripts/vscripts/chch_parrying.nut         (v2.8)
+  5. left4dead2/scripts/vscripts/knuckles_parry_state.nut  (v2.1)
+  * include/ = los fuentes de los personajes (Knuckles.inc v75-OM y
+    Amy.inc v104-OM cambian; los otros 14 IDENTICOS byte a byte).
+  * Cambio de mapa y listo.
+
+  NOTA: Parry.smx v2.6 ya NO abre ventanas ni tiene puentes — es el
+  watchdog (mantiene vivo el loop del .nut) + diagnostico. Si por lo
+  que sea lo dejaras fuera, el parry del suite FUNCIONA IGUAL (la
+  postura llama directa al .nut); solo perderias al perro guardian
+  del loop y el knx_parry_status.
+
+PRUEBA DE 30 SEGUNDOS:
+  1. Knuckles: activa la postura SIN tocar nada mas y que el tank
+     tire la roca -> se devuelve SOLA + punchstun + gesto de bloqueo.
+  2. knx_parry_status en consola durante la postura -> "ventana
+     ABIERTA: <tu nombre> [KNUCKLES] X s restantes" (esa linea la
+     imprime el PROPIO .nut — el estado es de el).
+  3. Amy: Z en defensa y acercate a un spitter escupiendo ->
+     DEFENSA DE MARTILLO (ataque + aura) con SU sonido.
+  4. El shove NO hace nada de nada (vanilla, desde la .43).

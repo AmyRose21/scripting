@@ -1,0 +1,442 @@
+--- download/suite_37720_esferitas/include/sonic.inc	2026-10-08 18:39:29.658911071 +0000
++++ builds/OM37721/scripting/include/sonic.inc	2026-10-08 19:38:07.377989942 +0000
+@@ -645,7 +645,45 @@
+ //   aspa azul ("esta bn xq en el Gmod original tambien sale"), beam
+ //   azul (ya nace a +20z = el attachment Trail del QC a 19.08z).
+ //   Cero gameplay, cero cvars, 1 material NUEVO (fleetways_tiny_balls).
+-#define SONIC_OM_VERSION "v6.27-OM"   // v6.19: TRAILS A MATERIAL NATIVO (default) — analisis del pack de materiales ORIGINALES del OM subido por el owner (2026-10-08): los .vmt del sonicball son legítimos (UnlitGeneric $translucent $vertexcolor/$vertexalpha, VTF 7.2 RGBA8888) pero diseniados para el renderer del SpriteTrail de GMod: bluetrail.vtf = barra vertical nucleo-blanco/halo-azul (perfil transversal), bluestartrail2.vtf = 98% TRANSPARENTE con destellos sueltos (la 'capa ancha' es casi aire), blue2/Sonicred = chips 2x2 shared_t/t2. En los TE beams del L4D2 la textura se mapea al reves (U a lo largo del beam) = look bugeado (reporte del owner); el laserbeam radial nativo es inmune a la orientacion. NATIVO default con la geometria 3-capas GMod completa (halo 70->40 + nucleo 40->1 + magenta 40->1, aditivas como alla) y el peel gana los 2 pies ROJOS nativos. FIX descargas: Sonic_AddMatToDownloads ahora encola el $basetexture REAL (blue.vmt->bluetrail.vtf etc.; el v6.17 encolaba un blue.vtf INEXISTENTE = damero en clientes). sonicom_trails_mat default 0 (1 = autentico opt-in). v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o autentico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migracion al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueno/demas (el beam del dueno sigue su copia L, el de los demas la R — leccion del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: unica forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseno de materiales v6.17 INTACTO: FileExists -> autenticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTENTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidio ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aqui offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximacion documentada). Deteccion por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo).
++// v6.28: HUMO DENSO + BOTAS AL SUELO + sonicom_trails_mat FUERA (orden
++//   del owner 2026-10-09 tras probar la .20: "las esferitas si
++//   aparecieron... el unico peo que queda es el humo azulado que no se
++//   ve" + "mira como se ven las botas el grafico rojo en Gmod y mira
++//   como se ve en L4d2" + "ya quita la opcion de sonicom_trails_mat
++//   ahora estara por defecto en 1... el parche lo arreglo. osea siempre
++//   usara los materiales originales (no los vanilla del l4d2)" + "si
++//   en este cambio el humo sigue sin salir ponme un comando que me
++//   permita que este cambie por el Beam este nativo que usa el speed
++//   para complementar la falta (necera desde el torso)"). ANALISIS DE
++//   LOS 2 VIDEOS (4 pasadas VLM + mediciones normalizadas por altura de
++//   personaje): (a) BOTAS — a igual escala las estelas son casi gemelas
++//   en ancho (0.23 vs 0.25 de la altura) y largo; las diferencias REALES
++//   son que la L4D2 flota al DOBLE de altura (z+8 tobillo vs ras del
++//   suelo) y es textura DEGRADADA translucida (laserbeam radial) vs la
++//   cinta SOLIDA opaca del chip Sonicred: pies a z+2, ancho 7->3.5 (sin
++//   el taper extremo 6->1 que dejaba la mayor parte del largo en 1-3u),
++//   fade 1 (cola suave minima — el stock TE_* declara FadeLength INT:
++//   el fadeTime 0.2 del Lua no es representable) y el chip AUTENTICO
++//   siempre.
++//   (b) HUMO — el video GMod muestra una masa translucida 2-3x el cuerpo
++//   que envuelve de la cintura para abajo y derrama atras (200-280px de
++//   ancho, cian-blanco cerca del cuerpo -> azul profundo atras); la .20
++//   ponia 5 glows tenues de 26-36u que en su video leen como "faint
++//   traces": la bateria se DOBLA y se agranda — 5 humos om_bluesmoke de
++//   45-62u en 2 tonos con sesgo ATRAS (la estela/cape) + 4 glows
++//   cian-blanco de 34-46u alrededor (el nucleo brillante). (c) ESFERITAS
++//   — el video GMod las muestra como motas REDONDAS suaves cian-blanco
++//   (#E0F0FF) con mucho glow que PULSAN en el sitio (el air resistance
++//   40 del Lua mata su velocidad enseguida); la .20 las ponia con la
++//   estrella crema de fleetways volando a 30-80 uu/s constantes = se
++//   regaban lejos: ahora glow01 tintado "224 240 255" alpha 200 y
++//   velocidad 10-28 (quedan como un enjambre de motas alrededor del
++//   torso). (d) PALANCA NUEVA sonicom_peel_nube: 0 (default) = bateria
++//   de sprites anterior; 1 = EL BEAM NATIVO DEL SPEED (BeamFollow
++//   laserbeam 0.6s 10->1 fade 3 — la receta EXACTA del trail de colores
++//   del Speed_sonic) naciendo del TORSO (el mismo info_target +20z del
++//   trail principal) — cambio EN VIVO sin reiniciar el peel.
++#define SONIC_OM_VERSION "v6.28-OM"   // v6.19: TRAILS A MATERIAL NATIVO (default) — analisis del pack de materiales ORIGINALES del OM subido por el owner (2026-10-08): los .vmt del sonicball son legítimos (UnlitGeneric $translucent $vertexcolor/$vertexalpha, VTF 7.2 RGBA8888) pero diseniados para el renderer del SpriteTrail de GMod: bluetrail.vtf = barra vertical nucleo-blanco/halo-azul (perfil transversal), bluestartrail2.vtf = 98% TRANSPARENTE con destellos sueltos (la 'capa ancha' es casi aire), blue2/Sonicred = chips 2x2 shared_t/t2. En los TE beams del L4D2 la textura se mapea al reves (U a lo largo del beam) = look bugeado (reporte del owner); el laserbeam radial nativo es inmune a la orientacion. NATIVO default con la geometria 3-capas GMod completa (halo 70->40 + nucleo 40->1 + magenta 40->1, aditivas como alla) y el peel gana los 2 pies ROJOS nativos. FIX descargas: Sonic_AddMatToDownloads ahora encola el $basetexture REAL (blue.vmt->bluetrail.vtf etc.; el v6.17 encolaba un blue.vtf INEXISTENTE = damero en clientes). sonicom_trails_mat default 0 (1 = autentico opt-in). v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o autentico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migracion al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueno/demas (el beam del dueno sigue su copia L, el de los demas la R — leccion del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: unica forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseno de materiales v6.17 INTACTO: FileExists -> autenticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTENTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidio ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aqui offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximacion documentada). Deteccion por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo).
+ 
+ // =======================
+ // RECURSOS (VPK de recursos del owner; mismas rutas que GMod OM)
+@@ -859,6 +897,8 @@
+ int   g_iSonicBallGlow[MAXPLAYERS + 1];        // v6.20: EntRef env_sprite glow azul de la bola (brillo en la oscuridad)
+ int   g_iSonicBallLight[MAXPLAYERS + 1];       // v6.20: EntRef light_dynamic azul de la bola
+ int   g_iSonicPeelLight[MAXPLAYERS + 1];       // v6.20: EntRef light_dynamic azul del peel (parent al player)
++int   g_iSonicPeelNubeBeam[MAXPLAYERS + 1];    // v6.28: slot TE BeamFollow del torso (modo sonicom_peel_nube 1, copia R)
++int   g_iSonicPeelNubeBeamO[MAXPLAYERS + 1];   // v6.28: idem copia L (solo el dueno)
+ // v6.25: los steams (aura/estela/polvo) y los info_targets de pies
+ // FUERON ELIMINADOS — el env_steam no dibuja en el cliente L4D2 y los
+ // pies volvieron a las polylineas CHAIN (g_iSonicPeelFootL/R, muestran
+@@ -901,6 +941,7 @@
+ int   g_iSonicFxMatSmoke = 0;                  // index precacheado (0 = no disponible)
+ int   g_iSonicFxMatMoon  = 0;                  // idem
+ int   g_iSonicFxMatTinyBall = 0;                // idem
++#pragma unused g_iSonicFxMatTinyBall            // v6.28: RESERVADO — las esferitas pasaron a glow01 (video GMod = motas redondas); el material queda cargado y descargandose para que volver a la estrella fleetways sea solo cambiar el DispatchKeyValue "model" de Sonic_SpawnPeelBall
+ float g_fSonicPeelDustNext[MAXPLAYERS + 1];    // v6.22: gate 0.2s del polvo de la carga
+ float g_fSonicBallSpin[MAXPLAYERS + 1];        // angulo de giro acumulado de la bola
+ // seguimiento (mismo sistema de lecciones Tails: yaw suave + deadband)
+@@ -963,7 +1004,7 @@
+ // v6.6 (informe 1): AoE comunes + trails + gracia DoT
+ ConVar g_cvSonicSpinRadiusCommons; // radio del barrido frontal vs comunes (0 = off)
+ ConVar g_cvSonicTrails;            // trails visuales de bola/peel (env_spritetrail)
+-ConVar g_cvSonicTrailsMat;         // v6.17: usar los materiales autenticos del sonicball si estan
++ConVar g_cvSonicPeelNube;          // v6.28: nube de la carrera — 0 = bateria sprites / 1 = BeamFollow nativo estilo Speed
+ ConVar g_cvSonicDodgeGraceDot;     // (7) gracia corta post-dodge para vomito/spit
+ 
+ // pegado del golpe final (GMod L264/313: SetPos(enemigo+35z) + quieto 1s)
+@@ -1088,7 +1129,12 @@
+     // v6.6 (informe 1 del owner)
+     g_cvSonicSpinRadiusCommons = CreateConVar("sonicom_spin_radius_commons", "140", "Sonic OM: radio del barrido AoE de la bola contra COMUNES (0 = off). Especiales y witch siguen con el alcance del toque — el rango extra es SOLO para comunes [owner: 'sufrimos mucho con los comunes']", _, true, 0.0, true, 400.0);
+     g_cvSonicTrails = CreateConVar("sonicom_trails", "1", "Sonic OM: trails visuales (env_spritetrail) de la bola y la carrera del Peel Out — el look de los SpriteTrail del GMod", _, true, 0.0, true, 1.0);
+-    g_cvSonicTrailsMat = CreateConVar("sonicom_trails_mat", "0", "Sonic OM v6.26: material de los trails — 0 (default) = TODO con mecanismos TE/stock del juego (laserbeam radial: trail azul 3 capas geometria spindash + estelas rojas de pies continuas por fotograma + nube de sprites azul-blanca aditiva + arcos de velocidad): el look del video GMod SIN material alguno; 1 = AUTENTICOS con los .vmt originales del sonicball (blue2/Sonicred) via env_spritetrail + FIX del render (fbef0102): el MISMO renderer del SpriteTrail de GMod, si estan en el servidor (sueltos en materials/ o en VPK). Sin los archivos SIEMPRE cae al nativo.", _, true, 0.0, true, 1.0);
++    // v6.28: sonicom_trails_mat ELIMINADA por orden del owner ("ya quita
++    // la opcion... siempre usara los materiales originales"): los trails
++    // usan AUTENTICOS siempre que los archivos existan (gate FileExists
++    // interno, sin palanca); el nativo queda solo como fallback. La
++    // nueva palanca es de la NUBE (abajo).
++    g_cvSonicPeelNube = CreateConVar("sonicom_peel_nube", "0", "Sonic OM v6.28: NUBE de la carrera del Peel Out — 0 (default) = bateria de sprites aditivos (5 humos om_bluesmoke 45-62u azul profundo con sesgo atras + 4 glows cian-blanco + moon): el intento denso del look GMod; 1 = LA FALTA LA CUBRE EL BEAM NATIVO DEL SPEED: BeamFollow laserbeam 0.6s 10->1 fade 3 azul (la receta exacta del trail de colores del Speed_sonic) naciendo del TORSO (info_target +20z, el attachment Trail del QC). Cambiable EN VIVO (el proximo latido de 0.1s lo aplica, sin reiniciar el peel): si en tu server el humo sigue sin verse, ponla en 1", _, true, 0.0, true, 1.0);
+     g_cvSonicDodgeGraceDot = CreateConVar("sonicom_dodge_grace_dot", "0.3", "Sonic OM: segundos de gracia CORTA tras esquivar durante los que el vomito del boomer no vuelve a cobrar y el spit del spitter no entra [owner: la eva se consumia demasiado rapido]", _, true, 0.0, true, 2.0);
+ 
+     // comandos directos (ademas de Z/X/C del manager)
+@@ -1196,6 +1242,8 @@
+         g_iSonicPeelTrailO3[i] = 0;
+         g_iSonicPeelFootL[i]  = 0;
+         g_iSonicPeelFootR[i]  = 0;
++        g_iSonicPeelNubeBeam[i]  = 0;
++        g_iSonicPeelNubeBeamO[i] = 0;
+         g_iSonicBodyRender[i] = -1;
+         g_iSonicAnimState[i]  = -1;
+         g_bSonicSmSnap[i]     = true;
+@@ -2087,7 +2135,7 @@
+ int    g_iSonicTESide[SONIC_TE_SLOTS];     // CHAIN: -1 pie izq / +1 pie der
+ int    g_iSonicTEModel[SONIC_TE_SLOTS];
+ int    g_iSonicTEColor[SONIC_TE_SLOTS][4];
+-int    g_iSonicTEFade[SONIC_TE_SLOTS];
++int    g_iSonicTEFade[SONIC_TE_SLOTS];    // v6.28: se mantuvo int — el stock TE_* de SourceMod declara FadeLength INT (0.22 era invalido); los pies llevan 1 (cola suave minima, como OM_Stun)
+ int    g_iSonicTEOnly[SONIC_TE_SLOTS];     // userid destinatario unico (0 = todos)
+ int    g_iSonicTEExcl[SONIC_TE_SLOTS];     // userid excluido (0 = nadie)
+ float  g_fSonicTELife[SONIC_TE_SLOTS];
+@@ -2262,7 +2310,10 @@
+             float lat = 8.0 * view_as<float>(g_iSonicTESide[s]);
+             foot[0] = pos[0] - lat * Sine(rad);
+             foot[1] = pos[1] + lat * Cosine(rad);
+-            foot[2] = pos[2] + 8.0;
++            // v6.28: z+8 (tobillo) -> z+2 RAS DEL SUELO — la cuña roja del
++            // GMod es un decal PLANO pegado al piso, en su video .20 la
++            // nuestra flotaba al doble de altura (medicion normalizada)
++            foot[2] = pos[2] + 2.0;
+ 
+             // solo si el pie se movio (parado no hay estela, como GMod)
+             if (g_fSonicTELast[s][2] != 0.0
+@@ -2316,8 +2367,11 @@
+     // que la ball". Mismas proporciones relativas ajustadas a la bola:
+     // halo 70->40 pasa a 34->19 (aura apenas mas ancha que la bola),
+     // nucleo y magenta 40->1 pasan a 24->1. Vidas intactas (0.75/0.5/0.5)
+-    bool wantAuth = g_cvSonicTrailsMat != null && g_cvSonicTrailsMat.BoolValue
+-                    && g_bSonicBallMatWide && g_bSonicBallMatFade
++    // v6.28: sonicom_trails_mat FUERA — AUTENTICO SIEMPRE que los
++    // archivos existan (orden del owner: "el parche lo arreglo... siempre
++    // usara los materiales originales"); el TE nativo queda solo como
++    // fallback de creacion fallida o pack ausente.
++    bool wantAuth = g_bSonicBallMatWide && g_bSonicBallMatFade
+                     && g_iSonicTEMatWide > 0 && g_iSonicTEMatFade > 0;
+     bool stOK = false;
+     if (wantAuth)
+@@ -2387,6 +2441,37 @@
+     Sonic_KillOwnedEnt(g_iSonicBallLight[client]);
+ }
+ 
++// ---------------------------------------------------------------------
++// v6.28: EL BEAM DEL TORSO del modo sonicom_peel_nube 1 — LA RECETA
++// EXACTA del trail de colores del Speed_sonic (L1227-1251: BeamFollow
++// laserbeam 0.6s, ancho 10->1, fade 3), azul del humo "125 185 255",
++// naciendo del TORSO: el mismo info_target +20z del trail principal
++// (el attachment "Trail" del QC a +19.08z), con el mismo split
++// dueno/demas de siempre. Pedido literal del owner (2026-10-09): "si
++// en este cambio el humo sigue sin salir ponme un comando que me
++// permita que este cambie por el Beam este nativo que usa el speed
++// para complementar la falta (necera desde el torso)".
++// ---------------------------------------------------------------------
++void Sonic_PeelNubeBeamStart(int client)
++{
++    if (g_iSonicPeelNubeBeam[client] != 0 || g_iSonicPeelNubeBeamO[client] != 0) return;
++    int tgt  = (g_iSonicPeelTgt[client]  != 0) ? EntRefToEntIndex(g_iSonicPeelTgt[client])  : 0;
++    int tgtO = (g_iSonicPeelTgtO[client] != 0) ? EntRefToEntIndex(g_iSonicPeelTgtO[client]) : 0;
++    if (tgt <= 0 || !IsValidEntity(tgt)) return;
++
++    int userid = GetClientUserId(client);
++    int cNube[4] = {125, 185, 255, 220};   // el azul del humo del GMod
++    if (tgtO > 0 && tgtO != tgt && IsValidEntity(tgtO))
++    {
++        g_iSonicPeelNubeBeamO[client] = Sonic_TEStartFollow(tgtO, g_iSonicTELaser, 0.6, 10.0, 1.0, 3, cNube, userid, 0);
++        g_iSonicPeelNubeBeam[client]  = Sonic_TEStartFollow(tgt,  g_iSonicTELaser, 0.6, 10.0, 1.0, 3, cNube, 0, userid);
++    }
++    else
++    {
++        g_iSonicPeelNubeBeam[client] = Sonic_TEStartFollow(tgt, g_iSonicTELaser, 0.6, 10.0, 1.0, 3, cNube);
++    }
++}
++
+ // v6.18: la carrera del peel con los materiales del GMod — trail
+ // principal blue2.vmt (16->1, vida 0.75, blanco, L1221-1231) + los
+ // DOS trails de pies ROJOS (Sonicred.vmt 6->1 en los attachments 2/3
+@@ -2439,8 +2524,7 @@
+     int tgt  = (g_iSonicPeelTgt[client]  != 0) ? EntRefToEntIndex(g_iSonicPeelTgt[client])  : 0;
+     int tgtO = (g_iSonicPeelTgtO[client] != 0) ? EntRefToEntIndex(g_iSonicPeelTgtO[client]) : 0;
+ 
+-    bool wantAuth = g_cvSonicTrailsMat != null && g_cvSonicTrailsMat.BoolValue
+-                    && g_bSonicPeelMatMain && g_iSonicTEMatPeel > 0;
++    bool wantAuth = g_bSonicPeelMatMain && g_iSonicTEMatPeel > 0;
+     bool stOK = false;
+     if (wantAuth && tgt > 0)
+     {
+@@ -2532,32 +2616,40 @@
+     }
+ 
+     // PIES ROJOS (GMod L1232-1258: SpriteTrail Sonicred 6->1, vida 0.75,
+-    // attachments 2/3 del puppet — UNA por pie, SIN split: alla todos
+-    // ven los dos pies). v6.25: POLILINEAS CHAIN DE VUELTA — el unico
+-    // mecanismo de pies que este server YA demostro que dibuja (la .16:
+-    // "beams rojos brillantes" del analisis del video; la .17 con
+-    // BeamFollow sobre info_targets laterales: invisible). El defecto de
+-    // la .16 era el muestreo 0.2s (segmentos RECTOS de 160u a 800 uu/s =
+-    // poligonos): el latido ahora corre a 0.05s -> segmentos de 40u =
+-    // CURVA SUAVE. Muestrea la posicion VIVA del cliente (+-8 lateral
+-    // al tobillo, +8z): cero entidades intermedias, cero parents, cero
+-    // splits. NATIVO = laserbeam {235,60,60,235} 6->1 / 0.75s (valores
+-    // GMod EXACTOS). AUTENTICO (mat 1 + pack) = el chip Sonicred tal
+-    // cual alla: plano y solido ES el look del SpriteTrail GMod sobre
+-    // un chip 2x2 con $color2 [0.9 0 0].
+-    bool wantAuthF = g_cvSonicTrailsMat != null && g_cvSonicTrailsMat.BoolValue
+-                     && g_bSonicPeelMatFoot && g_iSonicTEMatFoot > 0;
++    // fadeTime 0.2, attachments 2/3 del puppet — UNA por pie, SIN split:
++    // alla todos ven los dos pies). v6.25: POLILINEAS CHAIN DE VUELTA —
++    // el unico mecanismo de pies que este server YA demostro que dibuja
++    // (la .16: "beams rojos brillantes" del analisis del video; la .17
++    // con BeamFollow sobre info_targets laterales: invisible). El defecto
++    // de la .16 era el muestreo 0.2s (segmentos RECTOS de 160u a 800 uu/s
++    // = poligonos): el latido ahora corre por FOTOGRAMA = segmentos de
++    // 13-27u = curva continua. Muestrea la posicion VIVA del cliente
++    // (+-8 lateral al tobillo): cero entidades intermedias.
++    // v6.28: BOTAS COMO EL VIDEO GMOD (medicion normalizada de los 2
++    //   videos): z+8 (tobillo, flotaba al DOBLE de alto que alla) -> z+2
++    //   RAS DEL SUELO como la cuña plana del GMod; ancho 6->1 (la mayor
++    //   parte del largo quedaba en 1-3u = linea laser fina) -> 7->3.5
++    //   (cinta gruesa tipo huella de neumatico) y fade 0 (corte seco al
++    //   morir el segmento) -> 1 (cola suave minima — el stock TE_* declara
++    //   FadeLength INT y el fadeTime 0.2 del Lua no es representable; en
++    //   segmentos de 13-27u seria imperceptible). AUTENTICO = el chip
++    //   Sonicred SIEMPRE (el chip
++    //   2x2 plano es inmune al mapeo U/V de los TE beams y lee como la
++    //   cinta SOLIDA opaca del GMod — la diferencia "laser fino vs
++    //   cuña gruesa" que el owner senalo en los videos); nativo = fallback
++    //   laserbeam {235,60,60} si el pack no esta.
++    bool wantAuthF = g_bSonicPeelMatFoot && g_iSonicTEMatFoot > 0;
+     if (wantAuthF)
+     {
+         int cWhite[4] = {255, 255, 255, 255};
+-        g_iSonicPeelFootL[client] = Sonic_TEStartChain(userid, -1, g_iSonicTEMatFoot, 0.75, 6.0, 1.0, 0, cWhite);
+-        g_iSonicPeelFootR[client] = Sonic_TEStartChain(userid,  1, g_iSonicTEMatFoot, 0.75, 6.0, 1.0, 0, cWhite);
++        g_iSonicPeelFootL[client] = Sonic_TEStartChain(userid, -1, g_iSonicTEMatFoot, 0.75, 7.0, 3.5, 1, cWhite);
++        g_iSonicPeelFootR[client] = Sonic_TEStartChain(userid,  1, g_iSonicTEMatFoot, 0.75, 7.0, 3.5, 1, cWhite);
+     }
+     else
+     {
+         int cRed[4] = {235, 60, 60, 235};
+-        g_iSonicPeelFootL[client] = Sonic_TEStartChain(userid, -1, g_iSonicTELaser, 0.75, 6.0, 1.0, 0, cRed);
+-        g_iSonicPeelFootR[client] = Sonic_TEStartChain(userid,  1, g_iSonicTELaser, 0.75, 6.0, 1.0, 0, cRed);
++        g_iSonicPeelFootL[client] = Sonic_TEStartChain(userid, -1, g_iSonicTELaser, 0.75, 7.0, 3.5, 1, cRed);
++        g_iSonicPeelFootR[client] = Sonic_TEStartChain(userid,  1, g_iSonicTELaser, 0.75, 7.0, 3.5, 1, cRed);
+     }
+ 
+     // v6.20: BRILLO AZUL en la oscuridad del peel: luz dinamica azul en
+@@ -2572,6 +2664,12 @@
+     // todavia lejos del blob.
+     g_iSonicPeelLight[client] = Sonic_MakeBlueLight(client, 20.0, 170, 1.1);
+ 
++    // v6.28: si la palanca sonicom_peel_nube viene en 1, el BEAM NATIVO
++    // DEL SPEED (desde el TORSO) nace ya con la carrera; si viene en 0 lo
++    // arranca el CloudTick al vuelo si el owner la cambia a mitad de peelando
++    if (g_cvSonicPeelNube != null && g_cvSonicPeelNube.BoolValue)
++        Sonic_PeelNubeBeamStart(client);
++
+     // v6.25: LA NIEBLA AZUL ya NO es env_steam (no dibuja en el cliente
+     // L4D2 — prueba .17 del owner: invisible): la masa de la nube la
+     // pone la BATERIA DE SPRITES de Sonic_PeelCloudTick (5 humos + 5
+@@ -2589,6 +2687,9 @@
+     Sonic_TEStop(g_iSonicPeelTrailO3[client]);
+     Sonic_TEStop(g_iSonicPeelFootL[client]);
+     Sonic_TEStop(g_iSonicPeelFootR[client]);
++    // v6.28: el beam del torso del modo sonicom_peel_nube 1 tambien muere
++    Sonic_TEStop(g_iSonicPeelNubeBeam[client]);
++    Sonic_TEStop(g_iSonicPeelNubeBeamO[client]);
+     // v6.20: entidades (spritetrails autenticos + info_targets + luz).
+     // v6.25: los targets de pies y los 3 steams FUERON — polylinas al
+     // cliente (pies) y bateria de sprites (nube/polvo).
+@@ -2688,13 +2789,19 @@
+ {
+     int s = CreateEntityByName("env_sprite");
+     if (s <= 0 || !IsValidEntity(s)) return;
+-    bool texOK = (g_bSonicFxMatTinyBall && g_iSonicFxMatTinyBall > 0);
++    // v6.28: glow01 SIEMPRE tintado "224 240 255" — el video GMod las
++    // muestra como motas REDONDAS suaves cian-blanco (#E0F0FF) con
++    // brillo alto que PULSAN en el sitio; la estrella crema del
++    // fleetways (v6.27) leia amarillenta con destello en cruz y el
++    // owner las queria "mas florecentes con brillo". El glow01 aditivo
++    // a alpha 200 ES esa mota brillante. (El fleetways queda en el zip
++    // como referencia; si el owner extrana la estrella es 1 linea.)
+     char amt[8];
+-    IntToString(150, amt, sizeof(amt));           // SetStartAlpha(150) del lua
+-    DispatchKeyValue(s, "model", texOK ? SONIC_FX_MAT_TINYBALL : SONIC_SPRITE_GLOW);
++    IntToString(200, amt, sizeof(amt));           // v6.28: 150 -> 200 (mas florecente)
++    DispatchKeyValue(s, "model", SONIC_SPRITE_GLOW);
+     DispatchKeyValueFloat(s, "scale", GetRandomFloat(0.05, 0.09));
+     DispatchKeyValue(s, "rendermode", "5");      // aditivo (todo lo que este server dibuja bien)
+-    DispatchKeyValue(s, "rendercolor", "255 255 255");  // SetColor(255,255,255): BLANCAS
++    DispatchKeyValue(s, "rendercolor", "224 240 255");  // cian-blanco #E0F0FF del video GMod
+     DispatchKeyValue(s, "renderamt", amt);
+     DispatchKeyValue(s, "spawnflags", "1");       // Start on
+     DispatchSpawn(s);
+@@ -2744,6 +2851,29 @@
+     if (g_cvSonicTrails == null || !g_cvSonicTrails.BoolValue) return;
+     if (!IsClientInGame(client) || !IsPlayerAlive(client)) return;
+ 
++    // v6.28: PALANCA sonicom_peel_nube (EN VIVO — se aplica al latido
++    // siguiente, sin reiniciar el peel): 1 = LA FALTA DEL HUMO la cubre
++    // el BEAM NATIVO DEL SPEED (BeamFollow laserbeam 0.6s 10->1 fade 3
++    // azul "125 185 255" desde el TORSO, el info_target +20z) y la
++    // bateria de sprites se APAGA; 0 = la bateria (el intento denso de
++    // abajo). Pedido literal del owner: "si en este cambio el humo sigue
++    // sin salir ponme un comando que me permita que este cambie por el
++    // Beam este nativo que usa el speed para complementar la falta
++    // (necera desde el torso)".
++    bool beamMode = (g_cvSonicPeelNube != null && g_cvSonicPeelNube.BoolValue);
++    if (beamMode)
++    {
++        if (g_iSonicPeelNubeBeam[client] == 0 && g_iSonicPeelNubeBeamO[client] == 0)
++            Sonic_PeelNubeBeamStart(client);
++        return;   // bateria apagada: el beam la reemplaza
++    }
++    if (g_iSonicPeelNubeBeam[client] != 0 || g_iSonicPeelNubeBeamO[client] != 0)
++    {
++        // el owner la regreso a 0 a mitad de la carrera: el beam muere
++        Sonic_TEStop(g_iSonicPeelNubeBeam[client]);
++        Sonic_TEStop(g_iSonicPeelNubeBeamO[client]);
++    }
++
+     float pos[3];
+     GetClientAbsOrigin(client, pos);
+ 
+@@ -2762,24 +2892,45 @@
+     base[1] = pos[1] + fwd[1] * 10.0;
+     base[2] = pos[2] + 27.0;
+ 
+-    // v6.27: LOS 5 HUMOS "135 185 255" FUERA — "las esferitas blancas...
+-    // CAMBIAN el humo blanco" (owner 2026-10-09): el humo blanco-azulado
+-    // que ponia la masa tapaba la lectura; su lugar lo toman las
+-    // ESFERITAS BLANCAS de Sonic_PeelTinyBall (nacen del TORSO, se
+-    // dispersan — el OM_tinyball del lua) y estos glows que siguen:
+-
+-    // 5 GLOWS (L1646-1667: light_glow02_add Color(125,125,175), alpha
+-    // 100->0, 45-55u->0, vida 0.05-0.6) — aditivos brillantes: las
+-    // lineas de velocidad blancas-azuladas dentro del aura del video
+-    // GMod ("white streaks radiating from the center").
++    // v6.28: LA BATERIA DENSA — reporte de la .20: "el unico peo que
++    // queda es el humo azulado que no se ve". El video GMod muestra una
++    // masa translucida 2-3x el cuerpo que envuelve de la cintura para
++    // abajo y derrama hacia atras (cian-blanco cerca del cuerpo ->
++    // azul profundo en la cola). La .20 ponia 5 glows tenues de 26-36u
++    // que en su video leian como trazas apenas visibles: la bateria se
++    // DOBLA (9 sprites por latido) y se agranda — la masa son HUMOS de
++    // 45-62u y el nucleo brilla con glows de 34-46u. Edicts: ~90/s
++    // con vida 0.35-0.75 (~50 vivos) + ~46 esferitas = ~96 sprites
++    // por Sonic peelando (documentado; el .19 corrio 60+/s sin pestañar).
++
++    // 5 HUMOS om_bluesmoke 45-62u AZUL PROFUNDO con sesgo ATRAS (la
++    // "cape/wake" que envuelve espalda y piernas — la MASA del humo)
++    bool smokeOK = (g_bSonicFxMatSmoke && g_iSonicFxMatSmoke > 0);
+     for (int i = 0; i < 5; i++)
+     {
+         float p[3];
+-        p[0] = base[0] + GetRandomFloat(-34.0, 34.0);
+-        p[1] = base[1] + GetRandomFloat(-34.0, 34.0);
+-        p[2] = base[2] + GetRandomFloat(-16.0, 30.0);
+-        Sonic_SpawnPeelPuff(p, SONIC_SPRITE_GLOW, GetRandomFloat(0.26, 0.36),
+-                            "125 125 175", 125, GetRandomFloat(0.40, 0.80), 0.12);
++        float back = GetRandomFloat(8.0, 55.0);
++        p[0] = base[0] - fwd[0] * back + GetRandomFloat(-30.0, 30.0);
++        p[1] = base[1] - fwd[1] * back + GetRandomFloat(-30.0, 30.0);
++        p[2] = pos[2] + GetRandomFloat(6.0, 28.0);
++        Sonic_SpawnPeelPuff(p, smokeOK ? SONIC_FX_MAT_SMOKE : SONIC_SPRITE_GLOW,
++                            GetRandomFloat(0.45, 0.62), "110 160 255",
++                            GetRandomInt(130, 160), GetRandomFloat(0.45, 0.75), 0.24);
++    }
++
++    // 4 GLOWS cian-blanco 34-46u alrededor del cuerpo (el nucleo
++    // brillante que en el video GMod se mezcla con las esferitas —
++    // light_glow02_add Color(125,125,175) alla, aqui mas claro)
++    for (int i = 0; i < 4; i++)
++    {
++        float p[3];
++        float back = GetRandomFloat(-12.0, 18.0);
++        p[0] = base[0] - fwd[0] * back + GetRandomFloat(-32.0, 32.0);
++        p[1] = base[1] - fwd[1] * back + GetRandomFloat(-32.0, 32.0);
++        p[2] = pos[2] + GetRandomFloat(10.0, 32.0);
++        Sonic_SpawnPeelPuff(p, SONIC_SPRITE_GLOW, GetRandomFloat(0.34, 0.46),
++                            "170 210 255", GetRandomInt(150, 180),
++                            GetRandomFloat(0.35, 0.60), 0.18);
+     }
+ 
+     // 1 MOON POR LATIDO (L1601-1607 + effects L256-322: sonic_peelout_
+@@ -2806,20 +2957,26 @@
+ // aleatoriamente y CAMBIAN el humo blanco (lo dice el lua de Gmod)".
+ // Puerto del OM_tinyball_fleetway (om_noodles_effects_fleetway.lua
+ // L657-742): cada 0.1s el lua hacia 40 intentos x 1/6 de exito (~6.7
+-// bolitas por tanda, ~67/s) — particulas de CLIENTE con la textura
+-// icons/Fleetways_tiny_balls.png (estrellita crema-blanca). Aqui: 2-3
++// bolitas por tanda, ~67/s) — particulas de CLIENTE. Aqui: 2-3
+ // por latido 10 Hz (~25/s, ~46 vivos — alla cada una era gratis para el
+ // server, aqui es un edict; misma tasa visual: en pantalla GMod se ven
+ // 15-25 a la vez). Nacen DEL TORSO: pos+24z ±12u (el lua: bone "Torso"
+ // + Vector(rand(-10,10)) * 1.2 — el QC del owner confirma el bone
+ // Torso como la pieza del cuerpo, a la altura del attachment Trail +19z
+-// y del emitter +27z del Think). Se dispersan con velocidad aleatoria
+-// 30-80 uu/s (lua: VectorRand():GetNormalized() * Rand(15,40) * 2) con
+-// sesgo ascendente (su SetGravity(0,0,Rand(1,3)) + air resistance 40).
+-// Vida 1.2-2.5s — de las mas largas del suite: la nube queda VIVA
+-// detras despues que el corredor paso (la firma del look tinyball).
+-// Material: fleetways_tiny_balls autentico si esta instalado, glow01
+-// blanco si no (misma lectura de puntito brillante).
++// y del emitter +27z del Think).
++// v6.28: CALIBRADAS AL VIDEO GMOD (reporte .20: "en el video de Gmod se
++// ven un poco mas florecentes con brillo"): (a) TEXTURA — alla el video
++// muestra motas REDONDAS suaves cian-blanco #E0F0FF (el air resistance
++// 40 del Lua les mata la velocidad y quedan PULSANDO en el torso; la
++// estrella crema del fleetways leia amarillenta con destello en cruz):
++// glow01 tintado "224 240 255" alpha 200 SIEMPRE (el .vtf/.vmt del
++// fleetways quedan en el zip como referencia — cambiar de vuelta es 1
++// linea en Sonic_SpawnPeelBall). (b) VELOCIDAD — el lua tira
++// VectorRand()*Rand(30,80) pero su air resistance 40 la mata en ~0.1s
++// (deriva real ~10-20u); el MOVETYPE_FLY no tiene friccion y a 30-80
++// constantes se regaban 36-200u: 10-28 uu/s con sesgo +z = enjambre
++// alrededor del torso que se queda vivo detras (la firma del look).
++// Vida 1.2-2.5s — de las mas largas del suite.
+ // ---------------------------------------------------------------------
+ void Sonic_PeelTinyBall(int client)
+ {
+@@ -2838,18 +2995,23 @@
+         p[1] = pos[1] + GetRandomFloat(-12.0, 12.0);
+         p[2] = pos[2] + 24.0 + GetRandomFloat(-12.0, 12.0);
+ 
+-        // VectorRand():GetNormalized() * Rand(30,80) — angulos aleatorios
++        // v6.28: VectorRand 30-80 -> 10-28 uu/s — en el GMod el air
++        // resistance 40 del Lua MATA la velocidad enseguida (las motas
++        // PULSAN en el sitio con deriva sutil, medido en su video); el
++        // MOVETYPE_FLY no tiene friccion y a 30-80 constantes se regaban
++        // por todo el pasillo. A 10-28 quedan como enjambre alrededor
++        // del torso (deriva total ~12-70u en sus 1.2-2.5s de vida).
+         float dir[3], vang[3];
+         vang[0] = GetRandomFloat(-90.0, 90.0);
+         vang[1] = GetRandomFloat(-180.0, 180.0);
+         vang[2] = 0.0;
+         GetAngleVectors(vang, dir, NULL_VECTOR, NULL_VECTOR);
+-        float spd = GetRandomFloat(30.0, 80.0);
++        float spd = GetRandomFloat(10.0, 28.0);
+         float vel[3];
+         vel[0] = dir[0] * spd;
+         vel[1] = dir[1] * spd;
+         // sesgo +z: la gravedad (0,0,Rand(1,3)) del lua las lleva arriba
+-        vel[2] = dir[2] * spd * 0.6 + GetRandomFloat(8.0, 22.0);
++        vel[2] = dir[2] * spd * 0.6 + GetRandomFloat(4.0, 14.0);
+ 
+         Sonic_SpawnPeelBall(p, vel, GetRandomFloat(1.2, 2.5));
+     }

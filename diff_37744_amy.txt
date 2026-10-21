@@ -1,0 +1,76 @@
+--- download/suite_37743_la_habilidad_manda/include/Amy.inc	2026-10-10 10:00:28.634643081 +0000
++++ download/suite_37744_directo_smx/include/Amy.inc	2026-10-10 11:15:10.569125302 +0000
+@@ -12,8 +12,9 @@
+  *  parry activo; deja de estar en defensa = parry desactivado)".
+  *   - FLANCO DE SUBIDA/BAJADA en Amy_OM_PhaseThink: la ventana de
+  *     defensa (g_fAmyOMCounterUntil) abre/cierra la ventana de parry
+- *     de Amy en el chch_parrying.nut v2.3 via ChCh_KnxNotify (SU
+- *     propio contador por entidx — el de Knuckles no se toca).
++ *     de Amy en el chch_parrying.nut via SU entrada ChCh_AmyNotify
++ *     (v104: entrada propia de Amy — SU contador por entidx, el de
++ *     Knuckles no se toca).
+  *   - PUENTE INVERSO amyparry_strike <entidx> (RegServerCmd): el .nut
+  *     lo manda por SendToServerConsole cuando un PROYECTIL entra al
+  *     rango de su ventana -> Amy_OM_CounterTriggerProp = consume la
+@@ -960,7 +961,7 @@
+ //   motor nuevo de sonic.inc (Sonic_TEStartFollow: laserbeam 25->2,
+ //   vida 0.3, blanco alpha 200 — el mismo look de la v92, ahora SI
+ //   visible). Historial v99-OM y anteriores: en la linea de abajo.
+-#define AMY_INC_VERSION          "v103-OM"  // v103: ADOPCION EN EL MONTAJE + reemplazo limpio (manager 3.77.40: fin del barrido en caliente)
++#define AMY_INC_VERSION          "v104-OM"  // v104: SU PROPIA ENTRADA EN EL VSCRIPT — Amy_ParryNotifyNut llama a ChCh_AmyNotify del chch_parrying.nut v2.8 (patron SetAmyMode; ya no comparte la entrada de Knuckles) (manager 3.77.44)
+ // v99-OM (manager 3.77.10): MIGRACION MECANICA de firma del Sonic_MakeTrail compartido (v6.17 del sonic.inc: ahora recibe sprite + offset[3] + alpha) — el trail del martillo lanzado mantiene EXACTAMENTE su look (laserbeam nativo, blanco, 25->2, vida 0.3, Z+8). CERO cambio de comportamiento. El GMod original usa models/noodles/om/amy/white.vmt para ese trail — si el owner confirma que lo tiene, se cablea autentico con fallback en una futura version. v98-OM (manager 3.77.7): AVATAR REMOTO POR TP — pedido del owner ("los avatares DE OTROS al sistema del tails follow, modo TP; localmente igual, con su pausa"): la copia R (la que ven los demas) viaja por TeleportEntity por tick + reloj vivo SIN EF_NOINTERP (receta tails_follow / Tails v5.25; convar compartido tails_avatar_tp, default 1, 0 = R parentada como antes): los clientes de los demas la INTERPOLAN = suave sin depender de la pausa (que solo re-encaja la vista del dueno). La copia L queda INTACTA (parentada + EF_NOINTERP + pulso). v97-OM (manager 3.77.5): DEFENSA vs PROPS INMOVILES — veredicto del owner: "los inmoviles importan, recuerda que normalmente los props no se mueven (con excepciones, pero es mejor cubrir ambas cosas)": ELIMINADO el filtro de 60 u/s de la v96 — cualquier prop al radio de la ventana (quieto o volando) la consume y suelta el aura que lo repele (sin stun); orden del escaneo intacto (especial/tank > witch > comun > prop > piedra del tank); typo "repeledido"->"repelido". v96-OM (manager 3.77.4): CUATRO FIXES — (1) rate del runattack de la pose de defensa y del runthrow = curvas del run/walk normal (antes curva del walk = 3.6x en carrera); (2) HITBOX AEREO del martillo lanzado 35% mayor (amyom_throw_hitbox 1.35, scan 30 Hz del vuelo de ida, mismos stun+ragdoll/dano que el Touch, una vez por victima); (3) CVARS al cargar/recargar: reconciliacion de Sonic_Suite.cfg — los cvars del suite que falten se AGREGAN AL FINAL sin tocar las lineas existentes + prefijo amyom_ dentro del auto-guardado; (4) DEFENSA REWORK: la Z solo abre la POSE, el AURA sale AL IMPACTAR (especial/tank/witch -> aura + contra stun + cartas; comun -> aura; prop -> aura que lo repele, sin stun). (manager 3.77.3): v95-OM (manager 3.77.3): FIX JUMP/FALL ENMASCARADOS — la rama de AIRE viva debajo de throw armado/ventana/sin martillo desde la v92-OM (reporte: "el jump y fall no se reproducen"); ahora va justo tras incap, como el framework pills (L775-794: el aire es estado base, los alternates solo sustituyen idle/walk/run) + sentinel de fallbacks 0 -> -1 (el 0 ES AMY_OM_ST_IDLE). v94-OM: AIRE CON MARTILLO — jump/fall segun martillo (HammerJump/FallAnimHammer con el; normales sin el; Lua L1631-1640/L221-224; estados JUMPH/FALLH + fallbacks). v93-OM (manager 3.77.1): CHAINS — el martillo del MODELO (submodelo "hammer" del amy.mdl) desaparece de verdad cuando Amy no lo lleva: bodygroup "Chains" = el SetBodygroup(1,1)/(1,0) del Lua del OM (bit 0 de m_nBody), aplicado a las DOS copias del avatar en cada lanzar/recuperar y al ragdoll de muerte; FIX nombres reales del Lua sin martillo (walk_axeless/run_axeless CON guion bajo — la v92-OM buscaba "walkaxeless"/"runaxeless", que NO existen) + fallbacks AXE->base. v92-OM (manager 3.77.0): LAS 4 RANURAS — Z swing fusionado con el area + VENTANA DE DEFENSA (contra pre-sonic 3.5s+cartas, sin ragdoll), X CARTAS DEL TAROT nuevas (2 de 6: Moon/Sun/Emperor/Strength/World/Fool), V (habilidad 3) LANZAMIENTO de martillo (hammer.mdl masa 50 poder 3000, impacto = stun + ragdoll falso VOLANDO), B (habilidad 4) cartas del SUPER TANK intactas, C sigue cambiando area<->dash, + AVATAR amy.mdl patron Tails/Sonic. v91: FIX CINEMATICAS
+ 
+ // ============================================================
+@@ -3182,11 +3183,15 @@
+ }
+ 
+ // ============================================================
+-//  v102 - PARRY DELEGADO DE AMY: el puente SMX -> .nut
+-//  (patron Amy_PublishScriptIdx / Parry.smx v2.1): RunScriptCode en
+-//  el root avisando a ChCh_KnxNotify. on = "Amy esta en pose de
+-//  defensa" (la ventana del .nut dura lo que le quede de pose);
+-//  off = "Amy ya no esta en defensa" (LA ORDEN DE APAGADO).
++//  v102/v104 - PARRY DELEGADO DE AMY: el puente SMX -> .nut
++//  (patron Amy_PublishScriptIdx / SetAmyMode del supertank):
++//  RunScriptCode en el root llamando a ChCh_AmyNotify — SU PROPIA
++//  ENTRADA en el chch_parrying.nut v2.8 (v104: antes llamaba la
++//  entrada de Knuckles y su identidad dependia de convars espejo;
++//  ahora LA ENTRADA ES LA IDENTIDAD, como SetAmyMode). on = "Amy
++//  esta en pose de defensa" (la ventana del .nut dura lo que le
++//  quede de pose); off = "Amy ya no esta en defensa" (LA ORDEN DE
++//  APAGADO).
+ // ============================================================
+ void Amy_ParryNotifyNut(int client, bool on, float now)
+ {
+@@ -3205,7 +3210,7 @@
+ 
+     char code[192];
+     Format(code, sizeof(code),
+-        "local r = getroottable(); if(\"ChCh_KnxNotify\" in r) r.ChCh_KnxNotify(%d, %d, %.2f)",
++        "local r = getroottable(); if(\"ChCh_AmyNotify\" in r) r.ChCh_AmyNotify(%d, %d, %.2f)",
+         client, on ? 1 : 0, dur);
+ 
+     SetVariantString(code);
+@@ -9002,7 +9007,7 @@
+     }
+ 
+     if (ng > 0)
+-        PrintToServer("[Amy v103-OM] Adopcion del montaje: %d huerfano(s) del avatar eliminado(s).", ng);
++        PrintToServer("[Amy v104-OM] Adopcion del montaje: %d huerfano(s) del avatar eliminado(s).", ng);
+ }
+ 
+ void Amy_OM_CreateAvatar(int client, bool pulsePause = true)
+@@ -10047,9 +10052,10 @@
+ void Amy_OM_PhaseThink(int client, float now)
+ {
+     // ============================================================
+-    // v102: PARRY DELEGADO — la VENTANA DE DEFENSA de Amy abre/cierra
+-    // SU ventana de parry en el chch_parrying.nut (contador APARTE del
+-    // de Knuckles, misma API ChCh_KnxNotify). "Si esta con la defensa
++    // v102/v104: PARRY DELEGADO — la VENTANA DE DEFENSA de Amy
++    // abre/cierra SU ventana de parry en el chch_parrying.nut via SU
++    // entrada ChCh_AmyNotify (contador APARTE del de Knuckles; la
++    // entrada de cada quien es su identidad). "Si esta con la defensa
+     // activa el parry se activa; si deja de estar en defensiva el
+     // parry se desactiva": flanco de subida = pose ON -> notify(1);
+     // flanco de bajada (impacto que consume la ventana — parry o

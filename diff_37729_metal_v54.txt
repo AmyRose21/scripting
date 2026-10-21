@@ -1,0 +1,194 @@
+--- /home/z/my-project/download/suite_37728_ronda3/include/Metal.inc	2026-10-09 07:06:18.177383466 +0000
++++ /home/z/my-project/builds/OM37729/scripting/include/Metal.inc	2026-10-09 08:49:54.657801845 +0000
+@@ -1,6 +1,33 @@
+ /*
+  * ======================================================
+- *  [MODULO] Metal Sonic - The Ultimate Machine (v5.3-OM - RONDA 3: ANTI-CONTROL REAL + AVALANCHA + WITCH + 175HP)
++ *  [MODULO] Metal Sonic - The Ultimate Machine (v5.4-OM - RONDA 4: WITCH ESTATUA DE VERDAD)
++ *
++ *  v5.4 (suite 3.77.29 — fix del frozen de la witch, 2026-10-09):
++ *   EL REPORTE: "la witch no se congela (no se le aplica el freeze para
++ *   Nextbot)... el stun normal sirve pero el frozen no esta sirviendo
++ *   para la witch... Tails y Amy aplican el frozen incluso Sonic pero
++ *   Metal no". Causa raiz: el v5.3 congelaba a la witch SOLO con
++ *   MOVETYPE_NONE (la FISICA quieta) — su IA seguia VIVA: segia
++ *   animandose y podia zarpear en el sitio. El congelado de verdad del
++ *   suite para la witch (el "freeze para nextbot") son DOS capas:
++ *   FL_FROZEN apaga su IA (ESTATUA — receta Witch_Flight/Rouge) +
++ *   MOVETYPE_NONE. Tails (rayo), Amy (martillo) y Sonic (final del
++ *   spin) lo aplican con Sonic_WitchStun; Metal no lo llamaba nunca.
++ *   EL FIX:
++ *   (1) Metal_WitchFreeze(witch): FL_FROZEN inmediato y propio (capa
++ *       que funciona SIEMPRE, sin depender de ningun cvar) +
++ *       Sonic_WitchStun (estrellas + el watch que re-afirma el flag
++ *       cada 0.1s — la MISMA funcion de Tails/Amy/Sonic).
++ *   (2) Catch, cada tick del arrastre y cada golpe del estampado la
++ *       re-afirman (el dano o el motor pueden tirar el flag a mitad).
++ *   (3) Suelta: se libera el slot de Sonic y se quita SOLO el flag que
++ *       pusimos nosotros (si venia congelada por otro stun, queda como
++ *       estaba) — sin esto el fling de salida rebotaba contra la estatua.
++ *   (4) Explosion de muerte: la witch del radio recibe el paquete
++ *       completo (estatua 5.5s + ragdoll volador — receta Amy: Sonic_
++ *       WitchStun + Sonic_SpawnWitchRagdoll).
++ *   (5) hadFrozen capturado UNA VEZ en el catch: un re-afirmo con el
++ *       flag ya puesto JAMAS "cree" que la witch venia congelada.
+  *
+  *  v5.3 (suite 3.77.28 — tercera ronda de la revision, 5 puntos):
+  *   (1) ANTI-CONTROL DE VERDAD (fix critico): la inmunidad de la v5.2
+@@ -523,6 +550,7 @@
+ #define METAL_COMMON_KILL_DMG       9999.0 // v5.3: un toque = muerto
+ #define METAL_WITCH_HOLD_DIST       85.0  // v5.3 punto 3: la witch va un poco mas adelantada (es grande)
+ #define METAL_WITCH_RELEASE_FLING   400.0 // v5.3: impulso al soltar a la witch
++#define METAL_WITCH_STUN_REFRESH    1.5   // v5.4: refresco del congelado (estatua) de la witch por tick
+ #define METAL_DRAG_RELEASE_FLING    350.0 // v5.3: impulso al soltar al arrastrado (cap de dano)
+ #define METAL_STUCK_TELEPORT_DIST   90.0  // v5.3 punto 4: el atascado se teletransporta DETRAS
+ 
+@@ -633,6 +661,7 @@
+ int   g_iMetalWitchTarget[MAXPLAYERS + 1];    // entref de la witch arrastrada
+ int   g_iMetalWitchColGroup[MAXPLAYERS + 1];  // grupo de colision original de la witch (-1 = nada)
+ int   g_iMetalWitchSavedMT[MAXPLAYERS + 1];   // movetype original de la witch (por si no es WALK)
++bool  g_bMetalWitchHadFrozen[MAXPLAYERS + 1];  // v5.4: la witch ya traia FL_FROZEN de otro stun al atraparla
+ 
+ // v5.3 punto 4: grupo de colision original del CLIENTE arrastrado (-1 = nada)
+ int   g_iMetalVictimColGroup[MAXPLAYERS + 1];
+@@ -878,6 +907,7 @@
+     // punto 4: restaurar al ARRASTRADO (cliente a DEBRIS / witch)
+     // por el camino que sea — idempotente
+     Metal_ReleaseGrabbed(client, true);
++    g_bMetalWitchHadFrozen[client] = false;   // v5.4: sin estado de freeze heredado
+ 
+     // puntos 2+5: timers de la avalancha y del tope de vida fuera
+     g_fMetalNextCommonKill[client]  = 0.0;
+@@ -1832,6 +1862,7 @@
+     {
+         SDKHooks_TakeDamage(witch, client, client, METAL_SLAM_DMG_ENEMY, DMG_OM_CLUB);
+         SetEntityMoveType(witch, MOVETYPE_NONE);   // re-congelar tras el dano
++        Metal_WitchFreeze(witch);   // v5.4: estatua re-afirmada en cada golpe del estampado
+ 
+         // Re-sujetar contra la pared (45u de la pared: es mas grande)
+         float wPos[3], wHold[3], zero[3];
+@@ -2338,6 +2369,25 @@
+ // para entidades: congelada (MOVETYPE_NONE, su movetype original se
+ // guarda) + DEBRIS en su cuerpo (no tapona el pasillo mientras la
+ // arrastra) + el dano del catch + los FX electricos de siempre.
++// v5.4: EL CONGELADO DE VERDAD para la witch — el "freeze para nextbot"
++// que ya usan Tails/Amy/Sonic con ella. Dos capas del recetario del suite:
++//   1) FL_FROZEN inmediato y propio (el gate del motor que apaga su IA =
++//      ESTATUA; funciona SIEMPRE, sin depender de ningun cvar);
++//   2) Sonic_WitchStun (estrellas + el watch de sonic.inc que re-afirma
++//      el flag cada 0.1s — la MISMA funcion que llaman Tails/Amy/Sonic).
++// Idempotente: se llama en el catch, en cada tick del arrastre y en cada
++// golpe del estampado (el dano o el motor pueden tirar el flag a mitad).
++// OJO: el hadFrozen NO se captura aqui — un re-afirmo con el flag ya
++// puesto jamas debe "creer" que la witch venia congelada de antes (se
++// captura UNA VEZ en Metal_BeginWitchDrag, antes del primer freeze).
++void Metal_WitchFreeze(int witch)
++{
++    if (witch <= MaxClients || !IsValidEntity(witch)) return;
++    if ((GetEntityFlags(witch) & FL_FROZEN) == 0)
++        SetEntityFlags(witch, GetEntityFlags(witch) | FL_FROZEN);
++    Sonic_WitchStun(witch, METAL_WITCH_STUN_REFRESH);
++}
++
+ void Metal_BeginWitchDrag(int client, int witch, float now)
+ {
+     g_iMetalGrabbedTarget[client]      = -1;   // no hay cliente agarrado
+@@ -2354,6 +2404,14 @@
+     SetEntityMoveType(witch, MOVETYPE_NONE);
+     SetEntProp(witch, Prop_Data, "m_CollisionGroup", METAL_DASH_COLGROUP);
+ 
++    // v5.4: congelado COMPLETO — el hadFrozen se captura ANTES de tocar
++    // el flag (si venia congelada por otro stun, no la descongelamos al
++    // soltarla) y la ESTATUA es de verdad: el MOVETYPE_NONE de arriba
++    // solo quieta la fisica, el FL_FROZEN de Metal_WitchFreeze apaga su
++    // IA (el "la witch no se congela" del reporte de la ronda 4).
++    g_bMetalWitchHadFrozen[client] = (GetEntityFlags(witch) & FL_FROZEN) != 0;
++    Metal_WitchFreeze(witch);
++
+     // Dano del catch (como un especial: 4) — sin OM_Stun (player-only)
+     SDKHooks_TakeDamage(witch, client, client, METAL_CATCH_DMG, DMG_OM_CLUB);
+ 
+@@ -2392,6 +2450,10 @@
+         return;
+     }
+ 
++    // v5.4: re-afirmar el congelado cada tick — la estatua aguanta TODO
++    // el arrastre (el dano o el motor pueden tirar el flag a mitad)
++    Metal_WitchFreeze(witch);
++
+     // Velocidad de arrastre (mismo stack que un especial)
+     Metal_DashSpeedSet(client, METAL_DRAG_SPEED);
+     float dir[3];
+@@ -2435,6 +2497,7 @@
+ 
+         SDKHooks_TakeDamage(witch, client, client, METAL_DRAG_DMG_ENEMY, DMG_OM_CLUB);
+         SetEntityMoveType(witch, MOVETYPE_NONE);   // re-congelar tras el dano
++        Metal_WitchFreeze(witch);   // v5.4: estatua re-afirmada tras el dano del tick
+ 
+         // FX del tick sobre la witch (impacto + electricidad del mod)
+         if (g_bMetalAssets)
+@@ -2480,6 +2543,17 @@
+ 
+     if (IsValidEntity(witch))
+     {
++        // v5.4: DESCONGELAR antes del fling — la estatua (FL_FROZEN)
++        // ignoraria el impulso de salida. Se libera el slot de Sonic
++        // (estrellas + watch) por el mismo camino y se quita SOLO el
++        // flag que pusimos nosotros (si venia congelada por otro stun,
++        // queda como estaba — patron Rouge_WaveRelease).
++        int wslot = Sonic_WitchStunSlotOf(witch);
++        if (wslot != -1) Sonic_WitchStunClear(wslot);
++        if (!g_bMetalWitchHadFrozen[client]
++            && (GetEntityFlags(witch) & FL_FROZEN) != 0)
++            SetEntityFlags(witch, GetEntityFlags(witch) & ~FL_FROZEN);
++
+         // su movetype ORIGINAL (guardado en el catch — por si no era WALK)
+         MoveType mt = view_as<MoveType>(g_iMetalWitchSavedMT[client]);
+         if (view_as<int>(mt) <= 0) mt = MOVETYPE_WALK;
+@@ -2497,6 +2571,7 @@
+     }
+     g_iMetalWitchSavedMT[client]  = -1;
+     g_iMetalWitchTarget[client]   = 0;
++    g_bMetalWitchHadFrozen[client] = false;
+ }
+ 
+ // v5.3 punto 3: suelta de la witch por cap de dano (el equivalente del
+@@ -2844,6 +2919,38 @@
+         }
+     }
+ 
++    // ============================================================
++    // v5.4: LA WITCH DEL RADIO TAMBIEN — el frozen "para nextbot" que
++    // ya usan Tails/Amy/Sonic con ella: estatua 5.5s + ragdoll volador
++    // en direccion contraria a Metal (la receta Amy del martillo:
++    // Sonic_WitchStun + Sonic_SpawnWitchRagdoll). El watch de sonic.inc
++    // hace el resto (re-afirma el flag, orbita estrellas, la despierta
++    // DONDE cayo el doble cuando expira).
++    // ============================================================
++    int went = -1;
++    while ((went = FindEntityByClassname(went, "witch")) != -1)
++    {
++        if (!IsValidEntity(went)) continue;
++        if (GetEntProp(went, Prop_Data, "m_iHealth") <= 0) continue;
++
++        float wPos[3];
++        GetEntPropVector(went, Prop_Data, "m_vecOrigin", wPos);
++        if (GetVectorDistance(pos, wPos) > METAL_DEATH_RADIUS) continue;
++
++        float fDirW[3];
++        fDirW[0] = wPos[0] - pos[0];
++        fDirW[1] = wPos[1] - pos[1];
++        fDirW[2] = 0.0;
++        float lenW = SquareRoot(fDirW[0] * fDirW[0] + fDirW[1] * fDirW[1]);
++        if (lenW < 1.0) { fDirW[0] = GetRandomFloat(-1.0, 1.0); fDirW[1] = GetRandomFloat(-1.0, 1.0); lenW = 1.0; }
++        fDirW[0] /= lenW;
++        fDirW[1] /= lenW;
++
++        Sonic_WitchStun(went, METAL_DEATH_STUN);
++        Sonic_SpawnWitchRagdoll(went, fDirW);
++        ragCount++;
++    }
++
+     PrintToChatAll("\x04[Metal Sonic]\x01 ha sido destruido: ¡explosion final! (%d infectados lanzados)", ragCount);
+ }
+ 

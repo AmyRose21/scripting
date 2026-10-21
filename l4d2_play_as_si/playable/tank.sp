@@ -3,128 +3,62 @@
 #endif
 #define _pure_play_as_si_tank_included
 
-ConVar tankHp;
-ConVar tankClawDmg;
-ConVar tankClawRadius;
-ConVar tankRockDmg;
-ConVar tankRockRadius;
-ConVar tankRockExplodeForce;
-ConVar tankHealPoint;
-ConVar tankAbilityCooldown;
+ConVar g_hCvarTankHp;
+ConVar g_hCvarTankClawDmg;
+ConVar g_hCvarTankClawRadius;
+ConVar g_hCvarTankRockDmg;
+ConVar g_hCvarTankRockRadius;
+ConVar g_hCvarTankRockExplodeForce;
+ConVar g_hCvarTankHealPoint;
+ConVar g_hCvarTankAbilityCooldown;
 
-int clawSwingCount[MAXPLAYERS + 1];
+int g_iTankClawSwingCount[MAXPLAYERS + 1];
 
 void AddTankConVars()
 {
     char desc[64];
     Format(desc, 64, "%t", "ConVar Tank HP");
-    tankHp = CreateConVar("l4d2_play_as_si_tank_hp", "1000", desc, 0, true, 100.0);
+    g_hCvarTankHp = CreateConVar("l4d2_play_as_si_tank_hp", "1000", desc, 0, true, 100.0);
     Format(desc, 64, "%t", "ConVar Tank Claw Damage");
-    tankClawDmg = CreateConVar("l4d2_play_as_si_tank_claw_damage", "500.0", desc, 0, true, 100.0);
+    g_hCvarTankClawDmg = CreateConVar("l4d2_play_as_si_tank_claw_damage", "500.0", desc, 0, true, 100.0);
     Format(desc, 64, "%t", "ConVar Tank Claw Radius");
-    tankClawRadius = CreateConVar("l4d2_play_as_si_tank_claw_radius", "100.0", desc, 0, true, 100.0);
+    g_hCvarTankClawRadius = CreateConVar("l4d2_play_as_si_tank_claw_radius", "100.0", desc, 0, true, 100.0);
     Format(desc, 64, "%t", "ConVar Tank Rock Damage");
-    tankRockDmg = CreateConVar("l4d2_play_as_si_tank_rock_damage", "500.0", desc, 0, true, 100.0);
+    g_hCvarTankRockDmg = CreateConVar("l4d2_play_as_si_tank_rock_damage", "500.0", desc, 0, true, 100.0);
     Format(desc, 64, "%t", "ConVar Tank Rock Radius");
-    tankRockRadius = CreateConVar("l4d2_play_as_si_tank_rock_radius", "300.0", desc, 0, true, 100.0);
+    g_hCvarTankRockRadius = CreateConVar("l4d2_play_as_si_tank_rock_radius", "300.0", desc, 0, true, 100.0);
     Format(desc, 64, "%t", "ConVar Tank Rock Force");
-    tankRockExplodeForce = CreateConVar("l4d2_play_as_si_tank_rock_explode_force", "300.0", desc, 0, true, 300.0)
+    g_hCvarTankRockExplodeForce = CreateConVar("l4d2_play_as_si_tank_rock_explode_force", "300.0", desc, 0, true, 300.0);
     Format(desc, 64, "%t", "ConVar Tank Heal");
-    tankHealPoint = CreateConVar("l4d2_play_as_si_tank_heal_point", "400", desc, 0, true, 100.0);
+    g_hCvarTankHealPoint = CreateConVar("l4d2_play_as_si_tank_heal_point", "400", desc, 0, true, 100.0);
     Format(desc, 64, "%t", "ConVar Tank Ability Cooldown");
-    tankAbilityCooldown = CreateConVar("l4d2_play_as_si_tank_ability_cooldown", "2.0", desc, 0, true, 1.0);
+    g_hCvarTankAbilityCooldown = CreateConVar("l4d2_play_as_si_tank_ability_cooldown", "2.0", desc, 0, true, 1.0);
 }
 
-void OnRockSpawnPost(int entity)
+public void L4D_OnCThrowActivate_Post(int ability)
 {
-    SDKUnhook(entity, SDKHook_SpawnPost, OnRockSpawnPost);
-    RequestFrame(OnRockSpawnPostNextFrame, EntIndexToEntRef(entity));
+    int client = GetEntPropEnt(ability, Prop_Send, "m_hOwnerEntity");
+    if(!IsSurvivor(client)) return;
+
+    L4D2_SetCustomAbilityCooldown(client, GetConVarFloat(g_hCvarTankAbilityCooldown));
 }
 
-void OnRockSpawnPostNextFrame(int entRef)
-{
-    int client = GetEntPropEnt(EntRefToEntIndex(entRef), Prop_Data, "m_hThrower");
-    if(!IsRealClient(client))
-    {
-        return;
-    }
-    SetAbilityCooldown(client, GetConVarFloat(tankAbilityCooldown));
-}
-
-public void OnTankRockDestroyed(int entity)
-{
-    int tank = GetEntPropEnt(entity, Prop_Data, "m_hThrower");
-    if(!IsRealClient(tank))
-    {
-        return;
-    }
-    
-    float rockPos[3];
-    GetAbsOrigin(entity, rockPos);
-    
-    // collect all entities in range
-    ArrayList entities = new ArrayList();
-    float victimPos[3];
-    for(int i = 1; i <= MaxClients; i++)
-    {
-        if(IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == TEAM_INFECTED)
-        {
-            GetAbsOrigin(i, victimPos);
-            float distance = GetVectorDistance(rockPos, victimPos);
-            if (distance <= GetConVarFloat(tankRockRadius))
-            {
-                entities.Push(i);
-            }
-        }
-    }
-
-    for(int i = MAXPLAYERS + 1; i < GetMaxEntities(); i++)
-    {
-        if(!IsValidEntity(i)) continue;
-
-        char classname[9];
-        GetEntityClassname(i, classname, 9);
-
-        if(classname[0] != 'i' && classname[0] != 'w') continue;
-
-        if(StrEqual(classname, "infected", false) || StrEqual(classname, "witch", false))
-        {
-            GetAbsOrigin(i, victimPos);
-            float distance = GetVectorDistance(rockPos, victimPos);
-            if(distance <= GetConVarFloat(tankRockRadius))
-            {
-                entities.Push(i);
-            }
-        }
-        
-    }
-
-    for(int i = 0; i < entities.Length; i++)
-    {
-        int victim = entities.Get(i);
-        AddExplosionForce(victim, rockPos, GetConVarFloat(tankRockExplodeForce));
-        SDKHooks_TakeDamage(victim, tank, tank, GetConVarFloat(tankRockDmg));
-    }
-    CloseHandle(entities);
-
-}
-
+// !rcon sm plugins reload l4d2_play_as_si
 // This forward called 10 times in one swing, so do a fliter for performance
 public void L4D_TankClaw_DoSwing_Post(int tank, int claw)
 {
     if(!IsSurvivor(tank))
         return;
     
-    clawSwingCount[tank]++;
+    g_iTankClawSwingCount[tank]++;
     // Only judge once per swing
-    if(clawSwingCount[tank] % 10 != 5)
+    if(g_iTankClawSwingCount[tank] % 10 != 5)
         return;
     // Garantee not overflow range of Int
-    if(clawSwingCount[tank] >= 10)
-        clawSwingCount[tank] -= 10;
+    if(g_iTankClawSwingCount[tank] >= 10)
+        g_iTankClawSwingCount[tank] -= 10;
 
-    float tankPos[3];
-    GetAbsOrigin(tank, tankPos);
+    float tankPos[3]; GetAbsOrigin(tank, tankPos);
 
     float victimPos[3];
     for(int i = 1; i <= MaxClients; i++)
@@ -133,9 +67,9 @@ public void L4D_TankClaw_DoSwing_Post(int tank, int claw)
         {
             GetAbsOrigin(i, victimPos);
             float distance = GetVectorDistance(tankPos, victimPos);
-            if (distance <= GetConVarFloat(tankClawRadius))
+            if (distance <= GetConVarFloat(g_hCvarTankClawRadius))
             {
-                SDKHooks_TakeDamage(i, tank, tank, GetConVarFloat(tankClawDmg), DMG_BLAST);
+                SDKHooks_TakeDamage(i, tank, tank, GetConVarFloat(g_hCvarTankClawDmg), DMG_BLAST, -1, NULL_VECTOR, NULL_VECTOR, false);
             }
         }
     }
@@ -153,9 +87,9 @@ public void L4D_TankClaw_DoSwing_Post(int tank, int claw)
         {
             GetAbsOrigin(i, victimPos);
             float distance = GetVectorDistance(tankPos, victimPos);
-            if(distance <= GetConVarFloat(tankClawRadius))
+            if(distance <= GetConVarFloat(g_hCvarTankClawRadius))
             {
-                SDKHooks_TakeDamage(i, tank, tank, GetConVarFloat(tankClawDmg), DMG_BLAST);
+                SDKHooks_TakeDamage(i, tank, tank, GetConVarFloat(g_hCvarTankClawDmg), DMG_BLAST, -1, NULL_VECTOR, NULL_VECTOR, false);
             }
         }
     }    
@@ -164,7 +98,8 @@ public void L4D_TankClaw_DoSwing_Post(int tank, int claw)
 // Prevent Team Mate to be hit
 public Action L4D_TankClaw_OnPlayerHit_Pre(int tank, int claw, int player)
 {
-    if((IsSurvivor(tank) && IsSurvivor(player)) || (!IsSurvivor(tank) && (playerStatus[player] == PLAYABLE_TANK)))
+    if((IsSurvivor(tank) && IsSurvivor(player)) // Prevent Team Mate to be hit
+      || (!IsSurvivor(tank) && g_hPlayerZombie[player] != null && g_hPlayerZombie[player].ZombieClass == PLAYABLE_TANK))  // Prevent SI-Tank to be hit
     {
         return Plugin_Handled;
     }
@@ -173,18 +108,17 @@ public Action L4D_TankClaw_OnPlayerHit_Pre(int tank, int claw, int player)
 
 public void L4D_TankClaw_OnPlayerHit_Post(int tank, int claw, int player)
 {
-    if(IsRealClient(tank) && IsClientInGame(player) && IsPlayerAlive(player))
+    if(IsSurvivor(tank) && IsInfected(player))
     {
-        float pos[3];
-        GetAbsOrigin(player, pos);
-        PCreateParticle(player, "weapon_pipebomb", 2.0, pos);
-        EmitSoundToAll("weapons/hegrenade/explode3.wav");
+        float pos[3]; GetAbsOrigin(player, pos);
+        PCreateParticle(player, PARTICLE_PIPEBOMB, 2.0, pos);
+        EmitAmbientSound(SOUND_HEGRENADE_EXPLODE, pos);
     }
 }
 
 public Action L4D_TankRock_BounceTouch(int tank, int rock, int entity)
 {
-    if(IsRealClient(tank) && IsSpecialInfected(entity))
+    if(IsSurvivor(tank) && IsInfected(entity))
     {
         L4D_DetonateProjectile(rock);
         return Plugin_Handled;
@@ -193,11 +127,53 @@ public Action L4D_TankRock_BounceTouch(int tank, int rock, int entity)
 }
 
 
-// ---------------Call Back
-
-// Call On SpawnCheckPost
-public void OnTankSuccess(int client)
+public void L4D_TankRock_OnDetonate(int tank, int rock)
 {
-    SetEntProp(client, Prop_Data, "m_iHealth", GetConVarInt(tankHp));
-    SetEntProp(client, Prop_Data, "m_iMaxHealth", GetConVarInt(tankHp));
+    if(!IsSurvivor(tank)) return;
+    
+    float rockPos[3]; GetAbsOrigin(rock, rockPos);
+    
+    // collect all entities in range
+    ArrayList entities = new ArrayList();
+    float victimPos[3];
+    for(int i = 1; i <= MaxClients; i++)
+    {
+        if(IsClientInGame(i) && IsPlayerAlive(i) && GetClientTeam(i) == TEAM_INFECTED)
+        {
+            GetAbsOrigin(i, victimPos);
+            float distance = GetVectorDistance(rockPos, victimPos);
+            if (distance <= GetConVarFloat(g_hCvarTankRockRadius))
+            {
+                entities.Push(i);
+            }
+        }
+    }
+
+    for(int i = MAXPLAYERS + 1; i < GetMaxEntities(); i++)
+    {
+        if(!IsValidEntity(i)) continue;
+
+        char classname[9]; GetEntityClassname(i, classname, 9);
+
+        if(classname[0] != 'i' && classname[0] != 'w') continue;
+
+        if(StrEqual(classname, "infected", false) || StrEqual(classname, "witch", false))
+        {
+            GetAbsOrigin(i, victimPos);
+            float distance = GetVectorDistance(rockPos, victimPos);
+            if(distance <= GetConVarFloat(g_hCvarTankRockRadius))
+            {
+                entities.Push(i);
+            }
+        }
+        
+    }
+
+    for(int i = 0; i < entities.Length; i++)
+    {
+        int victim = entities.Get(i);
+        AddExplosionForce(victim, rockPos, GetConVarFloat(g_hCvarTankRockExplodeForce));
+        SDKHooks_TakeDamage(victim, tank, tank, GetConVarFloat(g_hCvarTankRockDmg), DMG_GENERIC, -1, NULL_VECTOR, NULL_VECTOR, false);
+    }
+    CloseHandle(entities);
 }

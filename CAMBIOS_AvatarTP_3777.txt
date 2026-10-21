@@ -1,0 +1,138 @@
+============================================================
+ SUITE 3.77.7 "AVATAR REMOTO POR TP"
+ (Tails.inc v5.25-B + sonic.inc v6.15-OM + Amy.inc v98-OM
+  + Sonic_ability_manager 3.77.7)
+============================================================
+
+PEDIDO TEXTUAL DEL OWNER
+------------------------
+"el sistema de avatar que hay ahora es exelente (un poco bug pero
+es mejor que nada) pero mira es posible que cuando mire a los
+avatar se otros estos esten usando el sistema que usa tails follow?
+osea modo sistema de TP? xq digo esto xq mira.. te explico
+localmente quiero que el sistema siga igual osea como tenemos
+todos ahora (que hay que pausar para que el motor interpole a
+local el avatar ahora... otra cosa diferente es ejemplo si veo yo
+a un compañero. si lo veo en modo local como siempre el coso se
+vera mal xq el pause no recalcula lo que yo veo osea a el pero el
+desde su pantalla se ve bn despues que hise una pausa general"
+
+EL DIAGNOSTICO (por que al compañero se le ve mal)
+--------------------------------------------------
+Cada avatar del suite son DOS copias (patron dual v5.17-B):
+
+  - COPIA L: solo la ve su DUEÑO. Parentada al survivor +
+    EF_NOINTERP + pulso de pausa al montar. Es la que se ve
+    bien en tu pantalla tras la pausa.
+  - COPIA R: la que ven LOS DEMAS. Tambien iba parentada y con
+    EF_NOINTERP... y ahi esta el problema: EF_NOINTERP le dice
+    al cliente "no interpoles a esta entidad" -> el cliente del
+    espectador la dibuja A SALTOS (cada snapshot, sin suavizar),
+    y la pausa NO lo arregla porque la pausa solo re-encaja el
+    estado del cliente DUEÑO (tu propio avatar en tu pantalla).
+    Exactamente lo que describiste: "el pause no recalcula lo
+    que yo veo osea a el".
+
+QUE SE IMPLEMENTO (el modo TP para la copia R)
+-----------------------------------------------
+La copia R de los TRES avatares del suite (Tails, Sonic y Amy —
+es UN solo sistema, como tails_pausefix) pasa al MODO TP, que es
+exactamente el sistema del tails_follow (la receta v5.5/v5.9.1
+probada en campo):
+
+  - NACE SIN parent y SIN EF_NOINTERP (interp de red normal).
+  - El server la mueve con TeleportEntity POR TICK (pos del
+    jugador + yaw del cuerpo, pitch/roll NUNCA).
+  - Reloj vivo en cada write (Tails_MarkInterp = m_flSimula-
+    tionTime con el tickcount entero).
+  - Resultado: cada cliente de los demas la INTERPOLA como a
+    cualquier entidad del juego (un NPC, un prop) = movimiento
+    y giro SUAVES siempre, con pausa o sin pausa.
+
+LO QUE NO CAMBIA (pedido: "localmente igual")
+---------------------------------------------
+  - TU PROPIO AVATAR: cero cambios. La copia L sigue parentada
+    + EF_NOINTERP + su pulso de pausa en cada montaje. En tu
+    pantalla todo sigue EXACTAMENTE como estaba.
+  - La BOLA del spindash de Sonic queda PARENTADA (la mira su
+    dueño en pantalla propia mientras rueda). Bonus: durante la
+    bola, la copia R (que va oculta) viaja PEGADA por TP para
+    reaparecer EN SU SITIO al terminar la bola (antes la movia
+    el parent solo; la TP habria quedado congelada atras).
+  - El láser/cañón de Tails: el haz sale de la posicion del
+    JUGADOR (no del avatar) — intacto.
+  - Trails/glow/beams que siguen al avatar: siguen a la
+    entidad, les da igual el modo — intactos.
+  - Ragdolls de muerte, incap, tarot, lanzamiento, peel out
+    con pasajeros: intactos.
+
+PALANCA (convar nuevo, default ENCENDIDO)
+-----------------------------------------
+  sm_cvar tails_avatar_tp 1   <- default: R por TP (lo nuevo)
+  sm_cvar tails_avatar_tp 0   <- R parentada como toda la vida
+
+  - Al cambiarlo EN VIVO los avatares se recrean en <=0.1s
+    (puede flahear el cuerpo del survivor un instante — mismo
+    costo ya conocido del tails_follow).
+  - Se AUTO-AGREGA solo a tu Sonic_Suite.cfg por la reconci-
+    liacion de la 3.77.4 (prefijo tails_ ya cubierto).
+  - !tailscd ahora muestra el estado: "R-TP 1/0".
+  - OJO con avinterp: si pones tails_avinterp 0/1 en vivo, ya
+    NO toca la copia R en modo TP (solo toca la L y la R
+    parentada): la R-TP conserva su interpolacion SIEMPRE.
+
+INSTALACION
+-----------
+  1. Sonic_ability_manager.smx  -> addons/sourcemod/plugins/
+     (reemplaza el que tienes; el nombre queda igual)
+  2. Los 3 .inc son para tu REPO (scripting/include/) — el smx
+     ya viene compilado con todo.
+  3. Reinicio de mapa o cambio de mapa (los avatares se
+     remontan solos con el modo nuevo en <=0.1s igual).
+
+PLAN DE PRUEBA (sin pausar a mano NADA)
+---------------------------------------
+  A. LOCAL: entra con tu Amy (o Tails/Sonic): tu avatar se ve
+     IGUAL que siempre (montaje -> pulso -> encajado). Si algo
+     cambiara aca, avisa YA (no deberia cambiar nada).
+  B. REMOTO (LA PRUEBA REINA): que un compañero camine/corra/
+     salte y mira SU avatar desde tu pantalla: deberia moverse
+     SUAVE, como un NPC del juego — ya sin depender de ninguna
+     pausa. Correteando en circulos es el mejor stress test
+     del giro.
+  C. A/B EN VIVO: sm_cvar tails_avatar_tp 0 -> vuelve al modo
+     anterior al toque (<=0.1s) para comparar el antes/despues
+     en la misma sesion. Devuelvelo a 1.
+  D. SONIC BOLA: que un Sonic suelte spindash y mira: la bola
+     va igual que siempre; al terminar, su humano reaparece
+     PEGADO al lugar del freno (no a 2000u atras).
+  E. TRES A LA VEZ: Amy + Tails + Sonic en el mismo server —
+     cada uno ve su propio avatar local como siempre y los
+     otros dos suaves por TP.
+  F. REGRESIONES: muerte (ragdoll OM), incap (DownedIdle),
+     cambio de capitulo (remontaje), !sc repetido, y el peel
+     out con pasajeros de la v6.14.
+
+NOTAS FINAS (por si las notas)
+------------------------------
+  - El avatar R llega ~0.1s (lerp) atras de la posicion real
+    del jugador para los ESPECTADORES — igual que TODA entidad
+    del juego (asi se ve el mundo entero en tu pantalla); el
+    cuerpo del survivor esta invisible: no hay referencia con
+    que comparar, es imperceptible.
+  - Cambiar tails_avatar_tp en vivo DURANTE una bola del spin:
+    la bola se mantiene (es parentada, no cambia de modo); el
+    humano reaparece al terminar la fase (auto-cura).
+  - La unica funcion nueva visible: Tails_AvatarTPOn (acceso
+    compartido del cvar para los 3 modulos) + el callback del
+    toggle Tails_OnAvatarTPChanged (tabla de publicos).
+
+ARCHIVOS DEL PAQUETE
+--------------------
+  Sonic_ability_manager.smx   el plugin compilado (363,445 B)
+  Sonic_ability_manager.sp    fuente manager (3.77.7)
+  include/Tails.inc           v5.25-B (el corazon del cambio)
+  include/sonic.inc           v6.15-OM
+  include/Amy.inc             v98-OM
+  cambios_v614_a_3777_avatar_tp.diff   diff completo de los 4
+  VERIFICACION_3777.txt       build + forense + hashes

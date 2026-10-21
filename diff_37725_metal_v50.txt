@@ -1,0 +1,1531 @@
+--- /home/z/my-project/builds/OM37722/scripting/include/Metal.inc	2026-10-08 22:41:10.000000000 +0000
++++ builds/OM37725/scripting/include/Metal.inc	2026-10-09 03:53:32.215997905 +0000
+@@ -1,6 +1,58 @@
+ /*
+  * ======================================================
+- *  [MODULO] Metal Sonic - The Ultimate Machine (v4.2 - PORT GMOD)
++ *  [MODULO] Metal Sonic - The Ultimate Machine (v5.0-OM - AVATAR + TRIO GMOD)
++ *
++ *  v5.0 (suite 3.77.25 — pedido del owner: "Es tiempo del avatar de
++ *   metal Sonic. Ya sabes que hacer... mover la habilidad que tiene
++ *   metal actualmente que es esa aura electrica a la habilidad 3 y la
++ *   curacion seria en la X y para su habilidad Z que es la embestida
++ *   (te lo dira el lua de Gmod) usaremos el truco que usamos con
++ *   sonic... lo de desplazarse por el suelo"):
++ *   - AVATAR DE METAL SONIC (models/Noodles/OM/metal.mdl, modelScale 1
++ *     del lua): el patron Sonic v6.30 COMPLETO — doble copia R/L, modo
++ *     TP para la R (tails_avatar_tp: la que ven los demas viaja por
++ *     TeleportEntity + reloj vivo = interpolada suave), L parentada +
++ *     EF_NOINTERP + pulso de pausa (tails_pausefix: UN solo sistema),
++ *     transmit filters dueno/demas, cuerpo del survivor RENDER_NONE,
++ *     follow PostThink con yaw suave (deadband 3 grados, 900 grados/s,
++ *     Tails_ExpDamp 0.05) y FSM de animacion a 10 Hz con las secuencias
++ *     del metal.mdl: idle/walk/run/jump/fall + "charge" (embestida) +
++ *     "heal" (reparacion) + one-shots ChargeUp (windup) / Slam1-Slam2
++ *     (estampado, alternando por golpe como el PillAnim('Slam'..random)
++ *     del lua) / HealToIldle (salida de la cura). RAGDOLL de muerte
++ *     prop_ragdoll metal.mdl + ventana anti-corpse de 2s (receta
++ *     Sonic v3.76.2: la muerte del avatar corre en el player_death
++ *     POST, jamas en el PRE del manager). Palanca: metalom_avatar 1.
++ *   - EMBESTIDA (Z) AHORA SE DESPLAZA POR EL SUELO (truco Sonic): FUERA
++ *     el modo aereo FLYGRAVITY con re-escritura de velocidad por frame
++ *     (receta Amy v63); DENTRO el mecanismo del spindash — SLOT 2 del
++ *     stack del Speed_sonic (SPEED_STACK_METAL_DASH) sube m_flMaxspeed
++ *     a 750 y el auto-forward se inyecta en OnPlayerRunCmd (vel[0]
++ *     saturado = el OM_MoveForward del GMod): EL MOTOR lo mueve con la
++ *     fisica de caminar — sube escalones, sigue rampas, no despega, no
++ *     se desliza por las paredes. Launch instantaneo 750 (tope ya
++ *     alzado) + sostenido + arrastre, los tres a 750 (orden v4.2 R36).
++ *     El grupo DEBRIS durante dash/arrastre se CONSERVA (atraviesa
++ *     cuerpos como el mod). Windup/slam/rebote/FOV/loop/FX: intactos.
++ *   - HABILIDAD 2 (X) = SELF REPAIR (nueva, port del lua T key):
++ *     toggle de reparacion — tick cada 2s: +7 HP (heal_healamount),
++ *     acumulado +7 (TotalHeals, tope 70 = 10 ticks), para sola a HP
++ *     150 o tope 70. CONGELADO mientras repara (OM_NoMovement 6.7s del
++ *     lua) y el dano entrante la CANCELA bloqueandose (GMod:
++ *     OM_Damage_Reduction = 1 + hook EntityTakeDamage que corta la
++ *     cura). Cooldown 24s (heal_cooldownSucess) al terminar o cancelar.
++ *     Sonidos REALES del pack: Metal self repair activation (2).wav /
++ *     Heal.wav por tick / healfinished.wav al cerrar + glow verde por
++ *     tick (el MetalSonicHeal_highlight del lua: dlight verde 200/brillo
++ *     3 — aqui sprite glow01 verde + centro "REPARANDO x/70").
++ *   - HABILIDAD 3 (C) = V. MAXIMUM OVERDRIVE: la aura electrica +
++ *     +30% velocidad se MUEVE de la X a la C (pedido literal del owner).
++ *     Cero cambio de logica: es la misma de siempre en su nueva tecla.
++ *   - Fixes heredados automaticos por ser el 4o avatar del suite:
++ *     modo TP + pausa + interpolacion viva (tails_avatar_tp 1 default),
++ *     stun unificado OM_Stun v2.0 (Metal ya llamaba al documento unico),
++ *     auto-agregado del convar metalom_avatar al Sonic_Suite.cfg por la
++ *     reconciliacion de la 3.77.4 (prefijo metalom_ aniadido a la lista).
+  *
+  *  v4.2 (R36 - reporte del owner):
+  *   - VELOCIDAD DE LA CARGA: 750 uu/s (pedido literal: la de v4.0/4.1 a
+@@ -58,8 +110,9 @@
+  *
+  *  Rol: Tanque Kamikaze / Bruiser
+  *  Pasivas: Resistencia 50%, Sin Incap (Explota al morir), Sonar de Infectados, Impermeable.
+- *  Habilidad 1: Destructive Charge (carga, agarra, arrastra y estampa)
+- *  Habilidad 2: V. Maximum Overdrive (velocidad y dano electrico)
++ *  Habilidad 1 (Z): Destructive Charge (carga, agarra, arrastra y estampa — por SUELO v5.0)
++ *  Habilidad 2 (X): Self Repair (reparacion: +7 HP/2s congelado, cancela con dano)
++ *  Habilidad 3 (C): V. Maximum Overdrive (velocidad y dano electrico)
+  *
+  *  v3.6 - OVERDRIVE = DANO + VELOCIDAD REAL (correccion del owner 09/30:
+  *   "no era al max over, era a la 1 habilidad, la EMBESTIDA!!! el MAX
+@@ -301,6 +354,36 @@
+ #define METAL_LOW_HP_THRESHOLD      0.30  // 30% de HP maximo
+ 
+ // =======================
++// v5.0: SELF REPAIR (X) — numeros EXACTOS del lua GMod
++// (convars OUTCOMEMEMORIES_N_MetalSonic_heal_* del registro oficial)
++// =======================
++#define METAL_HEAL_COOLDOWN        24.0   // heal_cooldownSucess
++#define METAL_HEAL_TICK             2.0   // healingCooldown_OM: un tick cada 2s
++#define METAL_HEAL_AMOUNT           7     // heal_healamount (+7 HP por tick)
++#define METAL_HEAL_TOTAL_CAP        70    // TotalHeals tope (10 ticks)
++#define METAL_HEAL_HP_CAP           150   // para sola si HP pasa de 150
++#define METAL_HEAL_FREEZE           6.7   // OM_NoMovement 6.7s refrescado por tick
++#define METAL_HEAL_EXIT_FREEZE      0.5   // NoMovement 0.5s al cerrar (si curo >= 1 tick)
++
++// =======================
++// v5.0: AVATAR (models/Noodles/OM/metal.mdl — lua l.51, modelScale '1')
++// =======================
++#define METAL_OM_MODEL     "models/Noodles/OM/metal.mdl"
++#define METAL_AVATAR_NAME  "metal_avatar_om"
++
++// FSM del avatar: 11 estados (secuencias del metal.mdl — tabla anims del
++// lua l.183-195 + ShouldAlternate l.247-273: heal/charge sustituyen a
++// idle/walk/run/fall mientras duran; ChargeUp/HealToIldle/Slam1/Slam2
++// son one-shots con AlternatePlaySolution en el lua)
++#define METAL_ANIM_COUNT 11
++#define METAL_ST_CHARGEUP   5   // one-shot: windup de la embestida
++#define METAL_ST_CHARGE     6   // loop: embestida/arrastre (dash)
++#define METAL_ST_HEAL       7   // loop: reparandose
++#define METAL_ST_HEAL2IDLE  8   // one-shot: salida de la cura
++#define METAL_ST_SLAM1      9   // one-shot: golpe de estampado 1
++#define METAL_ST_SLAM2     10   // one-shot: golpe de estampado 2
++
++// =======================
+ // Estados del Charge
+ // =======================
+ enum
+@@ -381,6 +464,51 @@
+ int   g_iMetalDashFxTick[MAXPLAYERS + 1];   // contador (arcos/estela)
+ float g_fMetalLoopStart[MAXPLAYERS + 1];    // watchdog del loop (wav 3.41s)
+ 
++// v5.0: SELF REPAIR (X)
++bool  g_bMetalHealing[MAXPLAYERS + 1];      // el toggle de reparacion vive
++float g_fMetalHealNextTick[MAXPLAYERS + 1]; // proximo +7 (cada 2s)
++int   g_iMetalHealTotal[MAXPLAYERS + 1];    // TotalHeals del lua (tope 70)
++float g_fMetalHealCD[MAXPLAYERS + 1];       // heal_cooldown (24s al cerrar)
++float g_fMetalHealFreezeEnd[MAXPLAYERS + 1]; // NoMovement vigente (6.7s/tick)
++float g_fMetalHealExitEnd[MAXPLAYERS + 1];  // 0.5s de salida al terminar
++float g_fMetalHealAnimEnd[MAXPLAYERS + 1];  // ventana del anim "heal" en la FSM
++
++// v5.0: sonidos del heal (gates del VPK om_; fallback stock si faltan)
++bool  g_bMetalSndHealAct = false;           // om/metal/Metal self repair activation (2).wav
++bool  g_bMetalSndHeal = false;              // om/metal/Heal.wav (por tick)
++bool  g_bMetalSndHealFin = false;           // om/metal/healfinished.wav
++
++// v5.0: AVATAR (patron sonic.inc v6.30 — mismo sistema Tails compartido)
++ConVar g_cvMetalAvatar = null;              // metalom_avatar (default 1)
++bool   g_bMetalModelOK = false;             // metal.mdl presente en el VPK
++int    g_iMetalAvatar[MAXPLAYERS + 1];       // EntRef copia R (0 = sin avatar)
++int    g_iMetalAvatarL[MAXPLAYERS + 1];      // EntRef copia L (solo el dueno)
++int    g_iMetalBodyRender[MAXPLAYERS + 1];   // RenderMode original del cuerpo
++int    g_iMetalAnimState[MAXPLAYERS + 1];    // estado actual de la FSM
++float  g_fMetalAnimLock[MAXPLAYERS + 1];     // lock de los one-shots
++float  g_fMetalBodyYaw[MAXPLAYERS + 1];      // yaw suavizado del cuerpo
++float  g_fMetalYawLastT[MAXPLAYERS + 1];     // dt del giro suave
++float  g_fMetalSmLoc[MAXPLAYERS + 1][3];     // smoothing angulos copia R
++float  g_fMetalSmLocL[MAXPLAYERS + 1][3];    // smoothing angulos copia L
++bool   g_bMetalSmSnap[MAXPLAYERS + 1];       // snap al nacer (write seco)
++float  g_fMetalDeathHideUntil[MAXPLAYERS + 1]; // ventana anti-corpse (2s)
++float  g_vMetalDeathOrigin[MAXPLAYERS + 1][3]; // origen de la muerte (filtro 200u)
++
++// FSM del avatar: nombres de las secuencias del metal.mdl
++static const char g_sMetalAnimSeq[METAL_ANIM_COUNT][16] = {
++    "idle",           // 0
++    "walk",           // 1
++    "run",            // 2
++    "jump",           // 3
++    "fall",           // 4
++    "ChargeUp",       // 5  one-shot: windup
++    "charge",         // 6  loop: embestida/arrastre
++    "heal",           // 7  loop: reparacion
++    "HealToIldle",    // 8  one-shot: salida de la cura
++    "Slam1",          // 9  one-shot: estampado
++    "Slam2"           // 10 one-shot: estampado
++};
++
+ #define Metal_IsValidClient(%1) (1 <= %1 <= MaxClients && IsClientInGame(%1) && IsPlayerAlive(%1))
+ 
+ // =======================
+@@ -391,6 +519,15 @@
+ {
+     RegConsoleCmd("sm_metal_charge", Command_MetalCharge);
+     RegConsoleCmd("sm_metal_overdrive", Command_MetalOverdrive);
++    RegConsoleCmd("sm_metal_heal", Command_MetalHeal);   // v5.0: X = Self Repair
++
++    // v5.0: avatar — convar + FSM a 10 Hz (patron T_SonicAvatarThink) +
++    // muerte en su PROPIO player_death POST (receta Sonic v3.76.2: el PRE
++    // del manager corria antes de que el motor procesara la muerte y el
++    // restore del cuerpo dejaba ver el corpse del survivor)
++    g_cvMetalAvatar = CreateConVar("metalom_avatar", "1", "Metal Sonic OM: avatar espejo (metal.mdl del VPK de recursos, patron Tails/Sonic/Amy)", _, true, 0.0, true, 1.0);
++    CreateTimer(0.1, T_MetalAvatarThink, _, TIMER_REPEAT);
++    HookEvent("player_death", Metal_Event_DeathPost);
+ }
+ 
+ public void Metal_OnMapStart()
+@@ -403,6 +540,10 @@
+     PrecacheSound("player/tank/hit/hulk_punch_2.wav", true);
+     PrecacheSound("player/survivor/hit/crowbar_swing_miss1.wav", true);
+     PrecacheSound("ambient/machines/electric_loop.wav", true);
++    // v5.0: fallbacks del heal (si el VPK om_ no trae los .wav del mod)
++    PrecacheSound("ui/pickup_medkit.wav", true);
++    PrecacheSound("items/smallmedkit1.wav", true);
++    PrecacheSound("items/healthcharger.wav", true);
+ 
+     g_iMetalSpriteGlow  = PrecacheModel("materials/sprites/glow01.vmt", true);
+ 
+@@ -448,8 +589,21 @@
+         if (g_bMetalSndEnd)    AddFileToDownloadsTable("sound/om/metal/metalchargeend.wav");
+         if (g_bMetalSndBoom)   AddFileToDownloadsTable("sound/om/metal/explodesfx.wav");
+         if (g_bMetalSndPunch)  AddFileToDownloadsTable("sound/om/knuckles/punchstun.wav");
++
++        // v5.0: sonidos del SELF REPAIR (mismo VPK)
++        g_bMetalSndHealAct = PrecacheSound("om/metal/Metal self repair activation (2).wav", true);
++        g_bMetalSndHeal    = PrecacheSound("om/metal/Heal.wav", true);
++        g_bMetalSndHealFin = PrecacheSound("om/metal/healfinished.wav", true);
++        if (g_bMetalSndHealAct) AddFileToDownloadsTable("sound/om/metal/Metal self repair activation (2).wav");
++        if (g_bMetalSndHeal)    AddFileToDownloadsTable("sound/om/metal/Heal.wav");
++        if (g_bMetalSndHealFin) AddFileToDownloadsTable("sound/om/metal/healfinished.wav");
+     }
+ 
++    // v5.0: AVATAR — gate del modelo (PrecacheModel devuelve 0 si el .mdl
++    // no esta en el VPK montado; con 0 el avatar jamas se monta y todo lo
++    // demas del Metal sigue igual — misma receta g_bSonicModelOK)
++    g_bMetalModelOK = view_as<bool>(PrecacheModel(METAL_OM_MODEL, true));
++
+     for (int i = 1; i <= MaxClients; i++)
+         Metal_ResetState(i);
+ }
+@@ -461,6 +615,18 @@
+ 
+     SDKUnhook(client, SDKHook_PreThink, Metal_PreThink);
+     SDKHook(client, SDKHook_PreThink, Metal_PreThink);
++
++    // v5.0: follow del avatar (post-think: escribe los angulos contra-
++    // rotados despues de que el motor integre el tick del survivor)
++    SDKUnhook(client, SDKHook_PostThink, Metal_AvatarFollow);
++    SDKHook(client, SDKHook_PostThink, Metal_AvatarFollow);
++
++    // v5.0: slot limpio para el ocupante nuevo (nunca hereda avatar)
++    g_iMetalAvatar[client]     = 0;
++    g_iMetalAvatarL[client]    = 0;
++    g_iMetalBodyRender[client] = -1;
++    g_iMetalAnimState[client]  = -1;
++    g_bMetalSmSnap[client]     = true;
+ }
+ 
+ void Metal_ResetState(int client)
+@@ -472,6 +638,9 @@
+     // Speed_sonic (muerte/spawn/desconexion/cambio de personaje en pleno
+     // Overdrive: nunca queda velocidad residual heredada)
+     Speed_StackSet(client, SPEED_STACK_METAL_OD, 0.0);
++    // v5.0: idem el SLOT 2 de la EMBESTIDA (por suelo: si muere a mitad
++    // del dash, el tope de m_flMaxspeed baja con la ultima fuente)
++    Speed_StackSet(client, SPEED_STACK_METAL_DASH, 0.0);
+     g_fMetalChargeCD[client]          = 0.0;
+     g_fMetalOverdriveCD[client]       = 0.0;
+     g_fMetalAccumulatedDragDmg[client] = 0.0;
+@@ -482,6 +651,15 @@
+     g_fMetalLoopStart[client]         = 0.0;  // v4.1
+     Metal_KillWindupIcon(client);             // v4.1: icono de windup fuera
+ 
++    // v5.0: SELF REPAIR fuera (muerte/cambio en plena cura: sin freeze
++    // residual, sin cooldown heredado)
++    g_bMetalHealing[client]       = false;
++    g_iMetalHealTotal[client]     = 0;
++    g_fMetalHealNextTick[client]  = 0.0;
++    g_fMetalHealFreezeEnd[client] = 0.0;
++    g_fMetalHealExitEnd[client]   = 0.0;
++    g_fMetalHealAnimEnd[client]   = 0.0;
++
+     // v3.1 FIX ESTADO RESIDUAL: restaurar el estado visual/movimiento del
+     // propio Metal. Antes, si moria o se desconectaba durante WALL_SLAM /
+     // BOUNCE (MOVETYPE_NONE + tinte rojo) o WINDUP (velocidad 0), nada lo
+@@ -491,13 +669,13 @@
+ 
+     if (client >= 1 && client <= MaxClients && IsClientInGame(client))
+     {
+-        // v3.5: salir del MODO AIRE por el camino que sea (murio/desconecto/
+-        // cambio de personaje/spawn en plena embestida u overdrive):
+-        // restaura movetype WALK + grupo de colision + m_flMaxspeed.
+-        Metal_AirModeExit(client, 0.0);
++        // v5.0: salir del grupo DEBRIS por el camino que sea (la embestida
++        // va por suelo pero SIGUE atravesando cuerpos durante el dash)
++        Metal_DashColExit(client);
+         SetEntityMoveType(client, MOVETYPE_WALK);
+         SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
+         SetEntityRenderColor(client, 255, 255, 255, 255);
++        Metal_AvatarTintReset(client);
+         // v4.0: FOV y loop electrico tambien se restauran (muerte/spawn/
+         // desconexion en plena embestida: cero estado residual)
+         SetEntProp(client, Prop_Send, "m_iFOV", 0);
+@@ -596,6 +774,12 @@
+         Metal_CancelCharge(client);
+         return;
+     }
++    // v5.0: un stun tambien corta la REPARACION (mismo bloqueo del mod)
++    if (g_bMetalHealing[client] && OM_IsStunned(client))
++    {
++        Metal_StopHeal(client, false);
++        return;
++    }
+ 
+     // 0. Cancel speed boost (si activo)
+     if (g_fMetalCancelBoostEnd[client] > 0.0)
+@@ -682,7 +866,24 @@
+         }
+     }
+ 
+-    // 3. DESTRUCTIVE CHARGE
++    // 3. SELF REPAIR (v5.0: la X — port del toggle T del lua) + su
++    // ventana de salida congelado (NoMovement 0.5s del lua l.1036)
++    if (g_bMetalHealing[client])
++    {
++        Metal_HealThink(client, now);
++    }
++    else if (g_fMetalHealExitEnd[client] > 0.0)
++    {
++        if (now >= g_fMetalHealExitEnd[client])
++        {
++            g_fMetalHealExitEnd[client] = 0.0;
++            SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
++        }
++        else
++            SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 0.0);
++    }
++
++    // 4. DESTRUCTIVE CHARGE
+     if (g_iMetalChargeState[client] > METAL_STATE_IDLE)
+     {
+         Metal_ChargeThink(client, now);
+@@ -737,6 +938,9 @@
+         SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 0.0);
+ 
+         // Parpadeo rojo con 3 destellos visibles sobre 1 segundo
++        // v5.0: el parpadeo va al AVATAR (el cuerpo del survivor esta
++        // RENDER_NONE — el tinte en el ya no se veia; GMod: el glow rojo
++        // "metalsonic_ability_red_long" del puppet)
+         float elapsed = now - g_fMetalWindupStartTime[client];
+         float freq = METAL_WINDUP_DURATION / 3.0; // 3 destellos
+         float phase = elapsed / freq;
+@@ -747,6 +951,18 @@
+ 
+         SetEntityRenderMode(client, RENDER_TRANSCOLOR);
+         SetEntityRenderColor(client, 255, 0, 0, alpha);
++        int avR = EntRefToEntIndex(g_iMetalAvatar[client]);
++        if (avR > 0 && IsValidEntity(avR))
++        {
++            SetEntityRenderMode(avR, RENDER_TRANSCOLOR);
++            SetEntityRenderColor(avR, 255, 0, 0, alpha);
++        }
++        int avLw = EntRefToEntIndex(g_iMetalAvatarL[client]);
++        if (avLw > 0 && IsValidEntity(avLw))
++        {
++            SetEntityRenderMode(avLw, RENDER_TRANSCOLOR);
++            SetEntityRenderColor(avLw, 255, 0, 0, alpha);
++        }
+ 
+         // v4.1: ICONO DE CARGA sobre la cabeza (GMod: metal_load girando
+         // 900 grados/s a +23z; L4D2: sprite glow que flota y PULSA al
+@@ -778,6 +994,7 @@
+             g_fMetalStateEndTime[client] = now + METAL_DASH_DURATION;
+             g_fMetalNextDashFX[client]   = now;
+             SetEntityRenderColor(client, 255, 0, 0, 255);
++            Metal_AvatarTintReset(client);   // v5.0: el avatar vuelve a su color
+             Metal_KillWindupIcon(client);
+ 
+             // v4.1: ping1.wav REAL del mod al soltar la embestida
+@@ -808,18 +1025,25 @@
+                 EmitSoundToAll("ambient/machines/electric_loop.wav", client);
+             g_fMetalLoopStart[client] = now;
+ 
+-            // v3.5/v4.0: MODO AIRE REAL (FLYGRAVITY) para TODA la
+-            // embestida (tierra y aire por igual: sin friccion de suelo
+-            // ni clampeo a m_flMaxspeed, gravedad normal) + grupo DEBRIS
+-            // (atraviesa cuerpos, como el mod que no colisiona con
+-            // criaturas durante la carga).
+-            Metal_AirModeEnter(client, METAL_DASH_LAUNCH);
+-
+-            // Impulso inicial (GMod 3524 x 0.525 = 1850). v4.0: HORIZONTAL
+-            // PURO con Metal_GetMoveDir — el forwardmove del GMod es plano:
+-            // mirar hacia abajo NO frena la embestida (antes la componente
+-            // XY del vector con pitch la matava: a 60 grados perdia la
+-            // mitad de la velocidad, mirando al suelo quedaba clavado).
++            // ============================================================
++            // v5.0: LA EMBESTIDA VA POR EL SUELO (truco del spindash de
++            // Sonic). FUERA el FLYGRAVITY con re-escritura de velocidad
++            // por frame (receta Amy v63); DENTRO el mecanismo del roll:
++            // SLOT 2 del stack del Speed_sonic -> m_flMaxspeed = 750, y
++            // el auto-forward del RunCmd (vel[0] saturado = el
++            // OM_MoveForward del GMod) hace que EL MOTOR lo mueva con la
++            // fisica de caminar: sube escalones, sigue rampas, gravedad
++            // normal, nunca despega. El grupo DEBRIS se conserva
++            // (atraviesa cuerpos durante el dash como el mod).
++            // ============================================================
++            Metal_DashColEnter(client);
++            Metal_DashSpeedSet(client, METAL_DASH_SPEED);
++
++            // Launch instantaneo 750: con el tope YA alzado por el stack,
++            // un unico impulso horizontal queda clampeado por el motor al
++            // maxspeed nuevo = arranca a full sin rampa (orden v4.2 R36:
++            // "launch + sostenido, los tres a 750"). Direccion HORIZONTAL
++            // pura (Metal_GetMoveDir: mirar abajo no frena el arranque).
+             float dir[3], vel[3];
+             Metal_GetMoveDir(client, dir);
+             GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
+@@ -836,28 +1060,13 @@
+     // ---- ESTADO 2: DASH (embestida GMod: 8s a 750 uu/s, busca infectado) ----
+     if (state == METAL_STATE_DASH)
+     {
+-        // v4.0 GMod AUTO-FORWARD: la fuerza se re-aplica cada frame hacia
+-        // DONDE MIRA Metal (horizontal puro — Metal_GetMoveDir) con piso
+-        // de METAL_DASH_SPEED y conservacion de momentum superior. En
+-        // FLYGRAVITY (receta Amy v63) ni la friccion del suelo ni el tope
+-        // de m_flMaxspeed pueden comerse el impulso: tierra y aire por
+-        // igual. CERO teclas: el GMod fuerza el avance con OM_MoveForward.
+-        float dir[3], vel[3];
+-        Metal_GetMoveDir(client, dir);
+-        GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
+-        float speed2D = SquareRoot(vel[0] * vel[0] + vel[1] * vel[1]);
+-        float useSpeed = (speed2D > METAL_DASH_SPEED) ? speed2D : METAL_DASH_SPEED;
+-        vel[0] = dir[0] * useSpeed;
+-        vel[1] = dir[1] * useSpeed;
+-        // Vertical conservada (gravedad normal) + step-assist de escalones
+-        if (speed2D < METAL_DASH_SPEED * METAL_AIR_SLOW_FACTOR && vel[2] < 100.0)
+-            vel[2] = METAL_AIR_STEPASSIST_VEL;
+-        TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vel);
+-
+-        // Reafirmar el modo aire (receta Amy v63: doblemente imparable)
+-        if (GetEntityMoveType(client) != MOVETYPE_FLYGRAVITY)
+-            SetEntityMoveType(client, MOVETYPE_FLYGRAVITY);
+-        Metal_AirSetMaxSpeed(client, METAL_DASH_SPEED + 50.0);
++        // v5.0 GMod AUTO-FORWARD POR SUELO: el stack del Speed_sonic
++        // re-afirma el tope (750) cada tick (auto-cura: si algo limpia el
++        // slot, se re-registra solo — mismo patron del Overdrive) y el
++        // auto-forward lo inyecta Metal_OnPlayerRunCmd (vel[0] saturado).
++        // El MOTOR lo mueve con la fisica de caminar: cero re-escrituras
++        // de velocidad, cero FLYGRAVITY, escalones y rampas nativos.
++        Metal_DashSpeedSet(client, METAL_DASH_SPEED);
+ 
+         // v4.0 GMod: FOV de velocidad mientras embiste (el mod abre la
+         // camara +40: a 105 se VE la velocidad). Se re-afirma por si el
+@@ -935,23 +1144,13 @@
+             return;
+         }
+ 
+-        // v4.0 GMod AUTO-FORWARD del arrastre: misma fisica del dash a
+-        // velocidad de embestida (el v3.6 frenaba a 600 y exigiendo
+-        // "manten W": la fuente del "la carga no va bn").
+-        float dir[3], vel[3];
++        // v5.0 GMod AUTO-FORWARD del arrastre: mismo mecanismo del dash por
++        // suelo a velocidad de embestida (el v3.6 frenaba a 600 y exigia
++        // "manten W": la fuente del "la carga no va bn"). El stack
++        // re-afirma el tope a 750 y el RunCmd el auto-forward.
++        Metal_DashSpeedSet(client, METAL_DRAG_SPEED);
++        float dir[3];
+         Metal_GetMoveDir(client, dir);
+-        GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
+-        float speed2D = SquareRoot(vel[0] * vel[0] + vel[1] * vel[1]);
+-        float useSpeed = (speed2D > METAL_DRAG_SPEED) ? speed2D : METAL_DRAG_SPEED;
+-        vel[0] = dir[0] * useSpeed;
+-        vel[1] = dir[1] * useSpeed;
+-        if (speed2D < METAL_DRAG_SPEED * METAL_AIR_SLOW_FACTOR && vel[2] < 100.0)
+-            vel[2] = METAL_AIR_STEPASSIST_VEL;
+-        TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vel);
+-
+-        if (GetEntityMoveType(client) != MOVETYPE_FLYGRAVITY)
+-            SetEntityMoveType(client, MOVETYPE_FLYGRAVITY);
+-        Metal_AirSetMaxSpeed(client, METAL_DRAG_SPEED + 50.0);
+ 
+         // v4.0 GMod: el infectado va ADELANTE (forward x 65) MIRANDO a
+         // Metal (yaw + 180), clavado al frente (SetPos cada frame del mod).
+@@ -1059,8 +1258,11 @@
+             outVel[1] = g_vMetalSlamWallNrm[client][1] * 300.0;
+             outVel[2] = 100.0;
+ 
+-            Metal_AirModeExit(client, 0.0);
++            // v5.0: fuera grupo DEBRIS + slot de la embestida (por suelo)
++            Metal_DashColExit(client);
++            Speed_StackSet(client, SPEED_STACK_METAL_DASH, 0.0);
+             SetEntityRenderColor(client, 255, 255, 255, 255);
++            Metal_AvatarTintReset(client);
+             SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
+             SetEntityMoveType(client, MOVETYPE_WALK);
+             SetEntProp(client, Prop_Send, "m_iFOV", 0);
+@@ -1105,6 +1307,24 @@
+ //  v4.1: HELPERS DE ASSETS REALES DEL MOD (VPK "om_")
+ // ============================================================
+ 
++// v5.0: devuelve el tinte normal de las copias R/L del avatar (fin del
++// parpadeo rojo del windup por cualquiera de sus caminos)
++void Metal_AvatarTintReset(int client)
++{
++    int avR = EntRefToEntIndex(g_iMetalAvatar[client]);
++    if (avR > 0 && IsValidEntity(avR))
++    {
++        SetEntityRenderMode(avR, RENDER_NORMAL);
++        SetEntityRenderColor(avR, 255, 255, 255, 255);
++    }
++    int avL = EntRefToEntIndex(g_iMetalAvatarL[client]);
++    if (avL > 0 && IsValidEntity(avL))
++    {
++        SetEntityRenderMode(avL, RENDER_NORMAL);
++        SetEntityRenderColor(avL, 255, 255, 255, 255);
++    }
++}
++
+ // Corta el loop electrico en TODOS sus nombres/canales (v4.0 cortaba solo
+ // electric_loop.wav; v4.1 emite el del mod en SNDCHAN_STATIC + fallback).
+ static void Metal_StopLoopSound(int client)
+@@ -1330,9 +1550,12 @@
+     if (Metal_IsValidClient(target))
+         OM_Stun(target, METAL_DROP_STUN_TIME, client, 0.0, DMG_OM_CLUB, true);
+ 
+-    // Salir del modo aire: la embestida termina (frenado suave)
+-    Metal_AirModeExit(client, METAL_AIR_END_DAMP);
++    // v5.0: fuera grupo DEBRIS + slot del stack: la embestida termina
++    // (frenado suave del momentum por suelo)
++    Metal_DashColExit(client, METAL_AIR_END_DAMP);
++    Speed_StackSet(client, SPEED_STACK_METAL_DASH, 0.0);
+     SetEntityRenderColor(client, 255, 255, 255, 255);
++    Metal_AvatarTintReset(client);
+     SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
+     SetEntityMoveType(client, MOVETYPE_WALK);
+     SetEntProp(client, Prop_Send, "m_iFOV", 0);
+@@ -1423,8 +1646,9 @@
+ // fisico real del golpe, despues freeze duro).
+ void Metal_DoBounce(int client)
+ {
+-    // v3.5: salir del modo aire antes del rebote
+-    Metal_AirModeExit(client, 0.0);
++    // v5.0: fuera grupo DEBRIS + slot del stack antes del rebote
++    Metal_DashColExit(client);
++    Speed_StackSet(client, SPEED_STACK_METAL_DASH, 0.0);
+ 
+     // Impulso hacia atras (GMod: dir x 200)
+     float dir[3], vel[3];
+@@ -1435,6 +1659,7 @@
+     TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vel);
+ 
+     SetEntityRenderColor(client, 255, 255, 255, 255);
++    Metal_AvatarTintReset(client);
+     SetEntProp(client, Prop_Send, "m_iFOV", 0);
+     SetEntProp(client, Prop_Send, "m_iFOVStart", 0);
+     Metal_StopLoopSound(client);
+@@ -1492,6 +1717,16 @@
+         return Plugin_Handled;
+     }
+ 
++    // v5.0 GMod (l.963-964 + l.1621-1633): mientras SE REPARA es
++    // INVULNERABLE (OM_Damage_Reduction = 1) y el golpe CANCELA la cura:
++    // el dano se bloquea entero y el ciclo se cierra con cooldown.
++    if (g_bMetalHealing[victim])
++    {
++        damage = 0.0;
++        Metal_StopHeal(victim, false);
++        return Plugin_Handled;
++    }
++
+     // v3: Si esta en WINDUP y lo golpean -> CANCEL con dano completo, CD reducido, speed boost
+     if (g_iMetalChargeState[victim] == METAL_STATE_WINDUP)
+     {
+@@ -1541,6 +1776,7 @@
+ 
+     // Reset visual y estado
+     SetEntityRenderColor(client, 255, 255, 255, 255);
++    Metal_AvatarTintReset(client);
+     g_iMetalChargeState[client]   = METAL_STATE_IDLE;
+     g_iMetalGrabbedTarget[client] = -1;
+ 
+@@ -1649,6 +1885,12 @@
+         PrintCenterText(client, "No puedes cargar durante Overdrive.");
+         return Plugin_Handled;
+     }
++    // v5.0: en plena reparacion no se arranca la carga (lua l.1611 al reves)
++    if (g_bMetalHealing[client])
++    {
++        PrintCenterText(client, "No puedes cargar mientras te reparas.");
++        return Plugin_Handled;
++    }
+ 
+     float now = GetEngineTime();
+     if (now < g_fMetalChargeCD[client])
+@@ -1684,12 +1926,14 @@
+ {
+     if (g_iMetalChargeState[client] == METAL_STATE_IDLE) return;
+ 
+-    // v3.5: salir del modo aire (dash agotado / target invalido):
+-    // restaura grupo de colision + tope + WALK y frena suave.
+-    Metal_AirModeExit(client, METAL_AIR_END_DAMP);
++    // v5.0: fuera grupo DEBRIS + slot del stack (dash agotado / target
++    // invalido): restaura grupo de colision y frena suave.
++    Metal_DashColExit(client, METAL_AIR_END_DAMP);
++    Speed_StackSet(client, SPEED_STACK_METAL_DASH, 0.0);
+ 
+     // Restaurar movilidad (+ FOV + loop electrico: v4.0 cero residual)
+     SetEntityRenderColor(client, 255, 255, 255, 255);
++    Metal_AvatarTintReset(client);
+     SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
+     SetEntityMoveType(client, MOVETYPE_WALK);
+     SetEntProp(client, Prop_Send, "m_iFOV", 0);
+@@ -1775,84 +2019,215 @@
+ }
+ 
+ // =======================
+-// v3.5: MODO AIRE REAL (FLYGRAVITY) — helpers
++// HABILIDAD 2 (X): SELF REPAIR — v5.0
+ // =======================
+-// La receta probada de la embestida de Amy (v63/v66): MOVETYPE_FLYGRAVITY
+-// ("air con gravedad") es el camino de fisica de vuelo CON gravedad:
+-//   - SIN friccion de suelo y SIN clampeo a m_flMaxspeed: la velocidad
+-//     que escribimos es la que integra el motor, en tierra igual que en
+-//     el aire ("si el movimiento es air, la velocidad no es limitada por
+-//     el suelo").
+-//   - CON gravedad normal: vel[2] se conserva y la gravedad trabaja (en
+-//     el suelo lo mantiene pegado; si despega, cae con su momentum).
+-//   - Colisiona con paredes y rampas (se desliza sobre ellas).
+-//   - Grupo de colision DEBRIS durante el vuelo: atraviesa cuerpos.
+-// Redes de seguridad: el tope m_flMaxspeed se sube (por si algo revierte
+-// el movetype a WALK a mitad de tick) y TODO se restaura en TODOS los
+-// caminos de fin (Metal_AirModeExit, nunca deja estado residual).
+-
+-float Metal_AirGetMaxSpeed(int client)
+-{
+-    if (!IsClientInGame(client)) return 0.0;
+-    if (HasEntProp(client, Prop_Send, "m_flMaxspeed"))
+-        return GetEntPropFloat(client, Prop_Send, "m_flMaxspeed");
+-    if (HasEntProp(client, Prop_Data, "m_flMaxspeed"))
+-        return GetEntPropFloat(client, Prop_Data, "m_flMaxspeed");
+-    return 0.0;
++// Port fiel del "selfheal" del lua (T key alla, X aqui — pedido del
++// owner 3.77.25: "la curacion seria en la X"). Reglas del lua l.960-1039
++// + l.1600-1644:
++//   - Toggle de UNA pulsacion (alla T): arranca el ciclo si HP <= 150.
++//   - Tick cada 2s (healingCooldown_OM): +7 HP (heal_healamount) y
++//     TotalHeals += 7; para sola si HP > 150 o TotalHeals > 70.
++//   - CONGELADO mientras repara: OM_NoMovement 6.7s REFRESCADO por tick
++//     (el ciclo entero es estatico; el arrastre de la ventana desaparece
++//     al cerrar).
++//   - INVULNERABLE mientras repara (OM_Damage_Reduction = 1 del lua
++//     l.963-964): el dano entrante se BLOQUEA y CANCELA la cura (hook
++//     EntityTakeDamage del lua l.1621-1633: Healing = false + TotalHeals
++//     fuera de rango = cierre inmediato).
++//   - Al cerrar (completa o cancelada): heal_cooldown 24s
++//     (heal_cooldownSucess) + healfinished.wav + si curo al menos 1 tick:
++//     anim HealToIldle + NoMovement 0.5s.
++//   - Bloqueos de arranque (l.1606-1613): cooldown vivo, ya reparando,
++//     NoMovement, en plena embestida/arrastre, o HP ya > 150.
++public Action Command_MetalHeal(int client, int args)
++{
++    if (!Metal_IsValidClient(client)) return Plugin_Handled;
++    if (g_iPlayerCharIdx[client] != METALSONIC_INDEX) return Plugin_Handled;
++    if (g_bMetalHealing[client]) return Plugin_Handled;   // ya en ello
++    if (g_iMetalChargeState[client] != METAL_STATE_IDLE)  // en plena carga no (l.1611)
++    {
++        PrintCenterText(client, "No puedes repararte durante la carga.");
++        return Plugin_Handled;
++    }
++
++    float now = GetEngineTime();
++    if (now < g_fMetalHealCD[client])
++    {
++        PrintCenterText(client, "Self Repair recargando... (%.0fs)", g_fMetalHealCD[client] - now);
++        return Plugin_Handled;
++    }
++
++    // lua l.1613: si ya esta por encima de 150, ni arranca
++    if (GetClientHealth(client) > METAL_HEAL_HP_CAP)
++    {
++        PrintCenterText(client, "Sistemas ya al maximo (%d HP).", GetClientHealth(client));
++        return Plugin_Handled;
++    }
++
++    g_bMetalHealing[client]      = true;
++    g_iMetalHealTotal[client]    = 0;
++    g_fMetalHealNextTick[client] = now + METAL_HEAL_TICK;   // primer +7 a los 2s
++    g_fMetalHealFreezeEnd[client] = now + METAL_HEAL_FREEZE;
++
++    // lua l.1635-1643: "Metal self repair activation (2).wav"
++    if (g_bMetalSndHealAct)
++        EmitSoundToAll("om/metal/Metal self repair activation (2).wav", client);
++    else
++        EmitSoundToAll("ui/pickup_medkit.wav", client);
++
++    PrintCenterText(client, "SELF REPAIR: reparando (+%d cada %.0fs)...", METAL_HEAL_AMOUNT, METAL_HEAL_TICK);
++    return Plugin_Handled;
+ }
+ 
+-void Metal_AirSetMaxSpeed(int client, float value)
++// El ciclo del heal (lo llama Metal_PreThink cada frame mientras vive)
++void Metal_HealThink(int client, float now)
+ {
+-    if (!IsClientInGame(client)) return;
+-    if (value < 1.0) return;
+-    if (HasEntProp(client, Prop_Send, "m_flMaxspeed"))
+-        SetEntPropFloat(client, Prop_Send, "m_flMaxspeed", value);
+-    else if (HasEntProp(client, Prop_Data, "m_flMaxspeed"))
+-        SetEntPropFloat(client, Prop_Data, "m_flMaxspeed", value);
++    // CONGELADO (lua l.991: OM_NoMovement 6.7s refrescado por tick) + el
++    // anim "heal" se mantiene vivo para la FSM (ventana 0.25s)
++    SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 0.0);
++    g_fMetalHealFreezeEnd[client] = now + METAL_HEAL_FREEZE;
++    g_fMetalHealAnimEnd[client]   = now + 0.25;
++
++    if (now < g_fMetalHealNextTick[client]) return;
++    g_fMetalHealNextTick[client] = now + METAL_HEAL_TICK;
++
++    // lua l.984/1008: tope de HP o tope de acumulado -> cierre limpio
++    int hp = GetClientHealth(client);
++    if (hp > METAL_HEAL_HP_CAP || g_iMetalHealTotal[client] >= METAL_HEAL_TOTAL_CAP)
++    {
++        Metal_StopHeal(client, true);
++        return;
++    }
++
++    // El tick: +7 HP y +7 al acumulado (lua l.993-995)
++    g_iMetalHealTotal[client] += METAL_HEAL_AMOUNT;
++    int newHp = hp + METAL_HEAL_AMOUNT;
++    SetEntityHealth(client, newHp);
++
++    // lua l.987-988 + UI l.96-109: highlight VERDE del puppet + dlight
++    // verde (0,255,0, brillo 3, radio 200) — aqui: glow verde alrededor
++    // del cuerpo por 0.5s (el dlight de GMod es procedural del cliente)
++    float pos[3];
++    GetClientAbsOrigin(client, pos);
++    pos[2] += 40.0;
++    int glow = Metal_SpawnSprite(pos, "materials/sprites/glow01.vmt", "0 255 0", 1.2);
++    if (glow != INVALID_ENT_REFERENCE)
++        CreateTimer(0.5, T_Metal_FxKill, glow);
++
++    // lua l.997-1005: Heal.wav por tick
++    if (g_bMetalSndHeal)
++        EmitSoundToAll("om/metal/Heal.wav", client);
++    else
++        EmitSoundToAll("items/smallmedkit1.wav", client);
++
++    PrintCenterText(client, "REPARANDO... +%d HP (%d/%d)", METAL_HEAL_AMOUNT, g_iMetalHealTotal[client], METAL_HEAL_TOTAL_CAP);
++
++    // cierre inmediato si ESTE tick toco el tope (lua l.1008-1011)
++    if (newHp > METAL_HEAL_HP_CAP || g_iMetalHealTotal[client] >= METAL_HEAL_TOTAL_CAP)
++        Metal_StopHeal(client, true);
+ }
+ 
+-// Entra al modo aire: guardar tope/grupo y poner FLYGRAVITY + DEBRIS.
+-void Metal_AirModeEnter(int client, float safetySpeed)
++// Cierra la reparacion (completa o cancelada por dano/stun) — lua
++// l.1016-1038: cooldown SIEMPRE + healfinished.wav + si curo al menos 1
++// tick (TotalHeals > 7 alla): anim HealToIldle + NoMovement 0.5s.
++void Metal_StopHeal(int client, bool completed)
+ {
+-    if (!Metal_IsValidClient(client)) return;
++    g_bMetalHealing[client] = false;
++    g_fMetalHealAnimEnd[client] = 0.0;
++    g_fMetalHealCD[client] = GetEngineTime() + METAL_HEAL_COOLDOWN;
+ 
+-    // Tope de suelo (red de seguridad): guardar y subir. En FLYGRAVITY no
+-    // aplica, pero si algo revierte el movetype a WALK a mitad de tick,
+-    // al menos no lo clava al tope natural (~220).
+-    g_fMetalSavedMaxSpeed[client] = Metal_AirGetMaxSpeed(client);
+-    Metal_AirSetMaxSpeed(client, safetySpeed + 50.0);
++    SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
++
++    if (g_bMetalSndHealFin)
++        EmitSoundToAll("om/metal/healfinished.wav", client);
++    else
++        EmitSoundToAll("items/healthcharger.wav", client);
+ 
+-    // Grupo de colision -> DEBRIS: atraviesa cuerpos (comunes, SI, tank);
+-    // el original se guarda y se restaura en TODOS los caminos de fin.
++    if (g_iMetalHealTotal[client] >= METAL_HEAL_AMOUNT)
++    {
++        // lua l.1030-1037: salida con 0.5s de rigidez (la FSM engancha el
++        // one-shot HealToIldle con su lock)
++        g_fMetalHealExitEnd[client] = GetEngineTime() + METAL_HEAL_EXIT_FREEZE;
++        g_fMetalAnimLock[client]    = GetEngineTime() + 0.5;   // FSM: HealToIldle
++        g_iMetalAnimState[client]   = METAL_ST_HEAL2IDLE;      // forzar one-shot
++        int av = EntRefToEntIndex(g_iMetalAvatar[client]);
++        if (av > 0 && IsValidEntity(av))
++        {
++            SetVariantString(g_sMetalAnimSeq[METAL_ST_HEAL2IDLE]);
++            AcceptEntityInput(av, "SetAnimation");
++        }
++        int avL = EntRefToEntIndex(g_iMetalAvatarL[client]);
++        if (avL > 0 && IsValidEntity(avL))
++        {
++            SetVariantString(g_sMetalAnimSeq[METAL_ST_HEAL2IDLE]);
++            AcceptEntityInput(avL, "SetAnimation");
++        }
++        PrintCenterText(client, completed
++            ? "Reparacion completa: %d HP. (%.0fs de recarga)"
++            : "Reparacion interrumpida: %d HP. (%.0fs de recarga)",
++            GetClientHealth(client), METAL_HEAL_COOLDOWN);
++    }
++    else
++    {
++        PrintCenterText(client, "Reparacion interrumpida (%.0fs de recarga).", METAL_HEAL_COOLDOWN);
++    }
++    g_iMetalHealTotal[client] = 0;
++}
++
++// =======================
++// v5.0: EMBESTIDA POR EL SUELO — helpers
++// =======================
++// (v3.5/v4.x: TODO el MODO AIRE FLYGRAVITY (AirGetMaxSpeed/AirSetMaxSpeed/
++//  AirModeEnter/AirModeExit) SE BORRA — pedido del owner 3.77.25: "usaremos
++//  el truco que usamos con sonic, lo de desplazarse por el suelo, ya que
++//  actualmente la embestida de metal usa algo diferente". El mecanismo
++//  nuevo es EXACTAMENTE el del spindash de Sonic (sonic.inc v6.x):
++//   - Metal_DashSpeedSet: registra el objetivo de velocidad en el SLOT 2
++//     del stack ADITIVO del Speed_sonic -> el writer del stack escribe
++//     m_flMaxspeed = objetivo cada tick. Si !speed o adrenalina estan
++//     activos, la formula del stack los respeta (aditivo puro).
++//   - El AUTO-FORWARD lo inyecta Metal_OnPlayerRunCmd (vel[0] saturado):
++//     el MOTOR mueve a Metal con la fisica de caminar hacia donde MIRA —
++//     el equivalente exacto del OM_MoveForward del GMod.
++//   - EL MOTOR hace el resto: sube escalones, sigue rampas, gravedad
++//     normal, nunca despega, se frena contra la pared (que el
++//     Metal_HitWall detecta para el slam).
++// Lo que SI se conserva del v3.5: el grupo de colision DEBRIS durante el
++// dash (atraviesa cuerpos como el mod) y el frenado suave a la salida.
++
++// Registra el objetivo del dash en el SLOT 2 del stack (receta exacta del
++// Sonic_StartRoll: extra = objetivo/base - 1; idempotente y auto-curado
++// por tick — el propio writer refina m_flMaxspeed cada frame).
++void Metal_DashSpeedSet(int client, float target)
++{
++    float base = Speed_GetBaseSpeed(client);
++    if (base < 50.0) base = 220.0;
++    float extra = target / base - 1.0;
++    if (extra < 0.0) extra = 0.0;
++    Speed_StackSet(client, SPEED_STACK_METAL_DASH, extra);
++}
++
++// Entra al dash: guardar grupo de colision y poner DEBRIS (atraviesa
++// cuerpos: comunes, SI, tank — como el mod que no colisiona con criaturas
++// durante la carga). El movetype queda WALK: va por el suelo.
++void Metal_DashColEnter(int client)
++{
++    if (!Metal_IsValidClient(client)) return;
+     g_iMetalSavedColGroup[client] = GetEntProp(client, Prop_Data, "m_CollisionGroup");
+     SetEntProp(client, Prop_Data, "m_CollisionGroup", METAL_DASH_COLGROUP);
+-
+-    // El fix de verdad: fisica de vuelo con gravedad.
+-    SetEntityMoveType(client, MOVETYPE_FLYGRAVITY);
+ }
+ 
+-// Sale del modo aire: restaura TODO (movetype WALK, grupo de colision,
+-// tope natural). damp > 0 frena la velocidad horizontal para no salir
+-// deslizando a velocidad de vuelo (misma tecnica que Amy_ImpulseEnd).
+-void Metal_AirModeExit(int client, float damp)
++// Sale del dash: restaura grupo de colision + frenado suave opcional del
++// momentum horizontal (damp > 0: sin esto saldria deslizando a 750).
++void Metal_DashColExit(int client, float damp = 0.0)
+ {
+     if (client <= 0 || client > MaxClients) return;
+     if (!IsClientInGame(client)) return;
+ 
+-    // Movetype de caminar
+-    SetEntityMoveType(client, MOVETYPE_WALK);
+-
+-    // Grupo de colision normal
+     if (g_iMetalSavedColGroup[client] > 0)
+         SetEntProp(client, Prop_Data, "m_CollisionGroup", g_iMetalSavedColGroup[client]);
+     g_iMetalSavedColGroup[client] = -1;
+ 
+-    // Tope de velocidad natural
+-    if (g_fMetalSavedMaxSpeed[client] > 1.0)
+-        Metal_AirSetMaxSpeed(client, g_fMetalSavedMaxSpeed[client]);
+-    g_fMetalSavedMaxSpeed[client] = -1.0;
+-
+-    // Frenado suave (como Amy_ImpulseEnd: sin esto saldria deslizandose)
+     if (damp > 0.0 && IsPlayerAlive(client))
+     {
+         float vel[3], endVel[3];
+@@ -1866,8 +2241,8 @@
+ 
+ // (v3.6: Metal_OverdriveFlyTick y Metal_OverdriveInterrupt ELIMINADOS —
+ //  el Overdrive ya no es un modo aereo: es un buff de dano + velocidad
+-//  real registrado en el stack del Speed_sonic. El vuelo FLYGRAVITY le
+-//  pertenece SOLO a la EMBESTIDA, que conserva su receta v3.5 completa.)
++//  real registrado en el stack del Speed_sonic. v5.0: el FLYGRAVITY
++//  tambien se retira — la embestida va por el suelo con el mismo stack.)
+ 
+ // =======================
+ // UTILIDADES
+@@ -1932,28 +2307,48 @@
+ // HOOKS DE CICLO DE VIDA
+ // =======================
+ 
+-// Limpieza al morir (llamado desde Sonic_ability_manager.sp -> Event_PlayerDeath)
+-public void Metal_OnPlayerDeath(int client)
++// v5.0: suelta al infectado agarrado (lo compartian la muerte PRE y la
++// limpieza de cambio de personaje: mismo codigo, un solo lugar)
++void Metal_ReleaseGrabbed(int client)
+ {
+-    if (!IsValidClient(client)) return;
+-    if (g_iPlayerCharIdx[client] != METALSONIC_INDEX) return;
+-
+-    // Liberar al infectado si estaba agarrado
+     int target = g_iMetalGrabbedTarget[client];
+     if (target > 0 && IsClientInGame(target) && IsPlayerAlive(target))
+     {
+         SetEntityMoveType(target, MOVETYPE_WALK);
+         SetEntPropFloat(target, Prop_Send, "m_flLaggedMovementValue", 1.0);
+     }
++}
++
++// Limpieza al morir/cambiar de personaje/desconectar (llamada desde
++// Sonic_ability_manager.sp -> Event_PlayerDeath PRE via Metal_Event_
++// PlayerDeath NO — ese ya no la usa — y desde CleanupCharModuleState).
++// v5.0: ahora TAMBIEN mata el avatar y restaura el cuerpo (la muerte REAL
++// del avatar la hace Metal_Event_DeathPost en POST; en los cambios de
++// personaje/desconexion no hay POST del que fiarse, se limpia aqui).
++public void Metal_OnPlayerDeath(int client)
++{
++    if (!IsValidClient(client)) return;
++    if (g_iPlayerCharIdx[client] != METALSONIC_INDEX) return;
++
++    // Liberar al infectado si estaba agarrado
++    Metal_ReleaseGrabbed(client);
+ 
+     // v3.1: Metal_ResetState ahora tambien restaura visuals/movimiento del
+     // propio Metal (por si murio congelado en WALL_SLAM/BOUNCE o teñido)
+     Metal_ResetState(client);
++
++    // v5.0: avatar fuera (sin ragdoll: el jugador no murio — cambio de
++    // personaje o desconexion)
++    Metal_KillAvatar(client);
+ }
+ 
+ // v3.1: Evento de muerte REAL (llamar SOLO desde Event_PlayerDeath del
+ // manager). Las limpiezas de estado (cambio de personaje, descarga del
+ // plugin) deben seguir usando Metal_OnPlayerDeath para NO detonar.
++// v5.0: ESTE hook (que el manager llama en PRE) ya NO toca el avatar —
++// la muerte del avatar (ragdoll + anti-corpse) corre en el player_death
++// POST propio (Metal_Event_DeathPost, receta Sonic v3.76.2: en PRE el
++// restore del cuerpo dejaba ver el corpse del survivor).
+ public void Metal_Event_PlayerDeath(int client)
+ {
+     if (!IsValidClient(client)) return;
+@@ -1962,7 +2357,9 @@
+     // v3.1: primero liberar al infectado agarrado y limpiar el estado, y
+     // detonar DESPUES (asi la explosion tambien aturde al infectado que
+     // estaba agarrado, en vez de liberarlo pisando el slow de la explosion)
+-    Metal_OnPlayerDeath(client);
++    // (la cura tambien se cierra por ResetState)
++    Metal_ReleaseGrabbed(client);
++    Metal_ResetState(client);
+ 
+     // v3.1 FIX PASIVA "Explota al morir": detonar siempre que muere de
+     // verdad (infectados, suicidio, cualquier causa), no solo por el
+@@ -1979,7 +2376,594 @@
+     if (g_iPlayerCharIdx[client] != METALSONIC_INDEX) return;
+ 
+     Metal_ResetState(client);
++
++    // v5.0: montar el avatar ya (patron Sonic: la FSM de 10 Hz lo
++    // re-monta sola si algo sale raro con el orden de eventos)
++    if (g_cvMetalAvatar != null && g_cvMetalAvatar.BoolValue && g_bMetalModelOK
++        && GetClientTeam(client) == 2 && IsPlayerAlive(client))
++    {
++        Metal_CreateAvatar(client);
++    }
+ }
+ 
+-// Puente de compatibilidad
+-public void Metal_OnPlayerRunCmd(int client, int &buttons) {}
++// v5.0: RunCmd — EL AUTO-FORWARD DE LA EMBESTIDA POR SUELO.
++// El manager pasa el wishvel del usercmd: durante DASH y DRAGGING se
++// satura vel[0] (forwardmove) para que el MOTOR mueva a Metal a
++// m_flMaxspeed (750, alzado por el SLOT 2 del stack) con la fisica de
++// caminar — el equivalente exacto del OM_MoveForward del GMod ("el
++// jugador SOLO dirige con la mira"). vel[1] a 0: sin lateral (el
++// charge_slippery del mod es default off). Devuelve true si toco el
++// usercmd (el manager traduce a Plugin_Changed).
++public bool Metal_OnPlayerRunCmd(int client, int &buttons, float vel[3])
++{
++    if (client < 1 || client > MaxClients) return false;
++    if (!IsClientInGame(client) || !IsPlayerAlive(client)) return false;
++    if (g_iPlayerCharIdx[client] != METALSONIC_INDEX) return false;
++
++    int state = g_iMetalChargeState[client];
++    if (state != METAL_STATE_DASH && state != METAL_STATE_DRAGGING)
++        return false;
++
++    // forwardmove saturado (>= maxspeed: el engine clampea el wishspeed
++    // a m_flMaxspeed = la velocidad objetivo del stack)
++    vel[0] = 900.0;
++    vel[1] = 0.0;
++    if (vel[2] < 0.0) vel[2] = 0.0;   // sin upmove raro durante la carga
++    return true;
++}
++
++// =====================================================================
++// v5.0: SISTEMA DE AVATAR — patron sonic.inc v6.30 (doble copia R/L +
++// modo TP + pulso de pausa + FSM de animacion del metal.mdl)
++// =====================================================================
++
++// Crea el prop base (avatar R o L): parentado al survivor, sin sombras,
++// EF_NOINTERP al nacer (nace ENCAJADO). tpMode = la copia R viaja por
++// TeleportEntity + reloj vivo (tails_avatar_tp): los clientes de los
++// demas la INTERPOLAN suave (la L siempre parentada).
++int Metal_CreateAvatarProp(int client, const char[] model, const char[] targetname, bool tpMode = false)
++{
++    int av = CreateEntityByName("prop_dynamic_override");
++    if (av <= 0 || !IsValidEntity(av)) return 0;
++
++    DispatchKeyValue(av, "model", model);
++    DispatchKeyValue(av, "targetname", targetname);
++    DispatchKeyValue(av, "solid", "0");
++    DispatchKeyValue(av, "disableshadows", "1");
++    DispatchSpawn(av);
++
++    float pos[3], ang[3];
++    GetClientAbsOrigin(client, pos);
++    GetClientAbsAngles(client, ang);
++    ang[0] = 0.0;                          // pitch NUNCA
++    ang[2] = 0.0;                          // roll NUNCA
++    g_fMetalBodyYaw[client]  = ang[1];
++    g_fMetalYawLastT[client] = GetEngineTime();
++    TeleportEntity(av, pos, ang, NULL_VECTOR);
++
++    float loc[3];
++    Tails_AvatarLocalAngles(0.0, ang[1], g_fMetalBodyYaw[client], loc);
++
++    if (!tpMode)
++    {
++        // parentado (modo Tails default: el motor mueve la posicion,
++        // cero delay de red, anims suaves; aqui solo se escriben angulos)
++        SetVariantString("!activator");
++        AcceptEntityInput(av, "SetParent", client);
++        if (HasEntProp(av, Prop_Send, "m_angRotation"))
++            SetEntPropVector(av, Prop_Send, "m_angRotation", loc);
++    }
++
++    for (int k = 0; k < 3; k++)
++    {
++        g_fMetalSmLoc[client][k]  = loc[k];
++        g_fMetalSmLocL[client][k] = loc[k];
++    }
++    g_bMetalSmSnap[client] = true;
++
++    if (!tpMode)
++        Tails_SetAvatarNoInterp(av, true);
++    return av;
++}
++
++// Monta el avatar completo (R + L + cuerpo oculto). pulsePause SOLO para
++// montajes de ciclo de vida (spawn/seleccion/reparacion tardia de la FSM).
++void Metal_CreateAvatar(int client, bool pulsePause = true)
++{
++    if (!g_bMetalModelOK) return;
++    if (!IsClientInGame(client) || !IsPlayerAlive(client)) return;
++    if (GetClientTeam(client) != 2) return;
++
++    // v5.0: la copia R nace en modo TP si tails_avatar_tp (la que ven
++    // los DEMAS viaja por teleport por tick + interpolacion de red)
++    int av = Metal_CreateAvatarProp(client, METAL_OM_MODEL, METAL_AVATAR_NAME, Tails_AvatarTPOn());
++    if (av == 0) return;
++
++    SetVariantString("idle");
++    AcceptEntityInput(av, "SetAnimation");
++    g_iMetalAnimState[client] = 0;
++
++    SDKHook(av, SDKHook_SetTransmit, Metal_TransmitAvatarR);
++
++    g_iMetalAvatarL[client] = 0;
++    Metal_CreateAvatarL(client);
++
++    // ocultar el cuerpo del survivor (el avatar ES el personaje ahora)
++    RenderMode curMode = GetEntityRenderMode(client);
++    if (curMode != RENDER_NONE)
++        g_iMetalBodyRender[client] = view_as<int>(curMode);
++    else if (g_iMetalBodyRender[client] == -1)
++        g_iMetalBodyRender[client] = view_as<int>(RENDER_NORMAL);
++    SetEntityRenderMode(client, RENDER_NONE);
++
++    g_iMetalAvatar[client] = EntIndexToEntRef(av);
++
++    // per-tick: angulos locales (contra-rotacion del parent)
++    SDKHook(client, SDKHook_PostThink, Metal_AvatarFollow);
++
++    // PULSO DE PAUSA en cada montaje de ciclo de vida (la misma infra
++    // sv_pausable del suite; convar tails_pausefix manda para TODOS los
++    // avatares — es UN solo sistema, 4o avatar del suite)
++    if (pulsePause)
++        Tails_PauseFix_Trigger(client);
++}
++
++void Metal_CreateAvatarL(int client)
++{
++    if (!g_bMetalModelOK) return;
++    if (!IsClientInGame(client) || !IsPlayerAlive(client)) return;
++    if (GetClientTeam(client) != 2) return;
++    if (g_iMetalAvatar[client] == 0) return;
++
++    int av = Metal_CreateAvatarProp(client, METAL_OM_MODEL, "metal_avatar_om_l");
++    if (av == 0) return;
++
++    SetVariantString("idle");
++    AcceptEntityInput(av, "SetAnimation");
++
++    SDKHook(av, SDKHook_SetTransmit, Metal_TransmitAvatarL);
++
++    g_iMetalAvatarL[client] = EntIndexToEntRef(av);
++}
++
++void Metal_KillAvatarL(int client)
++{
++    if (client < 1 || client > MaxClients) return;
++    int avL = EntRefToEntIndex(g_iMetalAvatarL[client]);
++    if (g_iMetalAvatarL[client] != 0 && avL > 0 && IsValidEntity(avL))
++    {
++        SDKUnhook(avL, SDKHook_SetTransmit, Metal_TransmitAvatarL);
++        AcceptEntityInput(avL, "Kill");
++    }
++    g_iMetalAvatarL[client] = 0;
++}
++
++// Mata las copias R+L y devuelve el cuerpo. SIN desenganchrar el follow
++// (lo hace Metal_KillAvatar).
++void Metal_KillAvatarOnly(int client)
++{
++    if (client < 1 || client > MaxClients) return;
++
++    Metal_KillAvatarL(client);
++
++    int av = EntRefToEntIndex(g_iMetalAvatar[client]);
++    if (g_iMetalAvatar[client] != 0 && av > 0 && IsValidEntity(av))
++    {
++        SDKUnhook(av, SDKHook_SetTransmit, Metal_TransmitAvatarR);
++        AcceptEntityInput(av, "Kill");
++    }
++    g_iMetalAvatar[client] = 0;
++
++    // devolver el cuerpo SI el jugador sigue conectado (muerte/cambio de
++    // personaje/desconexion: el corpse que pueda aparecer lo filtra la
++    // ventana anti-ragdoll de abajo)
++    if (IsClientInGame(client))
++    {
++        if (g_iMetalBodyRender[client] != -1)
++        {
++            SetEntityRenderMode(client, view_as<RenderMode>(g_iMetalBodyRender[client]));
++            g_iMetalBodyRender[client] = -1;
++        }
++    }
++    else
++        g_iMetalBodyRender[client] = -1;
++
++    g_iMetalAnimState[client] = -1;
++}
++
++void Metal_KillAvatar(int client)
++{
++    if (client < 1 || client > MaxClients) return;
++    Metal_KillAvatarOnly(client);
++    SDKUnhook(client, SDKHook_PostThink, Metal_AvatarFollow);
++}
++
++// Transmit filters (patron Sonic): la R no la ve su dueno (tiene su L),
++// la L la ve SOLO su dueno.
++public Action Metal_TransmitAvatarR(int entity, int client)
++{
++    if (client < 1) return Plugin_Continue;
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_iMetalAvatar[i] != 0 && EntRefToEntIndex(g_iMetalAvatar[i]) == entity)
++        {
++            if (client == i && g_iMetalAvatarL[i] != 0
++                && EntRefToEntIndex(g_iMetalAvatarL[i]) > 0)
++                return Plugin_Handled;   // el dueno tiene su copia L
++            return Plugin_Continue;
++        }
++    }
++    return Plugin_Continue;
++}
++
++public Action Metal_TransmitAvatarL(int entity, int client)
++{
++    if (client < 1) return Plugin_Continue;
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_iMetalAvatarL[i] != 0 && EntRefToEntIndex(g_iMetalAvatarL[i]) == entity)
++        {
++            if (client == i) return Plugin_Continue;   // el dueno si
++            return Plugin_Handled;                     // nadie mas
++        }
++    }
++    return Plugin_Continue;
++}
++
++// FOLLOW PER-TICK (lecciones Tails/Sonic: yaw suave con deadband 3
++// grados, contra-rotacion amortiguada, reloj vivo, copia L contra los
++// eye angles del dueno; la R por TP en modo tp)
++public void Metal_AvatarFollow(int client)
++{
++    if (g_iMetalAvatar[client] == 0)
++    {
++        SDKUnhook(client, SDKHook_PostThink, Metal_AvatarFollow);
++        return;
++    }
++    if (!IsPlayerAlive(client)) return;   // la FSM mata el avatar en <=0.1s
++
++    // ---- yaw objetivo: direccion REAL del movimiento ----
++    float yawObj = g_fMetalBodyYaw[client];
++    float vel[3];
++    GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++    if (vel[0] * vel[0] + vel[1] * vel[1] > 1600.0)   // > 40 u/s
++    {
++        float velYaw = RadToDeg(ArcTangent2(vel[1], vel[0]));
++        float dv = velYaw - g_fMetalBodyYaw[client];
++        while (dv > 180.0)  dv -= 360.0;
++        while (dv < -180.0) dv += 360.0;
++        if (dv > 3.0 || dv < -3.0)
++            yawObj = velYaw;
++    }
++
++    // ---- giro suave hacia el objetivo (~900 grados/s) ----
++    float now = GetEngineTime();
++    float dt  = now - g_fMetalYawLastT[client];
++    g_fMetalYawLastT[client] = now;
++    if (dt <= 0.0 || dt > 0.3) dt = 0.033;
++
++    float d = yawObj - g_fMetalBodyYaw[client];
++    while (d > 180.0)  d -= 360.0;
++    while (d < -180.0) d += 360.0;
++    float step = 900.0 * dt;
++    if (d >  step) d =  step;
++    if (d < -step) d = -step;
++    g_fMetalBodyYaw[client] += d;
++
++    float par[3], loc[3];
++    bool snap = g_bMetalSmSnap[client];
++    GetClientAbsAngles(client, par);
++
++    // ---- copia R ----
++    int av = EntRefToEntIndex(g_iMetalAvatar[client]);
++    if (av > 0 && IsValidEntity(av))
++    {
++        if (Tails_AvatarTPOn())
++        {
++            // R POR TP: TeleportEntity por tick en pose mundo + reloj
++            // vivo, SIN EF_NOINTERP -> los clientes de los demas la
++            // INTERPOLAN = suave sin depender de la pausa
++            float posTP[3], angTP[3];
++            GetClientAbsOrigin(client, posTP);
++            angTP[0] = 0.0;                      // pitch NUNCA
++            angTP[1] = g_fMetalBodyYaw[client];
++            angTP[2] = 0.0;                      // roll NUNCA
++            TeleportEntity(av, posTP, angTP, NULL_VECTOR);
++            Tails_MarkInterp(av);
++        }
++        else
++        {
++            Tails_AvatarLocalAngles(par[0], par[1], g_fMetalBodyYaw[client], loc);
++            loc[1] = Tails_UnwrapYaw(g_fMetalSmLoc[client][1], loc[1]);
++            Tails_ExpDamp(loc, g_fMetalSmLoc[client], 0.05, dt, snap);
++            if (HasEntProp(av, Prop_Send, "m_angRotation"))
++                SetEntPropVector(av, Prop_Send, "m_angRotation", g_fMetalSmLoc[client]);
++            Tails_MarkInterp(av);
++        }
++    }
++
++    // ---- copia L: contra-rotada contra los EYE del dueno ----
++    if (g_iMetalAvatarL[client] != 0)
++    {
++        int avL = EntRefToEntIndex(g_iMetalAvatarL[client]);
++        if (avL > 0 && IsValidEntity(avL))
++        {
++            float eye[3], locL[3];
++            GetClientEyeAngles(client, eye);
++            Tails_AvatarLocalAngles(eye[0], eye[1], g_fMetalBodyYaw[client], locL);
++            locL[1] = Tails_UnwrapYaw(g_fMetalSmLocL[client][1], locL[1]);
++            Tails_ExpDamp(locL, g_fMetalSmLocL[client], 0.05, dt, snap);
++            if (HasEntProp(avL, Prop_Send, "m_angRotation"))
++                SetEntPropVector(avL, Prop_Send, "m_angRotation", g_fMetalSmLocL[client]);
++            Tails_MarkInterp(avL);
++        }
++    }
++    g_bMetalSmSnap[client] = false;
++}
++
++// FSM de 10 Hz: montaje / auto-reparacion / muerte del avatar (patron
++// T_SonicAvatarThink)
++public Action T_MetalAvatarThink(Handle timer)
++{
++    float now = GetEngineTime();
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (!IsClientInGame(i)) { Metal_KillAvatar(i); continue; }
++
++        bool esMetalVivo = (g_iPlayerCharIdx[i] == METALSONIC_INDEX
++                            && IsPlayerAlive(i) && GetClientTeam(i) == 2);
++
++        // v5.0: incap = fuera (el Metal tiene Sin-Incap, pero mods de
++        // terceros pueden tirarlo al suelo: avatar fuera, cuerpo visible)
++        if (esMetalVivo && GetEntProp(i, Prop_Send, "m_isIncapacitated") > 0)
++            esMetalVivo = false;
++
++        // ---- montaje ----
++        if (g_iMetalAvatar[i] == 0)
++        {
++            if (esMetalVivo && g_cvMetalAvatar != null && g_cvMetalAvatar.BoolValue
++                && g_bMetalModelOK)
++            {
++                Metal_CreateAvatar(i);
++            }
++            continue;
++        }
++
++        // quitar avatar si dejo de ser un Metal survivor vivo de pie
++        if (!esMetalVivo)
++        {
++            Metal_KillAvatar(i);
++            continue;
++        }
++
++        int av = EntRefToEntIndex(g_iMetalAvatar[i]);
++        if (av <= 0 || !IsValidEntity(av))
++        {
++            g_iMetalAvatar[i] = 0;
++            g_iMetalAnimState[i] = -1;
++        }
++
++        // reafirmar el RENDER_NONE del cuerpo (el motor lo resetea al
++        // cambiar de capitulo/rescue: fix Tails v5.4)
++        if (g_iMetalBodyRender[i] != -1 && GetEntityRenderMode(i) != RENDER_NONE)
++            SetEntityRenderMode(i, RENDER_NONE);
++
++        // auto-reparacion de la copia L (montaje tardio: pulso tambien)
++        if (g_iMetalAvatarL[i] == 0 && g_iMetalAvatar[i] != 0)
++        {
++            Metal_CreateAvatarL(i);
++            if (g_iMetalAvatarL[i] != 0)
++                Tails_PauseFix_Trigger(i);
++        }
++
++        // ---- FSM de animacion ----
++        av = EntRefToEntIndex(g_iMetalAvatar[i]);
++        if (g_iMetalAvatar[i] != 0 && av > 0 && IsValidEntity(av))
++            Metal_AvatarUpdate(i, av, now);
++    }
++    return Plugin_Continue;
++}
++
++// =====================================================================
++// FSM DE ANIMACION (prioridades GMod ShouldAlternate l.247-273:
++// heal y charge sustituyen a idle/walk/run/fall mientras duran;
++// ChargeUp/Slam/HealToIldle son one-shots con AlternatePlaySolution)
++// =====================================================================
++void Metal_AvatarUpdate(int client, int av, float now)
++{
++    // lock de one-shot en curso (HealToIldle): no reevaluar
++    if (now < g_fMetalAnimLock[client]) return;
++
++    int state = 0;
++    float rate = 1.0;
++    int cstate = g_iMetalChargeState[client];
++
++    if (cstate == METAL_STATE_WINDUP)
++    {
++        // el windup entero es el ChargeUp one-shot del lua (l.1704-1706)
++        state = METAL_ST_CHARGEUP;
++    }
++    else if (cstate == METAL_STATE_WALL_SLAM)
++    {
++        // cada golpe re-dispara un Slam (lua l.1368-1371: PillAnim('Slam'..
++        // MathRandom)): alterna 1/2 por golpe ya disparado
++        state = METAL_ST_SLAM1 + (g_iMetalSlamHitsFired[client] % 2);
++    }
++    else if (cstate == METAL_STATE_DASH || cstate == METAL_STATE_DRAGGING)
++    {
++        // la embestida corre en "charge" (velocidad al ritmo del run)
++        state = METAL_ST_CHARGE;
++        float s = Metal_Speed2D(client);
++        rate = 1.32 * (s / 450.0);
++        if (rate < 0.72) rate = 0.72;
++        if (rate > 3.6)  rate = 3.6;
++    }
++    else if (now < g_fMetalHealAnimEnd[client] || g_bMetalHealing[client])
++    {
++        // el ciclo de reparacion entero va en "heal"
++        state = METAL_ST_HEAL;
++    }
++    else if (!(GetEntityFlags(client) & FL_ONGROUND))
++    {
++        // AIRE: sube = jump, cae = fall
++        float vel[3];
++        GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++        state = (vel[2] > 40.0) ? 3 : 4;
++    }
++    else
++    {
++        float s = Metal_Speed2D(client);
++        if (s < 40.0)
++            state = 0;
++        else if (s < 150.0 || (GetClientButtons(client) & IN_DUCK))
++        {
++            state = 1;
++            rate = 1.8 * (s / 85.0);
++            if (rate > 2.5) rate = 2.5;
++        }
++        else
++        {
++            state = 2;
++            rate = 1.32 * (s / 450.0);
++            if (rate < 0.72) rate = 0.72;
++            if (rate > 3.6)  rate = 3.6;
++        }
++    }
++
++    if (state != g_iMetalAnimState[client])
++    {
++        SetVariantString(g_sMetalAnimSeq[state]);
++        AcceptEntityInput(av, "SetAnimation");
++        if (g_iMetalAvatarL[client] != 0)
++        {
++            int avLA = EntRefToEntIndex(g_iMetalAvatarL[client]);
++            if (avLA > 0 && IsValidEntity(avLA))
++            {
++                // el variant es de UN SOLO USO — re-armarlo
++                SetVariantString(g_sMetalAnimSeq[state]);
++                AcceptEntityInput(avLA, "SetAnimation");
++            }
++        }
++        g_iMetalAnimState[client] = state;
++    }
++
++    if (rate < 0.05) rate = 0.05;
++    if (HasEntProp(av, Prop_Data, "m_flPlaybackRate"))
++        SetEntPropFloat(av, Prop_Data, "m_flPlaybackRate", rate);
++    if (g_iMetalAvatarL[client] != 0)
++    {
++        int avLB = EntRefToEntIndex(g_iMetalAvatarL[client]);
++        if (avLB > 0 && IsValidEntity(avLB)
++            && HasEntProp(avLB, Prop_Data, "m_flPlaybackRate"))
++            SetEntPropFloat(avLB, Prop_Data, "m_flPlaybackRate", rate);
++    }
++}
++
++float Metal_Speed2D(int client)
++{
++    float vel[3];
++    GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++    return SquareRoot(vel[0] * vel[0] + vel[1] * vel[1]);
++}
++
++// =====================================================================
++// MUERTE DEL AVATAR (player_death POST propio — receta Sonic v3.76.2)
++// =====================================================================
++public void Metal_Event_DeathPost(Event event, const char[] name, bool dontBroadcast)
++{
++    int client = GetClientOfUserId(event.GetInt("userid"));
++    if (client <= 0 || client > MaxClients) return;
++    if (!IsClientInGame(client)) return;
++    if (g_iPlayerCharIdx[client] != METALSONIC_INDEX) return;
++    if (g_iMetalAvatar[client] == 0) return;   // sin avatar: vanilla
++
++    // ventana anti-corpse: 2s escondiendo ragdolls/corpses del survivor
++    // que nazcan a 200u de la muerte (el cuerpo se acaba de devolver en
++    // KillAvatar y el motor spawnea su corpse justo despues)
++    GetClientAbsOrigin(client, g_vMetalDeathOrigin[client]);
++    g_fMetalDeathHideUntil[client] = GetEngineTime() + 2.0;
++
++    Metal_SpawnDeathRagdoll(client);
++    Metal_KillAvatar(client);
++}
++
++// Ragdoll OM: prop_ragdoll con metal.mdl (usa el .phy del modelo — el lua
++// trae noragdoll=false) + limpieza a los 15s (receta Tails/Sonic)
++void Metal_SpawnDeathRagdoll(int client)
++{
++    if (!g_bMetalModelOK) return;
++    if (!IsClientInGame(client)) return;
++
++    int rag = CreateEntityByName("prop_ragdoll");
++    if (rag <= 0 || !IsValidEntity(rag)) return;
++
++    DispatchKeyValue(rag, "model", METAL_OM_MODEL);
++    DispatchSpawn(rag);
++
++    float pos[3], ang[3], vel[3];
++    GetClientAbsOrigin(client, pos);
++    GetClientAbsAngles(client, ang);
++    GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++    TeleportEntity(rag, pos, ang, vel);
++
++    CreateTimer(15.0, T_MetalRagdollCleanup, EntIndexToEntRef(rag), TIMER_FLAG_NO_MAPCHANGE);
++}
++
++public Action T_MetalRagdollCleanup(Handle timer, any ref)
++{
++    int ent = EntRefToEntIndex(view_as<int>(ref));
++    if (ent > 0 && IsValidEntity(ent))
++        AcceptEntityInput(ent, "Kill");
++    return Plugin_Stop;
++}
++
++// Filtro anti-ragdoll (patron Sonic: lo enruta el OnEntityCreated
++// central de Rouge.inc — Metal se incluye ANTES que Rouge en 3.77.25)
++void Metal_OnEntityCreated(int entity, const char[] classname)
++{
++    if (StrEqual(classname, "prop_ragdoll")
++        || StrEqual(classname, "prop_physics")
++        || StrEqual(classname, "prop_physics_override")
++        || StrEqual(classname, "prop_dynamic")
++        || StrEqual(classname, "prop_dynamic_override")
++        || StrEqual(classname, "cs_ragdoll")
++        || StrEqual(classname, "survivor_death_model"))
++    {
++        float now = GetEngineTime();
++        for (int i = 1; i <= MaxClients; i++)
++        {
++            if (g_fMetalDeathHideUntil[i] == 0.0 || now >= g_fMetalDeathHideUntil[i])
++                continue;
++            // candidata: revisar modelo/origen en el proximo frame
++            RequestFrame(Metal_CheckDeathRagdoll, EntIndexToEntRef(entity));
++            return;
++        }
++    }
++}
++
++public void Metal_CheckDeathRagdoll(any ref)
++{
++    int ent = EntRefToEntIndex(view_as<int>(ref));
++    if (ent <= 0 || !IsValidEntity(ent)) return;
++
++    char model[96];
++    GetEntPropString(ent, Prop_Data, "m_ModelName", model, sizeof(model));
++    if (strncmp(model, "models/survivors/", 17) != 0) return;
++
++    float now = GetEngineTime();
++    float o[3];
++    GetEntPropVector(ent, Prop_Data, "m_vecOrigin", o);
++
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_fMetalDeathHideUntil[i] == 0.0 || now >= g_fMetalDeathHideUntil[i])
++            continue;
++        if (GetVectorDistance(o, g_vMetalDeathOrigin[i]) < 200.0)
++        {
++            SetEntityRenderMode(ent, RENDER_NONE);
++            DispatchKeyValue(ent, "disableshadows", "1");
++            AcceptEntityInput(ent, "DisableShadow");
++            return;
++        }
++    }
++}

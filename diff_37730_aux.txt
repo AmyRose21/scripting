@@ -1,0 +1,13 @@
+--- /home/z/my-project/download/suite_37729_witch_frozen/include/Rouge.inc	2026-10-09 08:53:13.648797614 +0000
++++ /home/z/my-project/builds/OM37730/scripting/include/Rouge.inc	2026-10-09 09:25:11.868013306 +0000
+@@ -419,6 +419,10 @@
+     // ANTES de Rouge, así que el símbolo ya existe aquí)
+     Metal_OnEntityCreated(entity, classname);
+ 
++    // v3.77.30 Knuckles OM: idem para las muertes del Knuckles con
++    // avatar (la lógica vive en Knuckles.inc, incluido antes que Rouge)
++    Knuckles_OnEntityCreated(entity, classname);
++
+     // Si estamos esperando un insect_swarm (flag activado tras SDKCall)
+     if (g_bRougeAcidSpawn)
+     {

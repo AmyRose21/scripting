@@ -1,0 +1,94 @@
+SUITE 3.77.34 — COMANDO MAESTRO DEL PARRY DE PROYECTILES DE KNUCKLES
+(Knuckles.inc v68-OM -> v69-OM | Manager 3.77.33 -> 3.77.34)
+
+EL PEDIDO (1-a-1)
+"ES A KNUCKLES POR EL AMOR A JESUCRISTO! EL CODIGO ERA PARA QUE VIERAS
+COMO SE HACE!!! ... PON UN COMANDO QUE PUEDA PERMITIR SI KNUCKLES PUEDE
+PARRY PROYECTILES (spiter y tank) A SOLAMENTE PARRYEAR GOLPES FISICOS
+COMO SIEMPRE"
+
+ACLARACION QUE QUEDA GRABADA: el chch_parrying.nut es MATERIAL DE
+REFERENCIA (el "como se hace"), NO un mod aparte. Todo el parry vive
+en Knuckles.inc del plugin. El archivo de referencia sigue en el
+paquete (REFERENCIA_chch_parrying.nut) sin tocar una coma.
+
+======================================================================
+LO NUEVO 1: LA PALANCA MAESTRA (lo que pediste)
+======================================================================
+  knux_parry_projectiles 1   <- default, como estaba (.31-.33)
+  knux_parry_projectiles 0   <- Knuckles SOLO PARREA GOLPES FISICOS
+                                COMO SIEMPRE: ni escupitajos del
+                                spitter NI rocas del tank se devuelven
+                                (el escaneo ni corre; el boom del
+                                spit_burst queda congelado)
+
+Como usarla:
+  * En consola del servidor:   knux_parry_projectiles 0
+  * Permanente:                Sonic_Suite.cfg (se auto-agrega sola
+                               al recargar el plugin) o server.cfg
+  * Al vuelo, sin reiniciar nada.
+
+Con la maestra en 0, las individuales knux_parry_spit /
+knux_parry_rocks pasan de todo (off total). Con la maestra en 1
+sigues teniendo el control fino de siempre (solo spit, solo rocas).
+El counter/bloqueo melee NO se toca PARA NADA en ningun caso: eso
+sigue exactamente igual con 0 y con 1.
+
+======================================================================
+LO NUEVO 2: MUERE EL VECTOR DE CRASH QUE QUEDABA (por que la .33
+seguia cayendo)
+======================================================================
+La v68 arreglo el CONTEXTO de la explosion del spit (defer al frame
+siguiente) pero dejo vivo el OTRO vector, el que el forense del
+chch_parrying.nut marco como condicion [C]: al devolver el spit, el
+plugin le ponia
+
+    m_hThrower = el Knuckles (superviviente)
+
+y con esa "propiedad" el motor crea el CHARCO ACIDO con el dueno
+corrupto (el dano del charco deja de ser "de la spitter") y crashea
+al procesarlo. Por eso el juego se moria AL INTERACTUAR con el
+escupitajo devuelto y no siempre al instante del parry.
+
+v69: al spit devuelto NUNCA se le toca el m_hThrower (el credito del
+boom ya sale de la lista de slots interna del plugin). La ROCA si lo
+conserva (las rocas nunca crashearon — su camino es seguro).
+
+=> Con la palanca en 1 el parry de proyectiles DEBERIA quedar sano
+   de una vez. Y si quieres paz absoluta HOY: palanca en 0 y
+   Knuckles parrea golpes fisicos como siempre, CERO contacto con
+   proyectiles — esa configuracion no tiene NI UNA linea de codigo
+   tocando spits ni rocas.
+
+======================================================================
+INSTALACION (30 segundos)
+======================================================================
+1. Reemplazar SOLO el Sonic_ability_manager.smx
+   (addons/sourcemod/plugins/)
+2. Cambio de mapa (o sm plugins reload Sonic_ability_manager)
+3. Listo. El cvar knux_parry_projectiles se auto-agrega al
+   Sonic_Suite.cfg. Para dejarlo apagado fijo:
+   knux_parry_projectiles 0 (consola o el cfg).
+
+PRUEBA RAPIDA (2 minutos):
+  a) knux_parry_projectiles 0 -> postura de Knuckles frente a un
+     spitter: el escupitajo pasa de largo, NADA se devuelve, el
+     counter melee sigue igual que siempre. Pisar el charco: sin
+     crash.
+  b) knux_parry_projectiles 1 -> parry del spit devuelto + boom al
+     caer + pisar el charco: sin crash (el thrower ya no se
+     corrompe).
+  c) Roca del tank devuelta con boom al aterrizar: como siempre.
+
+======================================================================
+ARCHIVOS DEL PAQUETE
+======================================================================
+  Sonic_ability_manager.smx   <- EL QUE SE INSTALA (3.77.34)
+  Sonic_ability_manager.sp    <- fuente manager 3.77.34
+  include/Knuckles.inc        <- v69-OM (palanca maestra + fix thrower)
+  include/ (otros 15)         <- byte-identicos a la .33 (verificados)
+  materials/                  <- identicos a la .33
+  diff_37734_knuckles_v69.txt <- diff exacto v68 -> v69
+  diff_37734_sp.txt           <- diff exacto .33 -> .34
+  VERIFICACION_37734.txt      <- forense del smx completo (TODO OK)
+  REFERENCIA_chch_parrying.nut<- el material de referencia, intacto

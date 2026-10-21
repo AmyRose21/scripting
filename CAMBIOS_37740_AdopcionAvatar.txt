@@ -1,0 +1,95 @@
+=====================================================================
+ SUITE 3.77.40 — ADOPCION EN EL MONTAJE: FIN DEL BARRIDO EN CALIENTE
+ (fix del reporte del owner 2026-10-10: "tu barrido de avatares esta
+  haciendo reiniciar mi avatar a cada rato... BUSCA OTRA MANERA")
+=====================================================================
+
+QUE PASO CON LA 3.77.39
+-----------------------
+La .39 habia puesto un "barrido anti-huerfano" que corria CADA 3
+SEGUNDOS en caliente (mas retardados a 0.5/2/5 s, round_start y
+OnMapEnd), supuestamente ref-aware (solo mataba props que ninguna FSM
+rastreaba). En el servidor del owner el resultado fue el opuesto: su
+avatar se REINICIABA cada rato (el barrido mataba/afectaba avatares
+vivos, la FSM de 10 Hz remontaba, y el ciclo se repetia con cada
+vuelta del timer). Dos defectos se le sumaban:
+
+  (a) El guard del OM_IsTrackedAvatarRef rechazaba refs NEGATIVOS
+      ("ref <= 0") — pero un ref legitimo PUEDE ser negativo (el bit
+      alto del serial del handle): un avatar vivo con serial alto
+      quedaba "desrastreado" frente al barrido.
+  (b) El barrido mataba DENTRO del loop de FindEntityByClassname:
+      iterar desde un handle recien muerto es tierra de nadie en L4D2.
+
+LA OTRA MANERA (3.77.40) — NUEVA DOCTRINA
+-----------------------------------------
+1) EL BARRIDO EN CALIENTE SE BORRA ENTERO. Adios repetidor de 3 s,
+   adios retardados 0.5/2/5 s, adios barrido en round_start, adios
+   barrido en OnMapEnd. NO EXISTE ningun timer en el suite que mire
+   avatares en caliente: un avatar vivo rastreado es INTOCABLE.
+
+2) REEMPLAZO LIMPIO en el CreateAvatar de los 5 personajes
+   (Knuckles v72-OM / sonic v6.31-OM / Tails v5.28-B / Amy v103-OM /
+   Metal v5.6-OM): si un montaje doble encuentra un R o L viejo
+   vivo, lo mata ENTERO (prop + unhook + ref) antes de montar el
+   nuevo. La vieja fabrica de huerfanos ("ref = 0" sin Kill, linea
+   g_iKnuxAvatarL[client] = 0 de Knux_CreateAvatar y sus 4 gemelas)
+   queda cerrada para siempre: ya ningun codigo puede dejar un prop
+   vivo sin dueno.
+
+3) ADOPCION EN EL MONTAJE (X_KillGhostAvatarProps en cada modulo):
+   cada FSM es la UNICA creadora de los props con su nombre de avatar
+   (knuckles_avatar_om/_l, sonic_avatar_om/_l + sonic_ball_om,
+   tails_avatar_om/_l, amy_avatar_om/_l, metal_avatar_om/_l + los
+   legacy knux_avatar / sonicom_avatar / tails_avatar / tails_avatar_tp
+   / amyom_avatar / metalom_avatar). Un prop asi que ESA FSM no
+   rastrea es un huerfano POR DEFINICION y muere en el instante exacto
+   del montaje — no en un timer a ciegas. Un fantasma dura lo que
+   tarda su modulo en montar (spawn/respawn/!sc), y muere sin poder
+   tocar a ningun avatar vivo.
+
+4) El UNICO barrido restante corre en OnMapStart — ANTES de que
+   exista un solo avatar en el mapa (las FSM aun no montaron nada) —
+   y ahora RECOLECTA PRIMERO Y MATA DESPUES (nunca
+   FindEntityByClassname sobre un handle recien muerto).
+
+5) Fix del guard: solo el 0 es "sin avatar"; un ref negativo es
+   legitimo (bit alto del serial).
+
+QUE SE TOCO
+-----------
+- Sonic_ability_manager.sp/.smx: 3.77.39 -> 3.77.40 (borrado del
+  calendario del barrido, doctrina nueva, barrido OnMapStart
+  recolecta-antes-de-matar, fix del guard, sm_sjsver).
+- include/Knuckles.inc  v71-OM -> v72-OM  (reemplazo limpio + adopcion)
+- include/sonic.inc     v6.30-OM -> v6.31-OM (idem + la bola protegida)
+- include/Tails.inc     v5.27-B -> v5.28-B (idem)
+- include/Amy.inc       v102-OM -> v103-OM (idem)
+- include/Metal.inc     v5.5-OM -> v5.6-OM (idem)
+- Los otros 11 includes: IDENTICOS byte a byte a la .39.
+- Parry.smx v2.3, chch_parrying.nut v2.4, knuckles_parry_state.nut:
+  SIN CAMBIOS (identicos a la .39 — el fix de la roca/sonido/loop de
+  la .39 queda intacto).
+
+IMPORTANTE: los .inc son FUENTE que compila DENTRO del
+Sonic_ability_manager.smx. Para instalar SOLO hace falta reemplazar
+el Sonic_ability_manager.smx.
+
+INSTALACION
+-----------
+1) Reemplazar addons/sourcemod/plugins/Sonic_ability_manager.smx
+   por el de este paquete.
+2) Cambio de mapa (o sm plugins reload Sonic_ability_manager y
+   cambio de mapa para que las FSM remonten limpio).
+3) Verificar en consola: sm_sjsver debe decir "Manager 3.77.40 ... |
+   Avatares A PRUEBA DE REINICIO y SIN barrido en caliente".
+
+QUE DEBERIAS NOTAR
+------------------
+- Tu avatar YA NO SE REINICIA cada rato: no existe ningun barrido en
+  caliente que pueda tocarlo.
+- Si por cualquier razon apareciera un avatar fantasma, muere solo en
+  el instante en que su personaje vuelve a montar (spawn/respawn/!sc)
+  — y en el arranque del mapa siguiente.
+- El resto del suite (parry, roca del tank, sonidos, mechas, Amy,
+  Metal, witch estatua, etc.) queda EXACTAMENTE como en la .39.

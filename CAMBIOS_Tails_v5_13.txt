@@ -1,0 +1,93 @@
+# CAMBIOS Tails v5.13 - "ROLLBACK AL PARENTADO (metodo del pitch) + item BOMBA DE BILIS" (Manager 3.77.0)
+
+## PEDIDO DEL OWNER (2026-10-06)
+"no aceptare tu solucion actualiza tu base de datos y anade tu
+solucion aqui"
+
+Hecho exactamente asi: base de datos actualizada con tu scripting2.rar
+nuevo (Manager 3.76.0 + Tails v5.12 carrier) y la solucion anadida
+DIRECTO dentro de tu estructura de carpetas (este paquete ES tu carpeta
+scripting/ completa con la solucion puesta).
+
+## QUE SE RECHAZA (decision del owner: "no aceptare tu solucion")
+La linea CARRIER completa:
+- v5.8  carrier invisible (prop dummy) + TeleportEntity por tick
+- v5.9 / v5.9.1  estampas de m_flSimulationTime (excepcion del log)
+- v5.10  MOVETYPE_NOCLIP + servo de velocidad
+- v5.11 / v5.11.1  carrier FISICO prop_physics_override (modelo mal
+  al principio, parpadeo + "cadaver" al final)
+- v5.12  carrier PROYECTIL molotov_projectile invisible (casco motor)
+TODO ese sistema queda ELIMINADO del codigo: cero entidades satelite,
+cero servo, cero autochequeo de 5 ticks, cero fallback, cero
+Tails_KillCarrier / Tails_BlockCarrierTouch / Tails_BlockCarrierDamage,
+cero defines TAILS_CARRIER_MODEL / TAILS_CARRIER_PHYS_MODEL, cero slots
+g_iTailsCarrier / g_iTailsMotor* (verificado por simbolos en el .smx).
+
+## LO QUE VUELVE (restaurado del v5.7, el archivo del owner)
+- SetParent DIRECTO al survivor ("el metodo del pitch"): el MOTOR de
+  cada cliente mueve al avatar junto al cuerpo -> movimiento suave
+  SIEMPRE, el unico confirmado empiricamente en tu server ("es inutil
+  el pitch es el unico metodo que permite al model moverse sin esos
+  molestos mini tirones... pero bueno").
+- Contra-rotacion local exacta del parent (Tails_AvatarLocalAngles +
+  Tails_WorldToLocalVec re-anadidas; la v5.12 las habia eliminado):
+  el cuerpo queda vertical mirando al yaw de las 3 reglas del pill.
+- Lead del lerp v5.7 (FIX DESFASE): origen local = velocidad *
+  tails_lerpcomp (default 0.1 = lerp default de L4D2) -> el avatar va
+  PEGADO en tu pantalla al caminar; escribe solo si movio (>0.05u,
+  cero churn de red parado).
+- CreateAvatar: avatar nacido clavado en el transform (pos + lead) y
+  parentado despues; FSM de 10 Hz: auto-reparacion simple del avatar
+  (sin pares carrier que reparar).
+- MODO 1 (tails_follow 1): teleport por tick de diagnostico, con el
+  fix de reloj v5.9.1 (Tails_MarkInterp) SOLO en ese modo.
+
+## ITEM RESTAURADO: BOMBA DE BILIS (modo ORBS)
+- Pedido literal del owner: "ponle de item una bomba de bilis xq esa
+  no tiene efecto de llamas". La linea carrier la habia perdido (la
+  v5.12 disparaba la pipebomb): el modo ORBS vuelve a usar el frasco
+  de bilis REAL de L4D2:
+  models/w_models/weapons/w_eq_bile_flask.mdl
+  SIN llama en el trapo, SIN luz parpadeante, fisica nativa de
+  throwable (nada de "Can't create physics object").
+
+## NOTA HONESTA (el "pero bueno" del owner)
+Al apuntar arriba/abajo el cuerpo puede inclinarse UN MOMENTO y
+reponerse: la contra-rotacion la computa el server contra SU vista del
+parent y cada cliente la aplica contra la suya (lerp en el medio). Es
+el precio del movimiento suave, aceptado de forma explicita por el
+owner. Es solo visual, nada se rompe, y dura lo que dure el movimiento
+de la mira.
+
+## LO QUE NO CAMBIA (verificado)
+- FIX DEL LASER (v5.7), 3 reglas de yaw, giro ~900 grados/s, vuelo
+  GMod, canon de 4 modos, shockwave, sonidos OM, FSM de animaciones,
+  tint del laserswap, auto-reparacion 10 Hz: INTACTOS.
+- El resto de tu carpeta scripting/: IDENTICO a tu rar (diff completo:
+  solo cambian Tails.inc, Sonic_ability_manager.sp y se anade el .smx
+  + este txt).
+- Manager: solo titulo/changelog/PLUGIN_VERSION/sm_sjsver (4 cambios
+  atomicos; ninguna otra linea tocada).
+
+## ARCHIVOS QUE CAMBIAN (dentro de TU estructura)
+- scripting/include/Tails.inc          (v5.12 -> v5.13)
+- scripting/Sonic_ability_manager.sp   (v3.76.0 -> v3.77.0)
+- scripting/compiled/Sonic_ability_manager.smx  (anadido; SM 1.11,
+  0 errores, 29 warnings preexistentes de Sally.inc/spawn hooks)
+
+## INSTALACION
+1. Descomprime este zip: dentro viene tu carpeta "scripting/"
+   completa con la solucion ya integrada. Reemplaza tu carpeta
+   scripting/ con esta (o copia encima los 3 archivos que cambian).
+2. El .smx ya compilado esta en scripting/compiled/: copialo a tu
+   carpeta de plugins (addons/sourcemod/plugins/) y recarga
+   (sm plugins reload Sonic_ability_manager) o cambia de mapa.
+   Si tu server corre un SourceMod mas viejo que 1.11, compila tu
+   mismo con tu spcomp.exe: las fuentes usan solo APIs clasicas.
+3. Verifica: sm_sjsver -> "Manager 3.77.0 ... Tails v5.13 ... OM:
+   vuelo + canon 4 modos; H3 = modo; parentado suave + bomba de
+   bilis".
+4. Prueba movimiento (debe sentirse EXACTO al v5.7: suave, cero
+   tirones) y el modo ORBS (frascos de bilis, sin fuego).
+5. Afinado si el avatar se ve adelantado/atrasado al caminar:
+   tails_lerpcomp 0.1 (default) / 0.13 con ping alto / 0 = off.

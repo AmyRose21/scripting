@@ -1,0 +1,1153 @@
+--- /home/z/my-project/download/suite_37729_witch_frozen/include/Knuckles.inc	2026-10-09 08:53:13.645797598 +0000
++++ /home/z/my-project/builds/OM37730/scripting/include/Knuckles.inc	2026-10-09 09:24:54.372938802 +0000
+@@ -1,6 +1,46 @@
+ /*
+  * ======================================================
+- *  [MODULO] Knuckles the Echidna - Power & Defense v64 (R32: METEOR STRIKE FIX)
++ *  [MODULO] Knuckles the Echidna - Power & Defense v65-OM (AVATAR KNUCKLES.MDL)
++ *
++ *  v65-OM CHANGES (R33 — "Incluiremos a knuckles... revisa lua de
++ *     knuckles... y hacer el anadido y todo el resto ya lo sabes"):
++ *   - EL AVATAR (5o avatar del suite, patron Metal v5.4/sonic v6.30):
++ *     doble copia R/L (la R para los demas — viaja por TP con
++ *     tails_avatar_tp, la L parentada contra los eye angles del
++ *     dueno), pulso de pausa, FSM de 10 Hz y cvar knux_avatar 1.
++ *     Modelo models/Noodles/OM/knuckles.mdl del VPK om_ (escala 1,
++ *     l.51 del lua) con gate PrecacheModel: sin VPK no se monta y
++ *     TODO lo demas sigue igual.
++ *   - FSM con las 15 SECUENCIAS del knuckles.mdl que usa el lua GMod
++ *     (noodles_om_pills_survivors_knuckles.lua): idle/walk/run/jump/
++ *     fall + glide (planeo, ShouldAlternate.fall l.231) + latch
++ *     (agarre de pared l.227 y hover del Meteoro) + FallAttack
++ *     (picada del smash aereo l.229 y del Meteoro) + los one-shots
++ *     de los 5 PillAnim del lua (PunchAnim l.326, GroundSmash l.1073,
++ *     attack = lanzamiento aereo l.1781, LatchOff l.1585) + las
++ *     variantes lowhealth de HP<=60 (ShouldAlternate l.213-241).
++ *     Walk al rate 1.0 CONSTANTE (knuckles NO define animrates —
++ *     framework l.936-944: rate 1 para TODO; leccion Metal v5.2), run
++ *     al ritmo de la velocidad como el resto del suite.
++ *   - TINTES DEL UI (knuckles_ui_om.lua, fades simetricos EXACTOS
++ *     duration 0.5*0.5=0.25s / fade 0.25*0.5=0.125s): pulso ROJO
++ *     repetido cargando el puno (Knuckles_glow_duration), BLANCO al
++ *     bloquear con la contra (glow_duration_white), VERDE al
++ *     cancelar (glow_cancel_duration) y la postura azul 200,200,255
++ *     de siempre del port (el cuerpo sigue tintandose tambien para
++ *     el modo sin avatar).
++ *   - SONIDOS AUTENTICOS del VPK om/knuckles/ con gates y fallback
++ *     stock (receta Metal): punchstart (inicio de carga), swing
++ *     (lanzamiento aereo/terrestre), punchstun (impacto que aturde),
++ *     counter (activacion de la postura), CounterBounce (rebote de
++ *     bloqueo, vol 0.65 en el lua), Latch (agarrarse de pared) y
++ *     KnucklesCancel (cancelar la carga con R).
++ *   - RAGDOLL DE MUERTE prop_ragdoll knuckles.mdl 15s (noragdoll=false
++ *     del lua l.59) + ventana anti-corpse 2s/200u (receta Sonic
++ *     v3.76.2 via Knuckles_OnEntityCreated — lo despacha Rouge.inc).
++ *   - FIX DE CICLO DE VIDA: Knuckles_OnPlayerDeath NUEVO para el
++ *     cambio de personaje/desconexion del manager (antes solo
++ *     Knux_ResetState: el avatar habria quedado huerfano).
+  *
+  *  v64 CHANGES (R32 — FIX del Meteoro, reporte literal del owner:
+  *     "al presionar la c explota en el aire y no deberia ser... deberia
+@@ -145,7 +185,7 @@
+ #define _Knuckles_included
+ 
+ // v63: sonda de version (sm_sjsver del manager)
+-#define KNUCKLES_INC_VERSION "v64"
++#define KNUCKLES_INC_VERSION "v65-OM"
+ 
+ #if !defined _sourcemod_included
+     #include <sourcemod>
+@@ -280,6 +320,79 @@
+ ConVar g_cvKnuxSkyBallSpeed, g_cvKnuxSkyBallRadius, g_cvKnuxSkyBallDamage;
+ ConVar g_cvKnuxPropForce, g_cvKnuxPropBlast, g_cvKnuxBoomerFuse;
+ 
++// =====================================================================
++// v65-OM: AVATAR KNUCKLES (patron Metal v5.4 / sonic v6.30 / Tails)
++// =====================================================================
++#define KNUX_OM_MODEL       "models/Noodles/OM/knuckles.mdl"
++#define KNUX_AVATAR_NAME    "knuckles_avatar_om"
++
++// FSM de animacion — las 15 secuencias del knuckles.mdl que usa el lua
++// GMod (anims.default + ShouldAlternate + los PillAnim one-shots)
++#define KNUX_ST_IDLE         0
++#define KNUX_ST_WALK         1
++#define KNUX_ST_RUN          2
++#define KNUX_ST_JUMP         3
++#define KNUX_ST_FALL         4
++#define KNUX_ST_GLIDE        5    // loop: planeo (ShouldAlternate.fall -> 'glide')
++#define KNUX_ST_LATCH        6    // loop: agarrado de pared / hover del Meteoro
++#define KNUX_ST_PUNCH        7    // one-shot: PunchAnim (dash punch, lua l.326)
++#define KNUX_ST_SMASH        8    // one-shot: GroundSmash (aterrizaje, l.1073)
++#define KNUX_ST_ATTACK       9    // one-shot: attack (lanzamiento aereo, l.1781)
++#define KNUX_ST_FALLATK     10    // loop: FallAttack (picada smash + Meteoro)
++#define KNUX_ST_LATCHOFF    11    // one-shot: LatchOff (salida de pared, l.1585)
++#define KNUX_ST_IDLE_LOW    12    // idle_lowhealth (HP <= 60)
++#define KNUX_ST_WALK_LOW    13    // walk_lowhealth
++#define KNUX_ST_RUN_LOW     14    // run_lowhealth
++#define KNUX_ANIM_COUNT     15
++
++// lock de los one-shots mientras corren (segundos)
++#define KNUX_LOCK_PUNCH      0.55
++#define KNUX_LOCK_SMASH      0.90
++#define KNUX_LOCK_ATTACK     0.50
++#define KNUX_LOCK_LATCHOFF   0.45
++
++// tintes del knuckles_ui_om.lua — fade simetrico EXACTO del UI:
++// duration = 0.5*0.5 = 0.25s con fade = 0.25*0.5 = 0.125s por lado
++#define KNUX_TINT_DUR        0.25
++#define KNUX_TINT_FADE       0.125
++#define KNUX_TINT_PULSE_EVERY 0.6   // retrig del pulso ROJO mientras carga
++#define KNUX_SND_LEVEL       87     // AdvancedPillSound del lua (todas las del mod van a 87)
++
++ConVar g_cvKnuxAvatar;                          // knux_avatar (default 1)
++bool   g_bKnuxModelOK = false;                  // knuckles.mdl en el VPK om_
++int    g_iKnuxAvatar[MAXPLAYERS + 1];           // EntRef copia R (0 = sin avatar)
++int    g_iKnuxAvatarL[MAXPLAYERS + 1];          // EntRef copia L (solo el dueno)
++int    g_iKnuxBodyRender[MAXPLAYERS + 1];       // RenderMode original del cuerpo
++int    g_iKnuxAnimState[MAXPLAYERS + 1];        // estado actual de la FSM
++float  g_fKnuxAnimLock[MAXPLAYERS + 1];         // lock de los one-shots
++float  g_fKnuxBodyYaw[MAXPLAYERS + 1];          // yaw suavizado del cuerpo
++float  g_fKnuxYawLastT[MAXPLAYERS + 1];         // dt del giro suave
++float  g_fKnuxSmLoc[MAXPLAYERS + 1][3];         // smoothing angulos copia R
++float  g_fKnuxSmLocL[MAXPLAYERS + 1][3];        // smoothing angulos copia L
++bool   g_bKnuxSmSnap[MAXPLAYERS + 1];           // snap al nacer (write seco)
++float  g_fKnuxJumpStart[MAXPLAYERS + 1];        // t0 del jump (ventana v5.2)
++float  g_fKnuxDeathHideUntil[MAXPLAYERS + 1];   // ventana anti-corpse (2s)
++float  g_vKnuxDeathOrigin[MAXPLAYERS + 1][3];   // origen de la muerte (200u)
++
++// tintes del avatar (pulso activo + postura)
++float  g_fKnuxTintEnd[MAXPLAYERS + 1];          // fin del pulso (0 = ninguno)
++int    g_iKnuxTintR[MAXPLAYERS + 1];
++int    g_iKnuxTintG[MAXPLAYERS + 1];
++int    g_iKnuxTintB[MAXPLAYERS + 1];
++float  g_fKnuxNextPulse[MAXPLAYERS + 1];        // proximo pulso de carga
++
++// sonidos autenticos del VPK om_ (gates individuales, fallback stock)
++bool   g_bKnuxSndPunchStart, g_bKnuxSndSwing, g_bKnuxSndPunchStun;
++bool   g_bKnuxSndCounter, g_bKnuxSndBounce, g_bKnuxSndLatch, g_bKnuxSndCancel;
++
++// tabla de secuencias (indices = KNUX_ST_*)
++static const char g_sKnuxAnimSeq[KNUX_ANIM_COUNT][20] = {
++    "idle", "walk", "run", "jump", "fall",
++    "glide", "latch",
++    "PunchAnim", "GroundSmash", "attack", "FallAttack", "LatchOff",
++    "idle_lowhealth", "walk_lowhealth", "run_lowhealth"
++};
++
+ #define Knux_IsValidClient(%1) (1 <= %1 <= MaxClients && IsClientInGame(%1) && IsPlayerAlive(%1))
+ 
+ public void Knuckles_OnPluginStart()
+@@ -321,6 +434,12 @@
+     HookEvent("player_spawn", Knux_Event_PlayerSpawn);
+     HookEvent("player_death", Knux_Event_PlayerDeath);
+     HookEvent("round_end", Knux_Event_RoundEnd);
++
++    // v65-OM: avatar — convar + FSM a 10 Hz (patron T_MetalAvatarThink).
++    // La muerte del avatar (ragdoll + anti-corpse) vive en el hook
++    // player_death POST que este modulo YA tiene (Knux_Event_PlayerDeath).
++    g_cvKnuxAvatar = CreateConVar("knux_avatar", "1", "Knuckles OM: avatar espejo (knuckles.mdl del VPK de recursos, patron Tails/Sonic/Amy/Metal)", _, true, 0.0, true, 1.0);
++    CreateTimer(0.1, T_KnuxAvatarThink, _, TIMER_REPEAT);
+     
+     // v3.75: AutoExecConfig eliminado - config UNICA del suite (Sonic_Suite.cfg, auto-guardada; ver manager). El archivo viejo queda muerto.
+ 
+@@ -357,6 +476,30 @@
+     Knux_PrecacheParticle("gas_explosion_main");      // mega explosion (no-op si ya esta)
+     PrecacheModel(KNUX_SKY_BALL_MDL);                 // esfera del escudo de Sally
+ 
++    // v65-OM: SONIDOS AUTENTICOS del VPK om_ (AdvancedPillSound del lua,
++    // todos a soundLevel 87 — el port iba al default 75). Gates
++    // individuales con fallback stock (receta Metal v4.1/v5.2): sin VPK
++    // TODO cae a los sonidos de siempre, cero dependencia.
++    g_bKnuxSndPunchStart = PrecacheSound("om/knuckles/punchstart.wav", true);      // carga del puno
++    g_bKnuxSndSwing      = PrecacheSound("om/knuckles/swing.wav", true);           // lanzamiento (aereo l.1794)
++    g_bKnuxSndPunchStun  = PrecacheSound("om/knuckles/punchstun.wav", true);      // impacto que aturde
++    g_bKnuxSndCounter    = PrecacheSound("om/knuckles/counter.wav", true);        // activacion de la postura
++    g_bKnuxSndBounce     = PrecacheSound("om/knuckles/CounterBounce.wav", true);  // rebote de bloqueo
++    g_bKnuxSndLatch      = PrecacheSound("om/knuckles/Latch.wav", true);          // agarrarse de pared
++    g_bKnuxSndCancel     = PrecacheSound("om/knuckles/KnucklesCancel.wav", true); // cancelar carga
++    if (g_bKnuxSndPunchStart) AddFileToDownloadsTable("sound/om/knuckles/punchstart.wav");
++    if (g_bKnuxSndSwing)      AddFileToDownloadsTable("sound/om/knuckles/swing.wav");
++    if (g_bKnuxSndPunchStun)  AddFileToDownloadsTable("sound/om/knuckles/punchstun.wav");
++    if (g_bKnuxSndCounter)    AddFileToDownloadsTable("sound/om/knuckles/counter.wav");
++    if (g_bKnuxSndBounce)     AddFileToDownloadsTable("sound/om/knuckles/CounterBounce.wav");
++    if (g_bKnuxSndLatch)      AddFileToDownloadsTable("sound/om/knuckles/Latch.wav");
++    if (g_bKnuxSndCancel)     AddFileToDownloadsTable("sound/om/knuckles/KnucklesCancel.wav");
++
++    // v65-OM: gate del MODELO del avatar (PrecacheModel devuelve 0 si el
++    // .mdl no esta en el VPK montado; con 0 el avatar jamas se monta y
++    // todo lo demas del Knuckles sigue igual — receta g_bMetalModelOK)
++    g_bKnuxModelOK = view_as<bool>(PrecacheModel(KNUX_OM_MODEL, true));
++
+     for (int i = 1; i <= MaxClients; i++) Knux_ResetState(i);
+ }
+ 
+@@ -374,10 +517,54 @@
+         Knux_ResetState(client);
+         SDKUnhook(client, SDKHook_OnTakeDamage, Knux_OnTakeDamage);
+         SDKHook(client, SDKHook_OnTakeDamage, Knux_OnTakeDamage);
++
++        // v65-OM: montar el avatar ya (patron Metal/Sonic: la FSM de 10 Hz
++        // lo re-monta sola si el orden de eventos fue raro)
++        if (g_cvKnuxAvatar != null && g_cvKnuxAvatar.BoolValue && g_bKnuxModelOK
++            && g_iPlayerCharIdx[client] == KNUCKLES_INDEX
++            && GetClientTeam(client) == 2 && IsPlayerAlive(client))
++        {
++            Knux_CreateAvatar(client);
++        }
++    }
++}
++
++// v65-OM: MUERTE REAL del Knuckles (hook player_death POST propio — ya
++// registrado desde siempre). El avatar se va con RAGDOLL + ventana
++// anti-corpse (receta Metal v5.0 / Sonic v3.76.2: en POST el cuerpo ya se
++// devolvio y el corpse del survivor que spawnea el motor justo despues
++// lo filtra la ventana de 2s/200u). SIN avatar: vanilla, igual que antes.
++public void Knux_Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
++{
++    int client = GetClientOfUserId(event.GetInt("userid"));
++    if (client <= 0 || client > MaxClients) return;
++
++    if (g_iKnuxAvatar[client] != 0)
++    {
++        if (IsClientInGame(client))
++        {
++            GetClientAbsOrigin(client, g_vKnuxDeathOrigin[client]);
++            g_fKnuxDeathHideUntil[client] = GetEngineTime() + 2.0;
++            Knux_SpawnDeathRagdoll(client);
++        }
++        Knux_KillAvatar(client);
+     }
++
++    Knux_ResetState(client);
++}
++
++// v65-OM: CAMBIO DE PERSONAJE / DESCONEXION (la llama el manager en
++// CleanupCharModuleState — patron Metal_OnPlayerDeath): estado fuera +
++// avatar fuera SIN ragdoll (el jugador no murio; la muerte real pasa por
++// Knux_Event_PlayerDeath de arriba).
++public void Knuckles_OnPlayerDeath(int client)
++{
++    if (client < 1 || client > MaxClients) return;
++    if (g_iPlayerCharIdx[client] != KNUCKLES_INDEX) return;
++    Knux_ResetState(client);
++    Knux_KillAvatar(client);
+ }
+ 
+-public void Knux_Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast) { int client = GetClientOfUserId(event.GetInt("userid")); if (client > 0) Knux_ResetState(client); }
+ public void Knux_Event_RoundEnd(Event event, const char[] name, bool dontBroadcast) { for (int i = 1; i <= MaxClients; i++) Knux_ResetState(i); }
+ 
+ void Knux_ResetState(int client)
+@@ -399,6 +586,14 @@
+     g_iKnuxSkyState[client] = KNUX_SKY_NONE;
+     g_fKnuxSkyStateStart[client] = 0.0;
+     g_fKnuxSkyHudT[client] = 0.0;
++
++    // v65-OM: tintes del avatar fuera (el avatar en si NO se toca aqui:
++    // su ciclo de vida lo manejan los eventos de spawn/muerte y la FSM
++    // de 10 Hz — el cambio de personaje pasa por Knuckles_OnPlayerDeath)
++    g_fKnuxTintEnd[client] = 0.0;
++    g_fKnuxNextPulse[client] = 0.0;
++    g_fKnuxAnimLock[client] = 0.0;
++    g_iKnuxAnimState[client] = -1;
+     
+     if (IsClientInGame(client)) {
+         if (!GetEntProp(client, Prop_Send, "m_isIncapacitated")) SetEntityMoveType(client, MOVETYPE_WALK);
+@@ -468,6 +663,12 @@
+         if (GetEngineTime() > g_fKnuxCounterEndTime[client]) Knux_StopCounter(client);
+     }
+ 
++    // v65-OM: TINTES DEL AVATAR — animador por frame (la matematica
++    // simetrica EXACTA del knuckles_ui_om.lua) + el pulso ROJO repetido
++    // de la carga del puno. Va ANTES de las ramas de vuelo para correr
++    // tambien con el Meteoro activo.
++    Knux_TintThink(client);
++
+     int buttons = GetClientButtons(client);
+     int flags = GetEntityFlags(client);
+     float vel[3]; GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
+@@ -496,7 +697,16 @@
+     // LOGICA DE CARGA DEL PUÑO
+     if (g_bKnuxCharging[client])
+     {
+-        if (buttons & IN_RELOAD) { Knux_ResetState(client); PrintCenterText(client, "❌ Carga Cancelada"); return; }
++        if (buttons & IN_RELOAD) {
++            Knux_ResetState(client);
++            // v65-OM: pulso VERDE del cancel (glow_cancel_duration del
++            // knuckles_ui_om.lua) + KnucklesCancel.wav — DESPUES del reset
++            // (el reset limpia el tinte)
++            Knux_AvatarTintPulse(client, 0, 255, 0);
++            if (g_bKnuxSndCancel) EmitSoundToAll("om/knuckles/KnucklesCancel.wav", client, _, KNUX_SND_LEVEL);
++            PrintCenterText(client, "❌ Carga Cancelada");
++            return;
++        }
+         
+         if ((buttons & IN_ATTACK) || (buttons & IN_ATTACK2)) {
+             int newButtons = buttons & ~(IN_ATTACK | IN_ATTACK2); 
+@@ -519,6 +729,8 @@
+                 float stop[3] = {0.0, 0.0, 0.0};
+                 TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, stop);
+                 SetEntityMoveType(client, MOVETYPE_NONE); 
++                // v65-OM: Latch.wav del lua (l.776) al agarrarse
++                if (g_bKnuxSndLatch) EmitSoundToAll("om/knuckles/Latch.wav", client, _, KNUX_SND_LEVEL);
+                 PrintCenterText(client, "🧱 Agarrado (%d/%d)", g_iKnuxWallChains[client], KNUX_MAX_WALL_CHAINS);
+             }
+         }
+@@ -538,6 +750,8 @@
+                 fwd[2] = 450.0; // Gran empuje hacia arriba
+                 
+                 TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, fwd);
++                // v65-OM: one-shot LatchOff al soltarse de la pared (lua l.1585)
++                Knux_AvatarOneShot(client, KNUX_ST_LATCHOFF, KNUX_LOCK_LATCHOFF);
+                 g_bKnuxGliding[client] = true;
+                 
+                 return; // Return inmediato para evitar que el Air Steering anule la velocidad de salto
+@@ -649,7 +863,12 @@
+ 
+     g_bKnuxCharging[client] = true;
+     SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 0.7); 
+-    EmitSoundToAll(KNUX_SOUND_CHARGE_1, client);
++    // v65-OM: sonido autentico del inicio de carga (punchstart.wav, lua
++    // l.1707 — antes iba el crowbar stock) + arranque del pulso ROJO del
++    // UI (el primer pulso sale YA en el proximo PreThink)
++    if (g_bKnuxSndPunchStart) EmitSoundToAll("om/knuckles/punchstart.wav", client, _, KNUX_SND_LEVEL);
++    else EmitSoundToAll(KNUX_SOUND_CHARGE_1, client);
++    g_fKnuxNextPulse[client] = 0.0;
+     
+     PrintCenterText(client, "✊ [CLICK] GOLPEAR | [R] CANCELAR");
+     return Plugin_Handled;
+@@ -670,6 +889,11 @@
+         GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
+         vel[0] = 0.0; vel[1] = 0.0; vel[2] = -1500.0; 
+         TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vel);
++        // v65-OM: one-shot 'attack' del lanzamiento aereo (lua l.1781) +
++        // swing.wav (l.1794) — el loop de la picada lo pone la FSM
++        // (FallAttack, el punchFallanim del lua)
++        Knux_AvatarOneShot(client, KNUX_ST_ATTACK, KNUX_LOCK_ATTACK);
++        if (g_bKnuxSndSwing) EmitSoundToAll("om/knuckles/swing.wav", client, _, KNUX_SND_LEVEL);
+         PrintCenterText(client, "☄️ METEOR SMASH!");
+     }
+     else
+@@ -686,7 +910,11 @@
+         fwd[2] = 200.0; 
+         
+         TeleportEntity(client, pos, NULL_VECTOR, fwd);
+-        EmitSoundToAll(KNUX_SOUND_PUNCH, client);
++        // v65-OM: one-shot PunchAnim del dash punch (lua l.326) + swing
++        // autentico con fallback al stock de siempre
++        Knux_AvatarOneShot(client, KNUX_ST_PUNCH, KNUX_LOCK_PUNCH);
++        if (g_bKnuxSndSwing) EmitSoundToAll("om/knuckles/swing.wav", client, _, KNUX_SND_LEVEL);
++        else EmitSoundToAll(KNUX_SOUND_PUNCH, client);
+ 
+         // v58: abrir una nueva "epoch" de golpe (invalida automaticamente
+         // todas las marcas de golpes anteriores - antes habia que resetear
+@@ -837,7 +1065,10 @@
+         TeleportEntity(victim, NULL_VECTOR, NULL_VECTOR, fling);
+         
+         SDKHooks_TakeDamage(victim, attacker, attacker, 100.0, DMG_CLUB);
+-        EmitSoundToAll(KNUX_SOUND_SMASH_HIT, victim);
++        // v65-OM: punchstun.wav autentico del impacto (lua l.310) con
++        // fallback al stock de siempre
++        if (g_bKnuxSndPunchStun) EmitSoundToAll("om/knuckles/punchstun.wav", victim, _, KNUX_SND_LEVEL);
++        else EmitSoundToAll(KNUX_SOUND_SMASH_HIT, victim);
+     } else {
+         if (isWitch) {
+             // v59 (Witch Flight): lanzamiento con IA suspendida: la witch
+@@ -858,7 +1089,9 @@
+             TeleportEntity(victim, NULL_VECTOR, NULL_VECTOR, push);
+             SDKHooks_TakeDamage(victim, attacker, attacker, 1000.0, DMG_CLUB);
+         }
+-        EmitSoundToAll(KNUX_SOUND_SMASH_HIT, attacker);
++        // v65-OM: idem para witch/comunes del dash punch
++        if (g_bKnuxSndPunchStun) EmitSoundToAll("om/knuckles/punchstun.wav", attacker, _, KNUX_SND_LEVEL);
++        else EmitSoundToAll(KNUX_SOUND_SMASH_HIT, attacker);
+     }
+ }
+ 
+@@ -868,6 +1101,10 @@
+     SetEntityMoveType(client, MOVETYPE_WALK);
+ 
+     EmitSoundToAll(KNUX_SOUND_SLAM, client);
++    // v65-OM: one-shot GroundSmash del aterrizaje (lua l.1073) + el
++    // punchstun.wav que el lua pone en el impacto del smash (l.1060)
++    Knux_AvatarOneShot(client, KNUX_ST_SMASH, KNUX_LOCK_SMASH);
++    if (g_bKnuxSndPunchStun) EmitSoundToAll("om/knuckles/punchstun.wav", client, _, KNUX_SND_LEVEL);
+     
+     float pos[3]; GetClientAbsOrigin(client, pos);
+     float radius = g_cvKnuxSlamRadius.FloatValue;
+@@ -1079,7 +1316,9 @@
+     g_fKnuxCounterEndTime[client] = now + g_cvKnuxCounterDuration.FloatValue;
+     
+     SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 0.5); 
+-    EmitSoundToAll(KNUX_SOUND_COUNTER, client);
++    // v65-OM: counter.wav autentico (lua l.1648) con fallback
++    if (g_bKnuxSndCounter) EmitSoundToAll("om/knuckles/counter.wav", client, _, KNUX_SND_LEVEL);
++    else EmitSoundToAll(KNUX_SOUND_COUNTER, client);
+     SetEntityRenderColor(client, 200, 200, 255, 255); 
+     
+     PrintCenterText(client, "🛡️ POSTURA DEFENSIVA (%.1fs)", g_cvKnuxCounterDuration.FloatValue);
+@@ -1173,6 +1412,8 @@
+ 
+     if (Knux_IsValidClient(victim) && g_iPlayerCharIdx[victim] == KNUCKLES_INDEX && g_bKnuxCountering[victim])
+     {
++        // v65-OM: rebote de la contra — pulso BLANCO + CounterBounce
++        Knux_CounterBlockFx(victim, KNUX_SOUND_COUNTER_HIT);
+         return Plugin_Handled;
+     }
+     return Plugin_Continue;
+@@ -1196,6 +1437,8 @@
+     if (Knux_IsValidClient(client) && g_iPlayerCharIdx[client] == KNUCKLES_INDEX && g_bKnuxCountering[client])
+     {
+         PrintCenterText(client, "⚓ [COUNTER] ¡INMOVILIDAD!");
++        // v65-OM: rebote de la contra — pulso BLANCO + CounterBounce
++        Knux_CounterBlockFx(client, KNUX_SOUND_COUNTER_HIT);
+         return Plugin_Handled;
+     }
+     return Plugin_Continue;
+@@ -1226,7 +1469,8 @@
+             && GetClientTeam(attacker) == TEAM_INFECTED
+             && GetEntProp(attacker, Prop_Send, "m_zombieClass") == 2)
+         {
+-            EmitSoundToAll(KNUX_SOUND_COUNTER_HIT, victim);
++            // v65-OM: CounterBounce autentico + pulso BLANCO del bloqueo
++            Knux_CounterBlockFx(victim, KNUX_SOUND_COUNTER_HIT);
+             PrintCenterText(victim, "🤢 [COUNTER] ¡VÓMITO REFLEJADO!");
+ 
+             DataPack dp = new DataPack();
+@@ -1296,7 +1540,8 @@
+ {
+     if (Knux_IsValidClient(player) && g_bKnuxCountering[player])
+     {
+-        EmitSoundToAll(KNUX_SOUND_COUNTER_HIT, player);
++        // v65-OM: CounterBounce autentico + pulso BLANCO del bloqueo
++        Knux_CounterBlockFx(player, KNUX_SOUND_COUNTER_HIT);
+         g_fKnuxDisarmTank[tank] = GetEngineTime() + 5.0; 
+         g_fKnuxExtendedImmunity[player] = GetEngineTime() + 3.0;
+         
+@@ -1340,7 +1585,9 @@
+ {
+     if (Knux_IsValidClient(victim) && g_bKnuxCountering[victim]) {
+         if (Knux_IsValidClient(attacker)) {
+-            EmitSoundToAll(KNUX_SOUND_COUNTER_HIT, victim);
++            // v65-OM: CounterBounce.wav autentico (lua l.555, vol 0.65) con
++            // fallback + pulso BLANCO del bloqueo del UI
++            Knux_CounterBlockFx(victim, KNUX_SOUND_COUNTER_HIT);
+             
+             // Friccion absoluta instantánea para evitar que el Charger pase de largo
+             float zeroVel[3] = {0.0, 0.0, 0.0};
+@@ -1407,7 +1654,8 @@
+ public bool Knuckles_HandleSmokerCounter(int victim, int smoker)
+ {
+     if (Knux_IsValidClient(victim) && g_bKnuxCountering[victim]) {
+-        EmitSoundToAll(KNUX_SOUND_COUNTER_HIT, victim);
++        // v65-OM: CounterBounce autentico + pulso BLANCO del bloqueo
++        Knux_CounterBlockFx(victim, KNUX_SOUND_COUNTER_HIT);
+         
+         if (Knux_IsValidClient(smoker)) {
+             DataPack pack = new DataPack();
+@@ -2361,3 +2609,706 @@
+     pack.WriteCell(tick + 1);
+     return Plugin_Continue;
+ }
++
++// =====================================================================
++// =====================================================================
++// v65-OM: SISTEMA DE AVATAR — patron Metal v5.4 (doble copia R/L + modo
++// TP + pulso de pausa + FSM de animacion del knuckles.mdl)
++// =====================================================================
++// =====================================================================
++
++// Crea el prop base (avatar R o L): parentado al survivor, sin sombras,
++// EF_NOINTERP al nacer (nace ENCAJADO). tpMode = la copia R viaja por
++// TeleportEntity + reloj vivo (tails_avatar_tp): los clientes de los
++// demas la INTERPOLAN suave (la L siempre parentada).
++int Knux_CreateAvatarProp(int client, const char[] model, const char[] targetname, bool tpMode = false)
++{
++    int av = CreateEntityByName("prop_dynamic_override");
++    if (av <= 0 || !IsValidEntity(av)) return 0;
++
++    DispatchKeyValue(av, "model", model);
++    DispatchKeyValue(av, "targetname", targetname);
++    DispatchKeyValue(av, "solid", "0");
++    DispatchKeyValue(av, "disableshadows", "1");
++    DispatchSpawn(av);
++
++    float pos[3], ang[3];
++    GetClientAbsOrigin(client, pos);
++    GetClientAbsAngles(client, ang);
++    ang[0] = 0.0;                          // pitch NUNCA
++    ang[2] = 0.0;                          // roll NUNCA
++    g_fKnuxBodyYaw[client]  = ang[1];
++    g_fKnuxYawLastT[client] = GetEngineTime();
++    TeleportEntity(av, pos, ang, NULL_VECTOR);
++
++    float loc[3];
++    Tails_AvatarLocalAngles(0.0, ang[1], g_fKnuxBodyYaw[client], loc);
++
++    if (!tpMode)
++    {
++        // parentado (modo Tails default: el motor mueve la posicion,
++        // cero delay de red, anims suaves; aqui solo se escriben angulos)
++        SetVariantString("!activator");
++        AcceptEntityInput(av, "SetParent", client);
++        if (HasEntProp(av, Prop_Send, "m_angRotation"))
++            SetEntPropVector(av, Prop_Send, "m_angRotation", loc);
++    }
++
++    for (int k = 0; k < 3; k++)
++    {
++        g_fKnuxSmLoc[client][k]  = loc[k];
++        g_fKnuxSmLocL[client][k] = loc[k];
++    }
++    g_bKnuxSmSnap[client] = true;
++
++    if (!tpMode)
++        Tails_SetAvatarNoInterp(av, true);
++    return av;
++}
++
++// Monta el avatar completo (R + L + cuerpo oculto). pulsePause SOLO para
++// montajes de ciclo de vida (spawn/seleccion/reparacion tardia de la FSM).
++void Knux_CreateAvatar(int client, bool pulsePause = true)
++{
++    if (!g_bKnuxModelOK) return;
++    if (!IsClientInGame(client) || !IsPlayerAlive(client)) return;
++    if (GetClientTeam(client) != 2) return;
++
++    // la copia R nace en modo TP si tails_avatar_tp (la que ven los
++    // DEMAS viaja por teleport por tick + interpolacion de red)
++    int av = Knux_CreateAvatarProp(client, KNUX_OM_MODEL, KNUX_AVATAR_NAME, Tails_AvatarTPOn());
++    if (av == 0) return;
++
++    SetVariantString("idle");
++    AcceptEntityInput(av, "SetAnimation");
++    g_iKnuxAnimState[client] = 0;
++
++    SDKHook(av, SDKHook_SetTransmit, Knux_TransmitAvatarR);
++
++    g_iKnuxAvatarL[client] = 0;
++    Knux_CreateAvatarL(client);
++
++    // ocultar el cuerpo del survivor (el avatar ES el personaje ahora)
++    RenderMode curMode = GetEntityRenderMode(client);
++    if (curMode != RENDER_NONE)
++        g_iKnuxBodyRender[client] = view_as<int>(curMode);
++    else if (g_iKnuxBodyRender[client] == -1)
++        g_iKnuxBodyRender[client] = view_as<int>(RENDER_NORMAL);
++    SetEntityRenderMode(client, RENDER_NONE);
++
++    g_iKnuxAvatar[client] = EntIndexToEntRef(av);
++
++    // per-tick: angulos locales (contra-rotacion del parent)
++    SDKHook(client, SDKHook_PostThink, Knux_AvatarFollow);
++
++    // PULSO DE PAUSA en cada montaje de ciclo de vida (la misma infra
++    // sv_pausable del suite; convar tails_pausefix manda para TODOS los
++    // avatares — es UN solo sistema, 5o avatar del suite)
++    if (pulsePause)
++        Tails_PauseFix_Trigger(client);
++}
++
++void Knux_CreateAvatarL(int client)
++{
++    if (!g_bKnuxModelOK) return;
++    if (!IsClientInGame(client) || !IsPlayerAlive(client)) return;
++    if (GetClientTeam(client) != 2) return;
++    if (g_iKnuxAvatar[client] == 0) return;
++
++    int av = Knux_CreateAvatarProp(client, KNUX_OM_MODEL, "knuckles_avatar_om_l");
++    if (av == 0) return;
++
++    SetVariantString("idle");
++    AcceptEntityInput(av, "SetAnimation");
++
++    SDKHook(av, SDKHook_SetTransmit, Knux_TransmitAvatarL);
++
++    g_iKnuxAvatarL[client] = EntIndexToEntRef(av);
++}
++
++void Knux_KillAvatarL(int client)
++{
++    if (client < 1 || client > MaxClients) return;
++    int avL = EntRefToEntIndex(g_iKnuxAvatarL[client]);
++    if (g_iKnuxAvatarL[client] != 0 && avL > 0 && IsValidEntity(avL))
++    {
++        SDKUnhook(avL, SDKHook_SetTransmit, Knux_TransmitAvatarL);
++        AcceptEntityInput(avL, "Kill");
++    }
++    g_iKnuxAvatarL[client] = 0;
++}
++
++// Mata las copias R+L y devuelve el cuerpo. SIN desenganchrar el follow
++// (lo hace Knux_KillAvatar).
++void Knux_KillAvatarOnly(int client)
++{
++    if (client < 1 || client > MaxClients) return;
++
++    Knux_KillAvatarL(client);
++
++    int av = EntRefToEntIndex(g_iKnuxAvatar[client]);
++    if (g_iKnuxAvatar[client] != 0 && av > 0 && IsValidEntity(av))
++    {
++        SDKUnhook(av, SDKHook_SetTransmit, Knux_TransmitAvatarR);
++        AcceptEntityInput(av, "Kill");
++    }
++    g_iKnuxAvatar[client] = 0;
++
++    // devolver el cuerpo SI el jugador sigue conectado (muerte/cambio de
++    // personaje/desconexion: el corpse que pueda aparecer lo filtra la
++    // ventana anti-ragdoll de abajo)
++    if (IsClientInGame(client))
++    {
++        if (g_iKnuxBodyRender[client] != -1)
++        {
++            SetEntityRenderMode(client, view_as<RenderMode>(g_iKnuxBodyRender[client]));
++            g_iKnuxBodyRender[client] = -1;
++        }
++    }
++    else
++        g_iKnuxBodyRender[client] = -1;
++
++    g_iKnuxAnimState[client] = -1;
++}
++
++void Knux_KillAvatar(int client)
++{
++    if (client < 1 || client > MaxClients) return;
++    Knux_KillAvatarOnly(client);
++    SDKUnhook(client, SDKHook_PostThink, Knux_AvatarFollow);
++}
++
++// Transmit filters (patron Sonic/Metal): la R no la ve su dueno (tiene
++// su L), la L la ve SOLO su dueno.
++public Action Knux_TransmitAvatarR(int entity, int client)
++{
++    if (client < 1) return Plugin_Continue;
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_iKnuxAvatar[i] != 0 && EntRefToEntIndex(g_iKnuxAvatar[i]) == entity)
++        {
++            if (client == i && g_iKnuxAvatarL[i] != 0
++                && EntRefToEntIndex(g_iKnuxAvatarL[i]) > 0)
++                return Plugin_Handled;   // el dueno tiene su copia L
++            return Plugin_Continue;
++        }
++    }
++    return Plugin_Continue;
++}
++
++public Action Knux_TransmitAvatarL(int entity, int client)
++{
++    if (client < 1) return Plugin_Continue;
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_iKnuxAvatarL[i] != 0 && EntRefToEntIndex(g_iKnuxAvatarL[i]) == entity)
++        {
++            if (client == i) return Plugin_Continue;   // el dueno si
++            return Plugin_Handled;                     // nadie mas
++        }
++    }
++    return Plugin_Continue;
++}
++
++// FOLLOW PER-TICK (lecciones Tails/Sonic/Metal: yaw suave con deadband 3
++// grados, contra-rotacion amortiguada, reloj vivo, copia L contra los
++// eye angles del dueno; la R por TP en modo tp)
++public void Knux_AvatarFollow(int client)
++{
++    if (g_iKnuxAvatar[client] == 0)
++    {
++        SDKUnhook(client, SDKHook_PostThink, Knux_AvatarFollow);
++        return;
++    }
++    if (!IsPlayerAlive(client)) return;   // la FSM mata el avatar en <=0.1s
++
++    // ---- yaw objetivo: direccion REAL del movimiento ----
++    float yawObj = g_fKnuxBodyYaw[client];
++    float vel[3];
++    GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++    if (vel[0] * vel[0] + vel[1] * vel[1] > 1600.0)   // > 40 u/s
++    {
++        float velYaw = RadToDeg(ArcTangent2(vel[1], vel[0]));
++        float dv = velYaw - g_fKnuxBodyYaw[client];
++        while (dv > 180.0)  dv -= 360.0;
++        while (dv < -180.0) dv += 360.0;
++        if (dv > 3.0 || dv < -3.0)
++            yawObj = velYaw;
++    }
++
++    // ---- giro suave hacia el objetivo (~900 grados/s) ----
++    float now = GetEngineTime();
++    float dt  = now - g_fKnuxYawLastT[client];
++    g_fKnuxYawLastT[client] = now;
++    if (dt <= 0.0 || dt > 0.3) dt = 0.033;
++
++    float d = yawObj - g_fKnuxBodyYaw[client];
++    while (d > 180.0)  d -= 360.0;
++    while (d < -180.0) d += 360.0;
++    float step = 900.0 * dt;
++    if (d >  step) d =  step;
++    if (d < -step) d = -step;
++    g_fKnuxBodyYaw[client] += d;
++
++    float par[3], loc[3];
++    bool snap = g_bKnuxSmSnap[client];
++    GetClientAbsAngles(client, par);
++
++    // ---- copia R ----
++    int av = EntRefToEntIndex(g_iKnuxAvatar[client]);
++    if (av > 0 && IsValidEntity(av))
++    {
++        if (Tails_AvatarTPOn())
++        {
++            // R POR TP: TeleportEntity por tick en pose mundo + reloj
++            // vivo, SIN EF_NOINTERP -> los clientes de los demas la
++            // INTERPOLAN = suave sin depender de la pausa
++            float posTP[3], angTP[3];
++            GetClientAbsOrigin(client, posTP);
++            angTP[0] = 0.0;                      // pitch NUNCA
++            angTP[1] = g_fKnuxBodyYaw[client];
++            angTP[2] = 0.0;                      // roll NUNCA
++            TeleportEntity(av, posTP, angTP, NULL_VECTOR);
++            Tails_MarkInterp(av);
++        }
++        else
++        {
++            Tails_AvatarLocalAngles(par[0], par[1], g_fKnuxBodyYaw[client], loc);
++            loc[1] = Tails_UnwrapYaw(g_fKnuxSmLoc[client][1], loc[1]);
++            Tails_ExpDamp(loc, g_fKnuxSmLoc[client], 0.05, dt, snap);
++            if (HasEntProp(av, Prop_Send, "m_angRotation"))
++                SetEntPropVector(av, Prop_Send, "m_angRotation", g_fKnuxSmLoc[client]);
++            Tails_MarkInterp(av);
++        }
++    }
++
++    // ---- copia L: contra-rotada contra los EYE del dueno ----
++    if (g_iKnuxAvatarL[client] != 0)
++    {
++        int avL = EntRefToEntIndex(g_iKnuxAvatarL[client]);
++        if (avL > 0 && IsValidEntity(avL))
++        {
++            float eye[3], locL[3];
++            GetClientEyeAngles(client, eye);
++            Tails_AvatarLocalAngles(eye[0], eye[1], g_fKnuxBodyYaw[client], locL);
++            locL[1] = Tails_UnwrapYaw(g_fKnuxSmLocL[client][1], locL[1]);
++            Tails_ExpDamp(locL, g_fKnuxSmLocL[client], 0.05, dt, snap);
++            if (HasEntProp(avL, Prop_Send, "m_angRotation"))
++                SetEntPropVector(avL, Prop_Send, "m_angRotation", g_fKnuxSmLocL[client]);
++            Tails_MarkInterp(avL);
++        }
++    }
++    g_bKnuxSmSnap[client] = false;
++}
++
++// FSM de 10 Hz: montaje / auto-reparacion / muerte del avatar (patron
++// T_MetalAvatarThink / T_SonicAvatarThink)
++public Action T_KnuxAvatarThink(Handle timer)
++{
++    float now = GetEngineTime();
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (!IsClientInGame(i)) { Knux_KillAvatar(i); continue; }
++
++        bool esKnuxVivo = (g_iPlayerCharIdx[i] == KNUCKLES_INDEX
++                           && IsPlayerAlive(i) && GetClientTeam(i) == 2);
++
++        // incap = fuera (defensa anti terceros: ni el ragdoll del
++        // incap ni el cuerpo vuelven a verse raros)
++        if (esKnuxVivo && GetEntProp(i, Prop_Send, "m_isIncapacitated") > 0)
++            esKnuxVivo = false;
++
++        // ---- montaje ----
++        if (g_iKnuxAvatar[i] == 0)
++        {
++            if (esKnuxVivo && g_cvKnuxAvatar != null && g_cvKnuxAvatar.BoolValue
++                && g_bKnuxModelOK)
++            {
++                Knux_CreateAvatar(i);
++            }
++            continue;
++        }
++
++        // quitar avatar si dejo de ser un Knuckles survivor vivo de pie
++        if (!esKnuxVivo)
++        {
++            Knux_KillAvatar(i);
++            continue;
++        }
++
++        int av = EntRefToEntIndex(g_iKnuxAvatar[i]);
++        if (av <= 0 || !IsValidEntity(av))
++        {
++            g_iKnuxAvatar[i] = 0;
++            g_iKnuxAnimState[i] = -1;
++        }
++
++        // reafirmar el RENDER_NONE del cuerpo (el motor lo resetea al
++        // cambiar de capitulo/rescue: fix Tails v5.4)
++        if (g_iKnuxBodyRender[i] != -1 && GetEntityRenderMode(i) != RENDER_NONE)
++            SetEntityRenderMode(i, RENDER_NONE);
++
++        // auto-reparacion de la copia L (montaje tardio: pulso tambien)
++        if (g_iKnuxAvatarL[i] == 0 && g_iKnuxAvatar[i] != 0)
++        {
++            Knux_CreateAvatarL(i);
++            if (g_iKnuxAvatarL[i] != 0)
++                Tails_PauseFix_Trigger(i);
++        }
++
++        // ---- FSM de animacion ----
++        av = EntRefToEntIndex(g_iKnuxAvatar[i]);
++        if (g_iKnuxAvatar[i] != 0 && av > 0 && IsValidEntity(av))
++            Knux_AvatarUpdate(i, av, now);
++    }
++    return Plugin_Continue;
++}
++
++// =====================================================================
++// FSM DE ANIMACION — prioridades del lua GMod:
++//   el Meteoro MANDA el frame (SkyThink) -> agarrado de pared (latch) ->
++//   picada del smash aereo (FallAttack, el punchFallanim) -> planeo
++//   (glide) -> aire (jump con ventana / fall) -> suelo (idle/walk/run
++//   con variantes lowhealth de HP<=60 — ShouldAlternate l.209-243)
++// =====================================================================
++void Knux_AvatarUpdate(int client, int av, float now)
++{
++    // lock de one-shot en curso (PunchAnim/GroundSmash/attack/LatchOff)
++    if (now < g_fKnuxAnimLock[client]) return;
++
++    int state;
++    float rate = 1.0;
++    int sky = g_iKnuxSkyState[client];
++
++    if (sky == KNUX_SKY_ASCENT)
++    {
++        // elevacion del Meteoro: pose de vuelo
++        state = KNUX_ST_GLIDE;
++    }
++    else if (sky == KNUX_SKY_AIM)
++    {
++        // hover de apuntado — "estilo agarre de pared" (v63/v64)
++        state = KNUX_ST_LATCH;
++    }
++    else if (sky == KNUX_SKY_DIVE)
++    {
++        // la picada del Meteoro (mismo look que la del smash aereo)
++        state = KNUX_ST_FALLATK;
++    }
++    else if (g_bKnuxClinging[client])
++    {
++        // agarrado de pared (ShouldAlternate.fall -> 'latch')
++        state = KNUX_ST_LATCH;
++    }
++    else if (g_bKnuxSlamming[client])
++    {
++        // picada del Meteor Smash (punchFallanim -> 'FallAttack')
++        state = KNUX_ST_FALLATK;
++    }
++    else if (g_bKnuxGliding[client])
++    {
++        // planeo (GlideDuration -> 'glide')
++        state = KNUX_ST_GLIDE;
++    }
++    else if (!(GetEntityFlags(client) & FL_ONGROUND))
++    {
++        // AIRE (receta Metal v5.2 ajuste 5 / Sonic "ventana del jump"):
++        // sube = jump; cae = fall PERO si el one-shot del jump todavia
++        // vive (arranco hace < 0.5s o el ciclo del modelo no termino),
++        // el jump SIGUE sin cortarse
++        float vel[3];
++        GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++        if (vel[2] > 40.0)
++        {
++            state = KNUX_ST_JUMP;
++        }
++        else
++        {
++            bool jumpLive = false;
++            if (g_iKnuxAnimState[client] == KNUX_ST_JUMP)
++            {
++                float jt = now - g_fKnuxJumpStart[client];
++                if (jt < 0.5)      jumpLive = true;
++                else if (jt < 1.5 && !Knux_JumpAnimDone(av)) jumpLive = true;
++            }
++            state = jumpLive ? KNUX_ST_JUMP : KNUX_ST_FALL;
++        }
++    }
++    else if (g_iKnuxAnimState[client] == KNUX_ST_JUMP && !Knux_JumpAnimDone(av)
++             && now - g_fKnuxJumpStart[client] < 0.5)
++    {
++        // FL_ONGROUND parpadea al saltar rozando escalones: mientras el
++        // one-shot del jump viva (<= 0.5s), no bajar a walk/run
++        state = KNUX_ST_JUMP;
++    }
++    else
++    {
++        // SUELO: idle/walk/run (con las variantes lowhealth del lua —
++        // ShouldAlternate las pisa con HP <= 60)
++        bool low = (GetClientHealth(client) <= 60);
++        float s = Knux_Speed2D(client);
++        if (s < 40.0)
++            state = low ? KNUX_ST_IDLE_LOW : KNUX_ST_IDLE;
++        else if (s < 150.0 || (GetClientButtons(client) & IN_DUCK))
++        {
++            state = low ? KNUX_ST_WALK_LOW : KNUX_ST_WALK;
++            // walk al rate 1.0 CONSTANTE del framework GMod (knuckles NO
++            // define animrates — noodles_om_pills_base l.936-944: rate 1
++            // para TODO; leccion Metal v5.2 ajuste 5)
++            rate = 1.0;
++        }
++        else
++        {
++            state = low ? KNUX_ST_RUN_LOW : KNUX_ST_RUN;
++            rate = 1.32 * (s / 450.0);
++            if (rate < 0.72) rate = 0.72;
++            if (rate > 3.6)  rate = 3.6;
++        }
++    }
++
++    if (state != g_iKnuxAnimState[client])
++    {
++        // el t0 del jump para su ventana (receta Sonic/Metal)
++        if (state == KNUX_ST_JUMP) g_fKnuxJumpStart[client] = now;
++        SetVariantString(g_sKnuxAnimSeq[state]);
++        AcceptEntityInput(av, "SetAnimation");
++        if (g_iKnuxAvatarL[client] != 0)
++        {
++            int avLA = EntRefToEntIndex(g_iKnuxAvatarL[client]);
++            if (avLA > 0 && IsValidEntity(avLA))
++            {
++                // el variant es de UN SOLO USO — re-armarlo
++                SetVariantString(g_sKnuxAnimSeq[state]);
++                AcceptEntityInput(avLA, "SetAnimation");
++            }
++        }
++        g_iKnuxAnimState[client] = state;
++    }
++
++    if (rate < 0.05) rate = 0.05;
++    if (HasEntProp(av, Prop_Data, "m_flPlaybackRate"))
++        SetEntPropFloat(av, Prop_Data, "m_flPlaybackRate", rate);
++    if (g_iKnuxAvatarL[client] != 0)
++    {
++        int avLB = EntRefToEntIndex(g_iKnuxAvatarL[client]);
++        if (avLB > 0 && IsValidEntity(avLB)
++            && HasEntProp(avLB, Prop_Data, "m_flPlaybackRate"))
++            SetEntPropFloat(avLB, Prop_Data, "m_flPlaybackRate", rate);
++    }
++}
++
++float Knux_Speed2D(int client)
++{
++    float vel[3];
++    GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++    return SquareRoot(vel[0] * vel[0] + vel[1] * vel[1]);
++}
++
++// el one-shot del jump termino? (m_flCycle del prop — la misma sonda del
++// Sonic_JumpAnimDone / Metal_JumpAnimDone)
++bool Knux_JumpAnimDone(int av)
++{
++    if (av <= 0 || !IsValidEntity(av)) return true;
++    if (HasEntProp(av, Prop_Data, "m_flCycle"))
++        return GetEntPropFloat(av, Prop_Data, "m_flCycle") >= 0.95;
++    return true;
++}
++
++// v65-OM: ONE-SHOT de habilidad sobre las DOS copias (los 4 PillAnim del
++// lua: PunchAnim/GroundSmash/attack/LatchOff). Bloquea la FSM mientras
++// corre (g_fKnuxAnimLock) para que el golpe se vea entero.
++void Knux_AvatarOneShot(int client, int stIdx, float lock)
++{
++    if (client < 1 || client > MaxClients) return;
++    if (g_iKnuxAvatar[client] == 0) return;
++
++    int av = EntRefToEntIndex(g_iKnuxAvatar[client]);
++    if (av > 0 && IsValidEntity(av))
++    {
++        SetVariantString(g_sKnuxAnimSeq[stIdx]);
++        AcceptEntityInput(av, "SetAnimation");
++    }
++    if (g_iKnuxAvatarL[client] != 0)
++    {
++        int avL = EntRefToEntIndex(g_iKnuxAvatarL[client]);
++        if (avL > 0 && IsValidEntity(avL))
++        {
++            SetVariantString(g_sKnuxAnimSeq[stIdx]);
++            AcceptEntityInput(avL, "SetAnimation");
++        }
++    }
++    g_iKnuxAnimState[client] = stIdx;
++    g_fKnuxAnimLock[client] = GetEngineTime() + lock;
++}
++
++// =====================================================================
++// TINTES DEL AVATAR — la matematica EXACTA del knuckles_ui_om.lua
++// (duration 0.5*0.5 = 0.25s, fade 0.25*0.5 = 0.125s por lado, alpha
++// simetrico). Aplica a las DOS copias; el cuerpo oculto no se toca.
++// =====================================================================
++void Knux_AvatarSetColor(int client, int r, int g, int b, int a)
++{
++    int av = EntRefToEntIndex(g_iKnuxAvatar[client]);
++    if (g_iKnuxAvatar[client] != 0 && av > 0 && IsValidEntity(av))
++        SetEntityRenderColor(av, r, g, b, a);
++    int avL = EntRefToEntIndex(g_iKnuxAvatarL[client]);
++    if (g_iKnuxAvatarL[client] != 0 && avL > 0 && IsValidEntity(avL))
++        SetEntityRenderColor(avL, r, g, b, a);
++}
++
++void Knux_AvatarTintReset(int client)
++{
++    Knux_AvatarSetColor(client, 255, 255, 255, 255);
++}
++
++// arranca un pulso de color (0.25s con fade simetrico)
++void Knux_AvatarTintPulse(int client, int r, int g, int b)
++{
++    if (g_iKnuxAvatar[client] == 0) return;
++    g_iKnuxTintR[client] = r;
++    g_iKnuxTintG[client] = g;
++    g_iKnuxTintB[client] = b;
++    g_fKnuxTintEnd[client] = GetEngineTime() + KNUX_TINT_DUR;
++}
++
++// animador por frame (lo llama Knux_PreThink): pulso activo con la rampa
++// simetrica del UI; sin pulso, la POSTURA tiñe azul 200,200,255 (el
++// mismo tinte que el port siempre puso en el cuerpo — con avatar el
++// cuerpo esta oculto, se pintan las copias); sin nada, color base.
++void Knux_TintThink(int client)
++{
++    if (g_iKnuxAvatar[client] == 0) return;
++    float now = GetEngineTime();
++
++    // pulso ROJO repetido de la carga del puno (Knuckles_glow_duration)
++    if (g_bKnuxCharging[client] && now >= g_fKnuxNextPulse[client])
++    {
++        Knux_AvatarTintPulse(client, 255, 0, 0);
++        g_fKnuxNextPulse[client] = now + KNUX_TINT_PULSE_EVERY;
++    }
++
++    if (g_fKnuxTintEnd[client] > 0.0)
++    {
++        // rampa simetrica EXACTA del UI: sube en KNUX_TINT_FADE, meseta,
++        // baja en KNUX_TINT_FADE (sobre KNUX_TINT_DUR totales)
++        float start = g_fKnuxTintEnd[client] - KNUX_TINT_DUR;
++        float a;
++        if (now <= start + KNUX_TINT_FADE)
++            a = (now - start) / KNUX_TINT_FADE;
++        else if (now >= g_fKnuxTintEnd[client] - KNUX_TINT_FADE)
++            a = (g_fKnuxTintEnd[client] - now) / KNUX_TINT_FADE;
++        else
++            a = 1.0;
++        if (a < 0.0) a = 0.0;
++        if (a > 1.0) a = 1.0;
++
++        Knux_AvatarSetColor(client, g_iKnuxTintR[client], g_iKnuxTintG[client],
++                            g_iKnuxTintB[client], RoundToNearest(255.0 * a));
++
++        if (now >= g_fKnuxTintEnd[client]) g_fKnuxTintEnd[client] = 0.0;
++        return;
++    }
++
++    if (g_bKnuxCountering[client])
++        Knux_AvatarSetColor(client, 200, 200, 255, 255);
++    else
++        Knux_AvatarTintReset(client);
++}
++
++// v65-OM: FX del BLOQUEO de la contra — pulso BLANCO del UI
++// (knuckles_block_outline / glow_duration_white) + CounterBounce.wav del
++// lua (vol 0.65, l.555) con fallback al stock de siempre
++void Knux_CounterBlockFx(int client, const char[] fallback)
++{
++    Knux_AvatarTintPulse(client, 255, 255, 255);
++    if (g_bKnuxSndBounce)
++        EmitSoundToAll("om/knuckles/CounterBounce.wav", client, _, KNUX_SND_LEVEL, _, 0.65);
++    else
++        EmitSoundToAll(fallback, client);
++}
++
++// =====================================================================
++// MUERTE DEL AVATAR — ragdoll knuckles.mdl + filtro anti-corpse
++// (receta Metal v5.0 / Sonic v3.76.2)
++// =====================================================================
++
++// Ragdoll OM: prop_ragdoll con knuckles.mdl (usa el .phy del modelo —
++// el lua trae noragdoll=false, l.59) + limpieza a los 15s
++void Knux_SpawnDeathRagdoll(int client)
++{
++    if (!g_bKnuxModelOK) return;
++    if (!IsClientInGame(client)) return;
++
++    int rag = CreateEntityByName("prop_ragdoll");
++    if (rag <= 0 || !IsValidEntity(rag)) return;
++
++    DispatchKeyValue(rag, "model", KNUX_OM_MODEL);
++    DispatchSpawn(rag);
++
++    float pos[3], ang[3], vel[3];
++    GetClientAbsOrigin(client, pos);
++    GetClientAbsAngles(client, ang);
++    GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++    TeleportEntity(rag, pos, ang, vel);
++
++    CreateTimer(15.0, T_KnuxRagdollCleanup, EntIndexToEntRef(rag), TIMER_FLAG_NO_MAPCHANGE);
++}
++
++public Action T_KnuxRagdollCleanup(Handle timer, any ref)
++{
++    int ent = EntRefToEntIndex(view_as<int>(ref));
++    if (ent > 0 && IsValidEntity(ent))
++        AcceptEntityInput(ent, "Kill");
++    return Plugin_Stop;
++}
++
++// Filtro anti-ragdoll (patron Sonic/Metal: lo enruta el OnEntityCreated
++// central de Rouge.inc — Knuckles se incluye ANTES que Rouge)
++void Knuckles_OnEntityCreated(int entity, const char[] classname)
++{
++    if (StrEqual(classname, "prop_ragdoll")
++        || StrEqual(classname, "prop_physics")
++        || StrEqual(classname, "prop_physics_override")
++        || StrEqual(classname, "prop_dynamic")
++        || StrEqual(classname, "prop_dynamic_override")
++        || StrEqual(classname, "cs_ragdoll")
++        || StrEqual(classname, "survivor_death_model"))
++    {
++        float now = GetEngineTime();
++        for (int i = 1; i <= MaxClients; i++)
++        {
++            if (g_fKnuxDeathHideUntil[i] == 0.0 || now >= g_fKnuxDeathHideUntil[i])
++                continue;
++            // candidata: revisar modelo/origen en el proximo frame
++            RequestFrame(Knux_CheckDeathRagdoll, EntIndexToEntRef(entity));
++            return;
++        }
++    }
++}
++
++public void Knux_CheckDeathRagdoll(any ref)
++{
++    int ent = EntRefToEntIndex(view_as<int>(ref));
++    if (ent <= 0 || !IsValidEntity(ent)) return;
++
++    char model[96];
++    GetEntPropString(ent, Prop_Data, "m_ModelName", model, sizeof(model));
++    if (strncmp(model, "models/survivors/", 17) != 0) return;
++
++    float now = GetEngineTime();
++    float o[3];
++    GetEntPropVector(ent, Prop_Data, "m_vecOrigin", o);
++
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_fKnuxDeathHideUntil[i] == 0.0 || now >= g_fKnuxDeathHideUntil[i])
++            continue;
++        if (GetVectorDistance(o, g_vKnuxDeathOrigin[i]) < 200.0)
++        {
++            SetEntityRenderMode(ent, RENDER_NONE);
++            DispatchKeyValue(ent, "disableshadows", "1");
++            AcceptEntityInput(ent, "DisableShadow");
++            return;
++        }
++    }
++}

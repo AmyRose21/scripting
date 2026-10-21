@@ -1,38 +1,92 @@
 /*
  * ======================================================
- *  [MODULO] Sally Acorn Abilities - Super Rework v5.0
+ *  [MODULO] Sally Acorn Abilities - Super Rework v6.2
+ *
+ *  v6.2 (con manager 3.77.8) - FIN DE LA AUTO-GENERACION INDIVIDUAL:
+ *   - Eliminado el AutoExecConfig("Sally_Abilities") — el cfg
+ *     individual se generaba con TODOS los cvars del plugin entero
+ *     ("ConVars for plugin Sonic_ability_manager.smx"), o sea la
+ *     MISMA lista que Sonic_Suite.cfg: duplicado puro que además
+ *     pisaba valores al ejecutarse. Los cvars de Sally ya viven en
+ *     la config única Sonic_Suite.cfg (v3.75, auto-guardada).
+ *   - El manager 3.77.8 además BORRA los cfg residuales del server
+ *     (SuiteCfg_DeleteLegacyFiles).
+ *
+ *  v6.1 CHANGES (ronda 28.1) - FIXES PEDIDOS POR EL OWNER:
+ *   - "el rebote del escudo de agua no debería destruirse
+ *     apenas se use": CAUSA RAÍZ — la caida rebotona frena a
+ *     -900 y al aterrizar el motor aplicaba DAno DE CAIDA que
+ *     el propio escudo absorbia: el slam se auto-comia el HP de
+ *     la burbuja y la rompia en 1-2 rebotes. FIX: mientras la
+ *     burbuja está activa TODO dano de caida (DMG_FALL) se niega
+ *     completo SIN tocar el HP del escudo (la burbuja acolcha
+ *     caidas, como el escudo de agua del Sonic clasico).
+ *   - "aun cuando se destruye el escudo el sonido de el escudo
+ *     de fuego sigue sonando": los sonidos de escudo pasan a un
+ *     canal propio (SALLY_SHIELD_SNDCHAN = SNDCHAN_STATIC) en
+ *     vez de SNDCHAN_AUTO (donde convive con voces/dano del
+ *     juego y con el jingle de la 2a emisión apilada); corte
+ *     reforzado en Sally_StopAllSounds (canal propio + AUTO por
+ *     compatibilidad y 2 pasadas anti-apilado). El jingle de
+ *     STOP/BREAK se emite en el MISMO canal del loop (además
+ *     del StopSound, la emisión misma desaloja el slot).
+ *   - Los inicios/expiraciones de regalo de Sage ya no duplican
+ *     la emisión (el doble-emit de Sage_CastTeamShield se retira
+ *     en Sage.inc v2.1: cada receptor ya emite el suyo).
+ *
+ *  v6.0 CHANGES (ronda 28) - ESCUDOS REGALABLES (set SALLY de Sage):
+ *   - Pedido del owner: "sage si usa a sally ella puede darle escudos
+ *     de agua o escudos fuegos a todo el equipo (obiamente duraran un
+ *     tiempo como siempre ha durado) la de ella durara 5 seg más antes
+ *     de desaparecer".
+ *   - El sistema de escudos ya era PER-CLIENTE (flags + pools de HP +
+ *     T_SallyThink + hooks): lo único que bloqueaba al resto era el
+ *     gate Sally_IsSally. NUEVO helper Sally_ShieldSubject = la Sally
+ *     real O cualquier receptor de escudo regalado por Sage (flags
+ *     g_bSageGiftWater / g_bSageGiftFire, declarados en el manager
+ *     ANTES de los includes).
+ *   - Gates relajados (6): RunCmd (dash/bounce), PerformFireBoost,
+ *     PerformBounce, WaterRegenTick, FireShieldExplosion,
+ *     ApplyShieldPulse (el aura que empuja/quema). El ABSORB de
+ *     Sally_OnTakeDamage cubre a los receptores de regalo.
+ *   - Los COMANDOS (Cmd_ToggleShield / Cmd_ToggleBubble, sm_ de
+ *     Sally) siguen EXCLUSIVOS de Sally: nadie más los enciende solo.
+ *   - La inmunidad a acido/veneno/radiación es pasiva PERSONAL de la
+ *     Sally real (no viaja con el regalo). El estado lo activa/apaga
+ *     Sage.inc con los mismos flags; la expiración la lleva el timer
+ *     de Sage.inc (duración estándar + bonus para la propia Sage).
  *
  *  v5.0 CHANGES - SUPER REWORK DE ESCUDOS:
  *
  *  ESCUDO DE FUEGO (rework completo tipo Sonic clasico):
  *   - Sin limite de tiempo: permanente hasta que se destruya
  *   - HP del escudo: 300 (absorbe dano en vez de Sally)
- *   - Impulso aereo (dash): CD de 4 segundos, ejecuta dash frontal en el aire
+ *   - Impulso aéreo (dash): CD de 4 segundos, ejecuta dash frontal en el aire
  *   - Solo 1 escudo a la vez: no puede tener fire + water simultaneos
- *   - Muestra HP restante en pantalla via PrintHintText
- *   - Al destruirse: explosion que quema + retrocede infectados + dano
+ *   - Muestra HP restante en pantalla vía PrintHintText
+ *   - Al destruirse: explosión que quema + retrocede infectados + dano
  *   - Ya no lanza aura de fuego alrededor (eliminado por bug visual)
- *   - Sally ya no cambia de color (mas sutil)
+ *   - Sally ya no cambia de color (más sutil)
  *
  *  ESCUDO DE AGUA (rework):
- *   - Duracion permanente (sin timer de fin)
+ *   - Duración permanente (sin timer de fin)
  *   - Ya no absorbe dano para curar (era OP)
  *   - Regenera 1 HP cada 1.5s (pasiva, hasta max health)
  *   - Resistencia: 250 HP (absorbe dano en vez de Sally)
  *   - Bounce FIX: ya no se puede spamear presionando CTRL (cooldown de 1s)
  *   - Al rebotar: el oponente (infectado) rebota como siempre
- *   - Al destruirse: cae normalmente sin explosion
+ *   - Al destruirse: cae normalmente sin explosión
  *
  *  FIX: Otros jugadores no pueden usar habilidades de Sally
  *       (check estricto de SALLY_INDEX en todos los comandos)
  *
- *  ROBUSTEZ DE CODIGO:
- *   - Validaciones estrictas en cada funcion
+ *  ROBUSTEZ DE CÓDIGO:
+ *   - Validaciones estrictas en cada función
  *   - SDKUnhook antes de SDKHook (anti double-hook)
  *   - Limpieza segura de handles con null checks
  *   - Clamp de HP y dano absorbido
- *   - ConVars con validacion null
- *   - Banderas explicitas de estado
+ *   - ConVars con validación null
+ *   - Banderas explícitas de estado
  *   - Sistema de HP de escudos separado de HP de Sally
  * ======================================================
  */
@@ -41,6 +95,9 @@
     #endinput
 #endif
 #define _Sally_included
+
+// v6.1 (R28.1): versión que reporta el sm_sjsver del manager
+#define SALLY_INC_VERSION "v6.1"
 
 #if !defined _sourcemod_included
     #include <sourcemod>
@@ -53,6 +110,12 @@
 #endif
 #if !defined _l4d_stocks_included && !defined _left4dhooks_included
     #tryinclude <left4dhooks>
+#endif
+#if !defined _si_stagger_included
+    #include <SI_Stagger>
+#endif
+#if !defined _pin_release_included
+    #include <Pin_Release>
 #endif
 
 // =======================
@@ -69,7 +132,7 @@
     #define TEAM_SURVIVOR 2
 #endif
 
-// v5: Defines de red protegidos (evitan warnings de redefinicion)
+// v5: Defines de red protegidos (evitan warnings de redefinición)
 #if !defined FL_EDICT_ALWAYS
     #define FL_EDICT_ALWAYS 2
 #endif
@@ -93,20 +156,28 @@
 #define SALLY_SND_BOUNCE        "mobius/sfx/shield_element/Sally_Acorn_water_shield_rebote.mp3"
 #define SALLY_SND_FALLBACK      "ambient/energy/zap1.wav"  // fallback
 
+// v6.1 (R28.1) FIX 2: canal dedicado de los sonidos de escudo. Antes
+// el loop/jingle de escudo se emita en SNDCHAN_AUTO (0) junto a las
+// voces de dolor, pasos y disparos del juego. Ahora el sonido "vivo"
+// del escudo (START/STOP/BREAK de agua y fuego) vive SOLO aquí y el
+// corte de Sally_StopAllSounds es exacto. SNDCHAN_STATIC es el canal
+// del motor para ambientes/loops.
+#define SALLY_SHIELD_SNDCHAN    SNDCHAN_STATIC
+
 #define SALLY_PARTICLE_RING     "materials/sprites/laserbeam.vmt"
 
-// v5: Configuracion del Fire Shield (rework)
-#define SALLY_FIRE_MAX_HP           300.0   // HP maximo del escudo de fuego
-#define SALLY_FIRE_BOOST_CD         4.0     // CD del dash aereo
-#define SALLY_FIRE_BOOST_FORCE      800.0   // Fuerza del dash aereo
-#define SALLY_FIRE_EXPLOSION_RADIUS 400.0   // Radio de la explosion al romperse
-#define SALLY_FIRE_EXPLOSION_DMG    150.0   // Dano de la explosion al romperse
-#define SALLY_FIRE_EXPLOSION_IGNITE 5.0     // Tiempo de quemado de la explosion
+// v5: Configuración del Fire Shield (rework)
+#define SALLY_FIRE_MAX_HP           300.0   // HP máximo del escudo de fuego
+#define SALLY_FIRE_BOOST_CD         4.0     // CD del dash aéreo
+#define SALLY_FIRE_BOOST_FORCE      800.0   // Fuerza del dash aéreo
+#define SALLY_FIRE_EXPLOSION_RADIUS 400.0   // Radio de la explosión al romperse
+#define SALLY_FIRE_EXPLOSION_DMG    150.0   // Dano de la explosión al romperse
+#define SALLY_FIRE_EXPLOSION_IGNITE 5.0     // Tiempo de quemado de la explosión
 
-// v5: Configuracion del Water Shield (rework)
-#define SALLY_WATER_MAX_HP          250.0   // HP maximo del escudo de agua
+// v5: Configuración del Water Shield (rework)
+#define SALLY_WATER_MAX_HP          250.0   // HP máximo del escudo de agua
 #define SALLY_WATER_REGEN_AMOUNT    1       // HP regenerado por tick
-#define SALLY_WATER_REGEN_INTERVAL  1.5     // Intervalo de regeneracion (segundos)
+#define SALLY_WATER_REGEN_INTERVAL  1.5     // Intervalo de regeneración (segundos)
 #define SALLY_WATER_BOUNCE_CD       1.0     // CD entre bounces (anti spam)
 #define SALLY_WATER_BOUNCE_RADIUS   300.0   // Radio de la onda expansiva del bounce
 
@@ -128,12 +199,12 @@ public bool g_bBubbleActive[MAXPLAYERS + 1];   // Water shield
 float g_fFireShieldHP[MAXPLAYERS + 1];
 float g_fWaterShieldHP[MAXPLAYERS + 1];
 
-// v5: Sistema de dash aereo del Fire Shield
+// v5: Sistema de dash aéreo del Fire Shield
 float g_fFireBoostNextUse[MAXPLAYERS + 1];
 bool  g_bFireBoostActive[MAXPLAYERS + 1];
 float g_fFireBoostEndTime[MAXPLAYERS + 1];
 
-// v5: Sistema de regeneracion del Water Shield
+// v5: Sistema de regeneración del Water Shield
 float g_fWaterNextRegenTick[MAXPLAYERS + 1];
 
 // Cooldowns
@@ -153,8 +224,10 @@ int g_iSallyFireBarrierProp[MAXPLAYERS + 1] = { -1, ... };
 int g_iSallyFireParticle[MAXPLAYERS + 1] = { -1, ... };
 
 // ConVars
-ConVar g_cvSallyEnable, g_cvSallyRadius, g_cvSallyDPS, g_cvSallyTick, g_cvSallyPushForce, g_cvSallyIgniteTime, g_cvSallyDuration, g_cvSallyCooldown, g_cvSallyOnlyHuman;
-ConVar g_cvSallyBubbleEnable, g_cvSallyBubbleDuration, g_cvSallyBubbleCooldown, g_cvSallyBubbleReflect, g_cvSallyBubbleHeal, g_cvSallyBubbleAbsorb;
+ConVar g_cvSallyEnable, g_cvSallyRadius, g_cvSallyDPS, g_cvSallyTick, g_cvSallyPushForce, g_cvSallyIgniteTime, g_cvSallyCooldown, g_cvSallyOnlyHuman;
+stock ConVar g_cvSallyDuration;               // legacy v5: se crea (cfg) pero nunca se lee
+ConVar g_cvSallyBubbleEnable, g_cvSallyBubbleCooldown, g_cvSallyBubbleReflect;
+stock ConVar g_cvSallyBubbleDuration, g_cvSallyBubbleHeal, g_cvSallyBubbleAbsorb;   // legacy v5: creadas (cfg) pero nunca leidas
 ConVar g_cvSallyBounceBase, g_cvSallyBounceDamage;
 
 // v5: Nuevas ConVars para rework
@@ -164,8 +237,8 @@ ConVar g_cvSallyWaterMaxHP, g_cvSallyWaterRegenAmount, g_cvSallyWaterRegenInterv
 ConVar g_cvSallyWaterBounceCD;
 
 // Macros
-#define IsValidSurvivor(%1) (1 <= %1 <= MaxClients && IsClientInGame(%1) && IsPlayerAlive(%1) && GetClientTeam(%1) == 2)
-#define IsValidInfected(%1) (1 <= %1 <= MaxClients && IsClientInGame(%1) && IsPlayerAlive(%1) && GetClientTeam(%1) == 3)
+#define IsValidSurvivor(%1) (1 <= %1 && %1 <= MaxClients && IsClientInGame(%1) && IsPlayerAlive(%1) && GetClientTeam(%1) == 2)
+#define IsValidInfected(%1) (1 <= %1 && %1 <= MaxClients && IsClientInGame(%1) && IsPlayerAlive(%1) && GetClientTeam(%1) == 3)
 
 // =======================
 // Utilidades de Particulas
@@ -189,6 +262,17 @@ bool Sally_IsSally(int client)
     return true;
 }
 
+// v6 (R28): Helper de ESCUDO REGALABLE — la Sally real O cualquier
+// receptor de escudo de Sage (set SALLY). Las LÓGICAS de escudo
+// (dash/bounce del RunCmd, regen, pulso de aura, explosión, absorb)
+// usan este gate. Los COMANDOS de Sally siguen usando Sally_IsSally.
+bool Sally_ShieldSubject(int client)
+{
+    if (!IsValidSurvivor(client)) return false;
+    if (g_iPlayerCharIdx[client] == SALLY_INDEX) return true;
+    return (g_bSageGiftWater[client] || g_bSageGiftFire[client]);
+}
+
 // v5: Helper para clamp de HP
 int Sally_ClampHP(int hp)
 {
@@ -198,7 +282,7 @@ int Sally_ClampHP(int hp)
 }
 
 // =======================
-// Inicializacion
+// Inicialización
 // =======================
 
 public void Sally_OnPluginStart()
@@ -210,30 +294,30 @@ public void Sally_OnPluginStart()
     g_cvSallyTick       = CreateConVar("sally_fire_tick", "0.5", "Intervalo de pulsos.");
     g_cvSallyPushForce  = CreateConVar("sally_fire_push", "500.0", "Fuerza de empuje del pulso.");
     g_cvSallyIgniteTime = CreateConVar("sally_fire_ignite", "2.0", "Tiempo de quemado.");
-    g_cvSallyDuration   = CreateConVar("sally_fire_duration", "20.0", "Duracion del escudo (legacy, no usado en v5).");
+    g_cvSallyDuration   = CreateConVar("sally_fire_duration", "20.0", "Duración del escudo (legacy, no usado en v5).");
     g_cvSallyCooldown   = CreateConVar("sally_fire_cooldown", "35.0", "Enfriamiento.");
     g_cvSallyOnlyHuman  = CreateConVar("sally_only_human", "1", "Solo humanos.");
 
     // v5: Fire Shield rework
-    g_cvSallyFireMaxHP          = CreateConVar("sally_fire_max_hp", "300.0", "HP maximo del escudo de fuego.", _, true, 50.0, true, 1000.0);
-    g_cvSallyFireBoostCD        = CreateConVar("sally_fire_boost_cd", "4.0", "CD del dash aereo del Fire Shield.", _, true, 0.5, true, 30.0);
-    g_cvSallyFireBoostForce     = CreateConVar("sally_fire_boost_force", "800.0", "Fuerza del dash aereo.", _, true, 100.0, true, 5000.0);
-    g_cvSallyFireExplosionRadius= CreateConVar("sally_fire_explosion_radius", "400.0", "Radio de la explosion al romperse.", _, true, 50.0, true, 2000.0);
-    g_cvSallyFireExplosionDmg   = CreateConVar("sally_fire_explosion_dmg", "150.0", "Dano de la explosion al romperse.", _, true, 0.0, true, 2000.0);
-    g_cvSallyFireExplosionIgnite= CreateConVar("sally_fire_explosion_ignite", "5.0", "Tiempo de quemado de la explosion.", _, true, 0.0, true, 30.0);
+    g_cvSallyFireMaxHP          = CreateConVar("sally_fire_max_hp", "300.0", "HP máximo del escudo de fuego.", _, true, 50.0, true, 1000.0);
+    g_cvSallyFireBoostCD        = CreateConVar("sally_fire_boost_cd", "4.0", "CD del dash aéreo del Fire Shield.", _, true, 0.5, true, 30.0);
+    g_cvSallyFireBoostForce     = CreateConVar("sally_fire_boost_force", "800.0", "Fuerza del dash aéreo.", _, true, 100.0, true, 5000.0);
+    g_cvSallyFireExplosionRadius= CreateConVar("sally_fire_explosion_radius", "400.0", "Radio de la explosión al romperse.", _, true, 50.0, true, 2000.0);
+    g_cvSallyFireExplosionDmg   = CreateConVar("sally_fire_explosion_dmg", "150.0", "Dano de la explosión al romperse.", _, true, 0.0, true, 2000.0);
+    g_cvSallyFireExplosionIgnite= CreateConVar("sally_fire_explosion_ignite", "5.0", "Tiempo de quemado de la explosión.", _, true, 0.0, true, 30.0);
 
     // Bubble Shield
     g_cvSallyBubbleEnable   = CreateConVar("sally_bubble_enable", "1", "Habilita el escudo burbuja.");
-    g_cvSallyBubbleDuration = CreateConVar("sally_bubble_duration", "15.0", "Duracion del escudo burbuja (legacy, no usado en v5).");
+    g_cvSallyBubbleDuration = CreateConVar("sally_bubble_duration", "15.0", "Duración del escudo burbuja (legacy, no usado en v5).");
     g_cvSallyBubbleCooldown = CreateConVar("sally_bubble_cooldown", "20.0", "Enfriamiento.");
     g_cvSallyBubbleReflect  = CreateConVar("sally_bubble_reflect", "400.0", "Fuerza del rebote al atacante.");
-    g_cvSallyBubbleHeal     = CreateConVar("sally_bubble_healfactor", "1.0", "Factor de curacion (legacy, no usado en v5).");
+    g_cvSallyBubbleHeal     = CreateConVar("sally_bubble_healfactor", "1.0", "Factor de curación (legacy, no usado en v5).");
     g_cvSallyBubbleAbsorb   = CreateConVar("sally_bubble_absorb", "1", "Absorber dano (legacy, no usado en v5).");
 
     // v5: Water Shield rework
-    g_cvSallyWaterMaxHP         = CreateConVar("sally_water_max_hp", "250.0", "HP maximo del escudo de agua.", _, true, 50.0, true, 1000.0);
+    g_cvSallyWaterMaxHP         = CreateConVar("sally_water_max_hp", "250.0", "HP máximo del escudo de agua.", _, true, 50.0, true, 1000.0);
     g_cvSallyWaterRegenAmount   = CreateConVar("sally_water_regen_amount", "1", "HP regenerado por tick.", _, true, 1.0, true, 50.0);
-    g_cvSallyWaterRegenInterval = CreateConVar("sally_water_regen_interval", "1.5", "Intervalo de regeneracion (segundos).", _, true, 0.5, true, 30.0);
+    g_cvSallyWaterRegenInterval = CreateConVar("sally_water_regen_interval", "1.5", "Intervalo de regeneración (segundos).", _, true, 0.5, true, 30.0);
     g_cvSallyWaterBounceCD      = CreateConVar("sally_water_bounce_cd", "1.0", "CD entre bounces (anti spam).", _, true, 0.5, true, 10.0);
 
     // Bubble Bounce Mechanic
@@ -244,7 +328,9 @@ public void Sally_OnPluginStart()
     HookEvent("player_death", E_SallyPlayerReset);
     HookEvent("player_disconnect", E_SallyPlayerReset);
 
-    AutoExecConfig(true, "Sally_Abilities");
+    // v3.77.8 (Sally v6.2): AutoExecConfig eliminado - config ÚNICA
+    // del suite (Sonic_Suite.cfg, auto-guardada; ver manager). El
+    // archivo viejo queda muerto y el manager lo borra del server.
     Sally_ResetAll(true);
 }
 
@@ -270,15 +356,23 @@ public void Sally_OnMapStart()
     Sally_ResetAll(true);
     g_bSallyMapActive = true;
 
-    if (g_hSallyThinkTimer != INVALID_HANDLE) { KillTimer(g_hSallyThinkTimer); g_hSallyThinkTimer = INVALID_HANDLE; }
-    g_hSallyThinkTimer = CreateTimer(0.1, T_SallyThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+    // FIX CRASH CAPÍTULO 2 (mismo vector que Speed v2.4): KillTimer sobre
+    // un handle NO_MAPCHANGE muerto lanzaba "Invalid timer handle" y
+    // abortaba el OnMapStart del manager (los personajes posteriores se
+    // quedaban sin precache). El handle se olvida en Sally_OnMapEnd; aquí
+    // guarda anti-dueto (nunca dos thinks) y CERO KillTimer.
+    if (g_hSallyThinkTimer == INVALID_HANDLE)
+        g_hSallyThinkTimer = CreateTimer(0.1, T_SallyThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 }
 
 public void Sally_OnMapEnd()
 {
     g_bSallyMapActive = false;
     Sally_ResetAll(true);
-    if (g_hSallyThinkTimer != INVALID_HANDLE) { KillTimer(g_hSallyThinkTimer); g_hSallyThinkTimer = INVALID_HANDLE; }
+    // FIX CRASH CAPÍTULO 2: sin KillTimer. El timer lleva NO_MAPCHANGE
+    // (SM lo mata solo al cerrar el nivel): aquí solo se OLVIDA el handle
+    // para que el próximo Sally_OnMapStart cree una instancia fresca.
+    g_hSallyThinkTimer = INVALID_HANDLE;
 }
 
 // =======================
@@ -289,9 +383,20 @@ void Sally_StopAllSounds(int client)
 {
     if (client > 0 && client <= MaxClients && IsClientInGame(client))
     {
-        StopSound(client, SNDCHAN_AUTO, SALLY_SND_FIRE_START);
-        StopSound(client, SNDCHAN_AUTO, SALLY_SND_WATER_START);
-        StopSound(client, SNDCHAN_AUTO, SALLY_SND_FIRE_BOOST);
+        // v6.1 (R28.1) FIX 2: corte por partida doble — el canal propio
+        // del escudo (STATIC) y SNDCHAN_AUTO por compatibilidad. 2
+        // pasadas ANTI-APILADO: si el motor apilo 2 emisiones del mismo
+        // sample (p.ej. cast de Sage + regalo), una sola pasada podía
+        // dejar una viva = "el sonido sigue sonando".
+        for (int pass = 0; pass < 2; pass++)
+        {
+            StopSound(client, SALLY_SHIELD_SNDCHAN, SALLY_SND_FIRE_START);
+            StopSound(client, SALLY_SHIELD_SNDCHAN, SALLY_SND_WATER_START);
+            StopSound(client, SALLY_SHIELD_SNDCHAN, SALLY_SND_FIRE_BOOST);
+            StopSound(client, SNDCHAN_AUTO, SALLY_SND_FIRE_START);
+            StopSound(client, SNDCHAN_AUTO, SALLY_SND_WATER_START);
+            StopSound(client, SNDCHAN_AUTO, SALLY_SND_FIRE_BOOST);
+        }
     }
 }
 
@@ -440,13 +545,6 @@ void DestroySallyFireBarrier(int client)
     g_iSallyFireBarrierProp[client] = -1;
 }
 
-// v5: Aura de fuego eliminada (era bug visual)
-void CreateSallyFireAura(int client)
-{
-    // v5: No hacer nada - el aura de fuego causaba problemas visuales
-    // El Fire Shield ahora solo tiene la barrera roja + particulas esporadicas
-}
-
 void DestroySallyFireAura(int client)
 {
     if (client < 1 || client > MaxClients) return;
@@ -466,21 +564,22 @@ void Sally_BubblePlop(float pos[3])
 }
 
 // =======================
-// Logica de Input (OnPlayerRunCmd)
+// Lógica de Input (OnPlayerRunCmd)
 // ======================================================================
 
 public void Sally_OnPlayerRunCmd(int client, int &buttons)
 {
-    // v5 FIX: Validacion estricta de que es Sally
-    if (!Sally_IsSally(client)) return;
+    // v6 (R28): dash (fuego) y caida rebotona (agua) también para los
+    // receptores de escudo regalado de Sage. La Sally real entra igual.
+    if (!Sally_ShieldSubject(client)) return;
 
-    // v5: Fire Shield - Dash aereo (presionar DUCK/CTRL en el aire)
+    // v5: Fire Shield - Dash aéreo (presionar DUCK/CTRL en el aire)
     if (g_bShieldActive[client])
     {
         int flags = GetEntityFlags(client);
         bool onGround = (flags & FL_ONGROUND) != 0;
 
-        // Dash aereo solo si esta en el aire y presiona DUCK
+        // Dash aéreo solo si está en el aire y presiona DUCK
         if (!onGround && (buttons & IN_DUCK) && !g_bFireBoostActive[client])
         {
             float now = GetEngineTime();
@@ -516,7 +615,7 @@ public void Sally_OnPlayerRunCmd(int client, int &buttons)
                     GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
                     if (vel[2] > -900.0) vel[2] = -900.0;
                     TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vel);
-                    PrintCenterText(client, "Caida Sonica de Burbuja!");
+                    PrintCenterText(client, "Caida Sónica de Burbuja!");
                 }
             }
             g_bWasInAir[client] = true;
@@ -545,20 +644,18 @@ public void Sally_OnPlayerRunCmd(int client, int &buttons)
     }
 }
 
-public void Sally_PreThink(int client) {}
-
-// v5: Dash aereo del Fire Shield (tipo Sonic clasico)
+// v5: Dash aéreo del Fire Shield (tipo Sonic clasico)
 void Sally_PerformFireBoost(int client)
 {
-    if (!Sally_IsSally(client)) return;
+    if (!Sally_ShieldSubject(client)) return;   // v6 (R28): regalo de Sage cuenta
     if (!g_bShieldActive[client]) return;
 
     float now = GetEngineTime();
     g_fFireBoostNextUse[client] = now + g_cvSallyFireBoostCD.FloatValue;
     g_bFireBoostActive[client] = true;
-    g_fFireBoostEndTime[client] = now + 0.3; // duracion del boost visual
+    g_fFireBoostEndTime[client] = now + 0.3; // duración del boost visual
 
-    // Impulso frontal en la direccion que mira Sally
+    // Impulso frontal en la dirección que mira Sally
     float ang[3], fwd[3], vel[3];
     GetClientEyeAngles(client, ang);
     GetAngleVectors(ang, fwd, NULL_VECTOR, NULL_VECTOR);
@@ -566,7 +663,7 @@ void Sally_PerformFireBoost(int client)
     GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
     vel[0] += fwd[0] * g_cvSallyFireBoostForce.FloatValue;
     vel[1] += fwd[1] * g_cvSallyFireBoostForce.FloatValue;
-    vel[2] += 100.0; // pequeno impulso vertical
+    vel[2] += 100.0; // pequeño impulso vertical
 
     TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vel);
 
@@ -593,7 +690,7 @@ void Sally_PerformFireBoost(int client)
 
 void Sally_PerformBounce(int client)
 {
-    if (!Sally_IsSally(client)) return;
+    if (!Sally_ShieldSubject(client)) return;   // v6 (R28): regalo de Sage cuenta
 
     int combo = g_iBubbleCombo[client];
     if (combo > 7) combo = 7;
@@ -632,7 +729,10 @@ void Sally_PerformBounce(int client)
             if (GetVectorDistance(pos, tPos) <= radius)
             {
                 SDKHooks_TakeDamage(i, client, client, damage, DMG_SHOCK);
-                L4D_StaggerPlayer(i, client, pos);
+                // v48: stagger SEGURO (SIStagger_Auto): los bots
+                // staggered a veces no se levantan solos (bug del motor
+                // con OnStaggered); auto-cancel a los 1.8s/3.0s.
+                SIStagger_Auto(i, client, pos);
 
                 float push[3];
                 MakeVectorFromPoints(pos, tPos, push);
@@ -687,7 +787,7 @@ public Action T_SallyThink(Handle timer)
             continue;
         }
 
-        // v5: Fire Shield - logica permanente (sin timer de fin)
+        // v5: Fire Shield - lógica permanente (sin timer de fin)
         if (g_bShieldActive[i])
         {
             float pos[3]; GetClientAbsOrigin(i, pos);
@@ -700,7 +800,7 @@ public Action T_SallyThink(Handle timer)
             // Pulso de dano periodico (cada tick)
             if (now >= g_fShieldNextTick[i])
             {
-                // Actualizar tiempo del proximo tick
+                // Actualizar tiempo del próximo tick
                 g_fShieldNextTick[i] = now + ((g_cvSallyTick != null) ? g_cvSallyTick.FloatValue : 0.5);
                 Sally_ApplyShieldPulse(i);
             }
@@ -713,10 +813,10 @@ public Action T_SallyThink(Handle timer)
             }
         }
 
-        // v5: Water Shield - logica permanente + regeneracion
+        // v5: Water Shield - lógica permanente + regeneración
         if (g_bBubbleActive[i])
         {
-            // v5: Regeneracion de HP cada 1.5s
+            // v5: Regeneración de HP cada 1.5s
             if (now >= g_fWaterNextRegenTick[i])
             {
                 g_fWaterNextRegenTick[i] = now + g_cvSallyWaterRegenInterval.FloatValue;
@@ -747,10 +847,10 @@ public Action T_SallyThink(Handle timer)
     return Plugin_Continue;
 }
 
-// v5: Regeneracion de HP del Water Shield
+// v5: Regeneración de HP del Water Shield
 void Sally_WaterRegenTick(int client)
 {
-    if (!Sally_IsSally(client)) return;
+    if (!Sally_ShieldSubject(client)) return;   // v6 (R28): regen también para regalos
     if (!g_bBubbleActive[client]) return;
 
     int hp = GetClientHealth(client);
@@ -767,20 +867,20 @@ void Sally_WaterRegenTick(int client)
 }
 
 // =======================
-// Logica Escudo Fuego (v5 rework)
+// Lógica Escudo Fuego (v5 rework)
 // =======================
 
 public Action Cmd_ToggleShield(int client, int args)
 {
-    // v5 FIX: Validacion estricta de que es Sally
+    // v5 FIX: Validación estricta de que es Sally
     if (!Sally_IsSally(client)) return Plugin_Handled;
     if (g_cvSallyEnable == null || !g_cvSallyEnable.BoolValue) return Plugin_Handled;
-    if (g_cvSallyOnlyHuman != null && g_cvSallyOnlyHuman.BoolValue && IsFakeClient(client)) return Plugin_Handled;
+    if (g_cvSallyOnlyHuman != null && g_cvSallyOnlyHuman.BoolValue && IsFakeClient(client) && !Sonic_IsSoloHost(client)) return Plugin_Handled;
 
     // Si ya tiene el escudo activo, desactivarlo
     if (g_bShieldActive[client])
     {
-        Sally_StopShield(client, false); // false = no explosion, solo apagar
+        Sally_StopShield(client, false); // false = no explosión, solo apagar
         return Plugin_Handled;
     }
 
@@ -801,13 +901,13 @@ public Action Cmd_ToggleShield(int client, int args)
     // Activar Fire Shield
     g_bShieldActive[client] = true;
 
-    // v5: HP del escudo = maximo configurado
+    // v5: HP del escudo = máximo configurado
     g_fFireShieldHP[client] = g_cvSallyFireMaxHP.FloatValue;
     g_fShieldNextTick[client] = 0.0;
     g_fFireBoostNextUse[client] = 0.0;
     g_bFireBoostActive[client] = false;
 
-    // v5: Ya no cambia el color de Sally (mas sutil)
+    // v5: Ya no cambia el color de Sally (más sutil)
     CreateSallyFireBarrier(client);
     Sally_EffectStart(client);
     PrintToChat(client, "\x04[Sally]\x05 Escudo de Fuego activado!\x01 HP: %.0f | Dash: presiona CTRL en el aire",
@@ -815,7 +915,7 @@ public Action Cmd_ToggleShield(int client, int args)
     return Plugin_Handled;
 }
 
-// v5: Detener el Fire Shield (puede ser con explosion o sin)
+// v5: Detener el Fire Shield (puede ser con explosión o sin)
 // withExplosion = false por defecto (para llamadas con 1 solo argumento)
 void Sally_StopShield(int client, bool withExplosion = false)
 {
@@ -834,11 +934,11 @@ void Sally_StopShield(int client, bool withExplosion = false)
         SetEntityRenderColor(client, 255, 255, 255, 255);
     }
 
-    // v5: Explosion al romperse (solo si withExplosion = true)
+    // v5: Explosión al romperse (solo si withExplosion = true)
     if (withExplosion && IsClientInGame(client) && IsPlayerAlive(client))
     {
         Sally_FireShieldExplosion(client);
-        PrintToChat(client, "\x04[Sally]\x01 Escudo destruido! Explosion liberada.");
+        PrintToChat(client, "\x04[Sally]\x01 Escudo destruido! Explosión liberada.");
     }
     else
     {
@@ -846,10 +946,10 @@ void Sally_StopShield(int client, bool withExplosion = false)
     }
 }
 
-// v5: Explosion del Fire Shield al romperse
+// v5: Explosión del Fire Shield al romperse
 void Sally_FireShieldExplosion(int client)
 {
-    if (!Sally_IsSally(client)) return;
+    if (!Sally_ShieldSubject(client)) return;   // v6 (R28): regalo roto = explota igual
 
     float pos[3];
     GetClientAbsOrigin(client, pos);
@@ -867,8 +967,11 @@ void Sally_FireShieldExplosion(int client)
     TE_SetupSparks(pos, NULL_VECTOR, 20, 10);
     TE_SendToAll();
 
-    // Sonido de explosion
-    EmitSoundToAll(SALLY_SND_FIRE_BREAK, client, SNDCHAN_AUTO, SNDLEVEL_RAIDSIREN);
+    // Sonido de explosión
+    // v6.1 (R28.1) FIX 2: la rotura suena en el MISMO canal del loop
+    // (desaloja el sonido vivo) ; el fallback se queda en AUTO para no
+    // pisarlo. Sonido de rotura = reemplazo físico del de escudo.
+    EmitSoundToAll(SALLY_SND_FIRE_BREAK, client, SALLY_SHIELD_SNDCHAN, SNDLEVEL_RAIDSIREN);
     EmitSoundToAll(SALLY_SND_FALLBACK, client, SNDCHAN_AUTO, SNDLEVEL_RAIDSIREN, SND_NOFLAGS, 0.8);
 
     // Dano + quemado + retroceso a infectados especiales
@@ -881,7 +984,8 @@ void Sally_FireShieldExplosion(int client)
         {
             SDKHooks_TakeDamage(i, client, client, damage, DMG_BURN);
             IgniteEntity(i, igniteTime);
-            L4D_StaggerPlayer(i, client, pos);
+            // v48: stagger SEGURO (auto-recuperación garantizada)
+            SIStagger_Auto(i, client, pos);
 
             float push[3];
             MakeVectorFromPoints(pos, tPos, push);
@@ -915,7 +1019,7 @@ void Sally_FireShieldExplosion(int client)
 
 void Sally_ApplyShieldPulse(int owner)
 {
-    if (!Sally_IsSally(owner)) return;
+    if (!Sally_ShieldSubject(owner)) return;    // v6 (R28): el aura late igual en los regalos
 
     float origin[3]; GetClientAbsOrigin(owner, origin);
     float radius = g_cvSallyRadius.FloatValue;
@@ -961,15 +1065,15 @@ void Sally_ProcessEntity(int owner, int ent, const float origin[3], float radius
 }
 
 // =======================
-// Logica Escudo Burbuja (v5 rework)
+// Lógica Escudo Burbuja (v5 rework)
 // =======================
 
 public Action Cmd_ToggleBubble(int client, int args)
 {
-    // v5 FIX: Validacion estricta de que es Sally
+    // v5 FIX: Validación estricta de que es Sally
     if (!Sally_IsSally(client)) return Plugin_Handled;
     if (g_cvSallyBubbleEnable == null || !g_cvSallyBubbleEnable.BoolValue) return Plugin_Handled;
-    if (g_cvSallyOnlyHuman != null && g_cvSallyOnlyHuman.BoolValue && IsFakeClient(client)) return Plugin_Handled;
+    if (g_cvSallyOnlyHuman != null && g_cvSallyOnlyHuman.BoolValue && IsFakeClient(client) && !Sonic_IsSoloHost(client)) return Plugin_Handled;
 
     // Si ya tiene el escudo activo, desactivarlo
     if (g_bBubbleActive[client])
@@ -995,7 +1099,7 @@ public Action Cmd_ToggleBubble(int client, int args)
     // Activar Water Shield
     g_bBubbleActive[client] = true;
 
-    // v5: HP del escudo = maximo configurado
+    // v5: HP del escudo = máximo configurado
     g_fWaterShieldHP[client] = g_cvSallyWaterMaxHP.FloatValue;
     g_fWaterNextRegenTick[client] = now + g_cvSallyWaterRegenInterval.FloatValue;
 
@@ -1040,11 +1144,31 @@ void Sally_StopBubble(int client)
 public Action Sally_OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
 {
     if (victim < 1 || victim > MaxClients) return Plugin_Continue;
-    if (g_iPlayerCharIdx[victim] != SALLY_INDEX) return Plugin_Continue;
+    // v6 (R28): el absorb de escudos cubre a la Sally real Y a los
+    // receptores de regalo de Sage. Las pasivas PERSONALES de Sally
+    // (acido/veneno/radiación) NO viajan con el regalo.
+    if (g_iPlayerCharIdx[victim] != SALLY_INDEX
+        && !g_bSageGiftWater[victim] && !g_bSageGiftFire[victim]) return Plugin_Continue;
     if (!IsValidSurvivor(victim)) return Plugin_Continue;
 
-    // Inmunidad a dano toxico/acido/radiacion (pasiva de Sally)
-    if ((damagetype & DMG_ACID) || (damagetype & DMG_POISON) || (damagetype & DMG_RADIATION))
+    // Inmunidad a dano toxico/acido/radiación (pasiva de SOLO la Sally real)
+    if (g_iPlayerCharIdx[victim] == SALLY_INDEX
+        && ((damagetype & DMG_ACID) || (damagetype & DMG_POISON) || (damagetype & DMG_RADIATION)))
+    {
+        damage = 0.0;
+        return Plugin_Handled;
+    }
+
+    // v6.1 (R28.1) FIX 1 - pedido del owner: "el rebote del escudo de
+    // agua no debería destruirse apenas se use". CAUSA: la caida
+    // rebotona frena a -900 y al aterrizar el motor aplicaba dano de
+    // caida (DMG_FALL) que el PROPIO escudo absorbia en el bloque de
+    // abajo: el slam se auto-comia el HP de la burbuja y la rompia en
+    // 1-2 usos. FIX: la burbuja acolcha TODAS las caidas mientras este
+    // activa (Sally real y regalos de Sage por igual) — el dano de
+    // caida se niega SIN tocar el HP del escudo. En el Sonic clasico
+    // el escudo de agua hace exactamente esto: cancela el impacto.
+    if (g_bBubbleActive[victim] && (damagetype & DMG_FALL))
     {
         damage = 0.0;
         return Plugin_Handled;
@@ -1057,7 +1181,7 @@ public Action Sally_OnTakeDamage(int victim, int &attacker, int &inflictor, floa
         g_fFireShieldHP[victim] -= damage;
         damage = 0.0; // Sally no recibe dano
 
-        // Efecto visual de absorcion
+        // Efecto visual de absorción
         float vPos[3]; GetClientAbsOrigin(victim, vPos);
         vPos[2] += 20.0;
         TE_SetupSparks(vPos, NULL_VECTOR, 3, 2);
@@ -1068,10 +1192,10 @@ public Action Sally_OnTakeDamage(int victim, int &attacker, int &inflictor, floa
             g_fFireShieldHP[victim] > 0 ? g_fFireShieldHP[victim] : 0.0,
             g_cvSallyFireMaxHP.FloatValue);
 
-        // Si el escudo se rompio, explosion!
+        // Si el escudo se rompió, explosión!
         if (g_fFireShieldHP[victim] <= 0.0)
         {
-            Sally_StopShield(victim, true); // true = con explosion
+            Sally_StopShield(victim, true); // true = con explosión
         }
 
         return Plugin_Handled;
@@ -1084,7 +1208,7 @@ public Action Sally_OnTakeDamage(int victim, int &attacker, int &inflictor, floa
         g_fWaterShieldHP[victim] -= damage;
         damage = 0.0; // Sally no recibe dano
 
-        // Efecto visual de absorcion
+        // Efecto visual de absorción
         float vPos[3]; GetClientAbsOrigin(victim, vPos);
         vPos[2] += 20.0;
         TE_SetupSparks(vPos, NULL_VECTOR, 3, 2);
@@ -1097,13 +1221,14 @@ public Action Sally_OnTakeDamage(int victim, int &attacker, int &inflictor, floa
             Sally_ProcessEntity(victim, attacker, vPos, 99999.9, 0.0, push, 0.0);
             EmitSoundToAll(SALLY_SND_WATER_REFLECT, victim);
 
-            SetEntPropEnt(victim, Prop_Send, "m_pounceAttacker", -1);
-            SetEntPropEnt(victim, Prop_Send, "m_jockeyAttacker", -1);
-            SetEntPropEnt(victim, Prop_Send, "m_carryAttacker", -1);
-            SetEntPropEnt(victim, Prop_Send, "m_pummelAttacker", -1);
-            SetEntPropEnt(victim, Prop_Send, "m_tongueOwner", -1);
-
-            L4D_StaggerPlayer(attacker, victim, vPos);
+            // v48: liberación COMPLETA del agarre vía Pin_Release.
+            // Antes solo se limpiaban las props del lado de la victima
+            // (el hunter/jockey/smoker quedaba con su m_pounceVictim
+            // apuntando a Sally) y la música de agarre le seguida
+            // sonando a Sally en loop. PinRelease_Cleanse limpia ambos
+            // lados, corta la música del motor (L4D_StopMusic) y
+            // aturde al atacante con stagger seguro (auto getup).
+            PinRelease_Cleanse(victim);
         }
 
         // Mostrar HP restante
@@ -1111,7 +1236,7 @@ public Action Sally_OnTakeDamage(int victim, int &attacker, int &inflictor, floa
             g_fWaterShieldHP[victim] > 0 ? g_fWaterShieldHP[victim] : 0.0,
             g_cvSallyWaterMaxHP.FloatValue);
 
-        // Si el escudo se rompio, caer
+        // Si el escudo se rompió, caer
         if (g_fWaterShieldHP[victim] <= 0.0)
         {
             Sally_StopBubble(victim);
@@ -1136,25 +1261,28 @@ bool Sally_IsBubbleActive(int client)
 void Sally_EffectStart(int client)
 {
     if (client < 1 || client > MaxClients || !IsClientInGame(client)) return;
-    EmitSoundToAll(SALLY_SND_FIRE_START, client);
+    // v6.1 (R28.1) FIX 2: canal propio del escudo (corte exacto al morir)
+    EmitSoundToAll(SALLY_SND_FIRE_START, client, SALLY_SHIELD_SNDCHAN);
 }
 
 void Sally_EffectStop(int client)
 {
     if (client < 1 || client > MaxClients || !IsClientInGame(client)) return;
-    EmitSoundToAll(SALLY_SND_FIRE_STOP, client);
+    // v6.1 (R28.1) FIX 2: MISMO canal del loop — el jingle de apagado
+    // desaloja el slot del sonido vivo además del StopSound previo
+    EmitSoundToAll(SALLY_SND_FIRE_STOP, client, SALLY_SHIELD_SNDCHAN);
 }
 
 void Sally_EffectBubbleStart(int client)
 {
     if (client < 1 || client > MaxClients || !IsClientInGame(client)) return;
-    EmitSoundToAll(SALLY_SND_WATER_START, client);
+    EmitSoundToAll(SALLY_SND_WATER_START, client, SALLY_SHIELD_SNDCHAN);
 }
 
 void Sally_EffectBubbleStop(int client)
 {
     if (client < 1 || client > MaxClients || !IsClientInGame(client)) return;
-    EmitSoundToAll(SALLY_SND_WATER_STOP, client);
+    EmitSoundToAll(SALLY_SND_WATER_STOP, client, SALLY_SHIELD_SNDCHAN);
 }
 
 // =======================
@@ -1169,5 +1297,1030 @@ public void Sally_OnPlayerDeath(int client)
     Sally_ResetState(client, false);
 }
 
-// Puente de compatibilidad
-public void Sally_OnPlayerRunCmd_Generic(int client, int &buttons) {}
+// ============================================================================
+//  SISTEMA DOLL — Pasivas especiales para SteamIDs específicas
+//  Solo se activa cuando la SteamID de Sally y Amy coinciden.
+//  Amy:   STEAM_0:1:410494263   (La Princesa / Dueña)
+//  Sally: STEAM_0:0:889541669   (La Muñequita de juegos)
+//
+//  -----------------------------------------------------------------------
+//  TRASFONDO TEMÁTICO
+//  -----------------------------------------------------------------------
+//  Amy es la Princesa. Sally es SU muñequita de juegos.
+//  No es una jugadora libre: vive en su cajita y solo sale para jugar
+//  con la Princesa. Si se aleja demasiado, la Princesa la jala de la
+//  cintura con hilos mágicos y la devuelve a su cajita.
+//
+//  Pasiva 2: "TRAE ESA CINTURA PARA ACÁ"
+//    - Le recuerda a Sally que ella es una muñequita de juegos.
+//    - La cintura es el "asa" por donde la muñeca es arrastrada.
+//    - Si Sally se aleja >1200 de Amy → TP de vuelta + buff 75% por 6s.
+//    - Aviso a Amy: "Sally se alejó mucho, ella no puede escapar de su cajita."
+//  -----------------------------------------------------------------------
+// ============================================================================
+
+#define DOLL_AMY_STEAMID   "STEAM_1:1:410494263"
+#define DOLL_SALLY_STEAMID "STEAM_1:0:889541669"
+
+// Helper: comparar SteamID aceptando tanto STEAM_0: como STEAM_1: (compatibilidad L4D2)
+bool Doll_MatchSteamID(const char[] actualAuth, const char[] expectedAuth)
+{
+    // Comparación directa
+    if (StrEqual(actualAuth, expectedAuth)) return true;
+
+    // Si el actual empieza con STEAM_0 y el esperado con STEAM_1 (o viceversa),
+    // comparar ignorando ese dígito
+    if (strlen(actualAuth) >= 8 && strlen(expectedAuth) >= 8)
+    {
+        if (actualAuth[5] != expectedAuth[5])
+        {
+            if (StrEqual(actualAuth[7], expectedAuth[7])) return true;
+        }
+    }
+    return false;
+}
+
+// Helper: leer m_iSurvivorCharacter de forma segura (sin crashear)
+// ESTRATEGIA: usar el nombre del modelo como fuente PRIMARIA (más confiable)
+int Doll_GetSurvCharSafe(int client)
+{
+    if (client <= 0 || client > MaxClients || !IsClientInGame(client)) return -1;
+    if (GetClientTeam(client) != TEAM_SURVIVOR) return -1;
+
+    // Usar el nombre del modelo como fuente primaria
+    char modelName[256];
+    GetEntPropString(client, Prop_Data, "m_ModelName", modelName, sizeof(modelName));
+
+    // Detectar por nombre de modelo
+    if (StrContains(modelName, "rochelle", false) >= 0 ||
+        StrContains(modelName, "survivor_producer", false) >= 0) return 1;
+    if (StrContains(modelName, "zoey", false) >= 0 ||
+        StrContains(modelName, "survivor_teenangst", false) >= 0) return 0;
+    if (StrContains(modelName, "coach", false) >= 0 ||
+        StrContains(modelName, "survivor_coach", false) >= 0) return 2;
+    if (StrContains(modelName, "ellis", false) >= 0 ||
+        StrContains(modelName, "survivor_mechanic", false) >= 0) return 3;
+    if (StrContains(modelName, "nick", false) >= 0 ||
+        StrContains(modelName, "survivor_gambler", false) >= 0) return 4;
+    if (StrContains(modelName, "bill", false) >= 0 ||
+        StrContains(modelName, "survivor_namvet", false) >= 0) return 5;
+    if (StrContains(modelName, "francis", false) >= 0 ||
+        StrContains(modelName, "survivor_biker", false) >= 0) return 6;
+    if (StrContains(modelName, "louis", false) >= 0 ||
+        StrContains(modelName, "survivor_manager", false) >= 0) return 7;
+
+    // Fallback: si el modelo no se reconoce, usar m_iSurvivorCharacter
+    if (HasEntProp(client, Prop_Send, "m_iSurvivorCharacter"))
+    {
+        return GetEntProp(client, Prop_Send, "m_iSurvivorCharacter");
+    }
+
+    return -1;
+}
+
+#define CINTURA_MAX_DIST      1200.0
+#define CINTURA_WARN_DIST     1000.0
+#define SALLY_TAROT_CD        25.0
+#define SALLY_SHIELD_CD_MULT  2.0
+#define DOLL_DMG_REDUCE_BASE  0.50
+#define DOLL_DMG_REDUCE_CINTURA 0.75
+#define CINTURA_BUFF_DURATION  6.0
+#define DODGE_INVULN_DURATION  2.5
+#define DODGE_CHANCE          50
+#define DOLL_CONTROL_DURATION  5.0
+
+// PASIVA 4: Nervios de acero
+#define NERVIOS_MAX_REVIVES     3
+#define NERVIOS_DMG_MULT_LV1    2.0   // Tras 1er revive: 2x daño a infectados
+#define NERVIOS_DMG_MULT_LV2    4.5   // Tras 2do revive: 4.5x
+#define NERVIOS_DMG_MULT_LV3    7.0   // Tras 3er revive: 7x
+
+// PASIVA 6: Cintura y alma dominada
+#define ALMA_REGEN_INTERVAL     4.0   // 1 HP cada 4s (Amy viva)
+#define ALMA_REGEN_INTERVAL_DEAD 2.0  // 1 HP cada 2s (Amy caída)
+
+// PASIVA 11: Doble salto (cuando Amy cayó)
+#define DOLL_DOUBLEJUMP_FORCE   300.0
+
+bool  g_bDollSally[MAXPLAYERS + 1];
+bool  g_bDollAmy[MAXPLAYERS + 1];
+int   g_iDollAmyClient = -1;
+int   g_iDollSallyClient = -1;
+bool  g_bCinturaBuff[MAXPLAYERS + 1];
+float g_fCinturaBuffEnd[MAXPLAYERS + 1];
+bool  g_bAmyDead[MAXPLAYERS + 1];
+bool  g_bDollControl[MAXPLAYERS + 1];
+float g_fDollControlEnd[MAXPLAYERS + 1];
+bool  g_bDodgeActive[MAXPLAYERS + 1];
+float g_fDodgeEnd[MAXPLAYERS + 1];
+bool  g_bWarnedFar[MAXPLAYERS + 1];
+stock Handle g_hDollResizeMenu = null;        // legacy: asignado pero nunca leido
+
+// PASIVA 4: Nervios de acero — contador de revives
+int   g_iNerviosReviveCount[MAXPLAYERS + 1];  // 0 a NERVIOS_MAX_REVIVES
+float g_fNerviosDmgMult[MAXPLAYERS + 1];       // multiplicador actual
+
+// PASIVA 6: Cintura y alma dominada — regen
+float g_fAlmaLastRegen[MAXPLAYERS + 1];        // último tick de regen
+// Anti-witch: si Sally está sola, witch instakill = nullificado
+// Daño a witch = 100x
+
+// PASIVA 11: Doble salto (cuando Amy cayó)
+bool  g_bDollJumped[MAXPLAYERS + 1];           // ya hizo el 2do salto en el aire
+int   g_iDollJumpCount[MAXPLAYERS + 1];        // saltos hechos en el aire
+
+// Inicialización del sistema Doll
+void Doll_OnPluginStart()
+{
+    HookEvent("player_spawn", Doll_OnPlayerSpawn);
+    HookEvent("player_death", Doll_OnPlayerDeath);
+    HookEvent("round_start", Doll_OnRoundStart, EventHookMode_PostNoCopy);
+    HookEvent("player_incapacitated", Doll_OnPlayerIncapacitated);  // PASIVA 4
+    HookEvent("player_ledge_grab", Doll_OnPlayerIncapacitated);     // PASIVA 4 (ledge grab)
+    HookEvent("witch_spawn", Doll_OnWitchSpawn);                    // PASIVA 6 anti-witch
+}
+
+void Doll_OnRoundStart(Event event, const char[] name, bool dontBroadcast)
+{
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        g_bDollSally[i] = false;
+        g_bDollAmy[i] = false;
+        g_bAmyDead[i] = false;
+        g_bDollControl[i] = false;
+        g_bDodgeActive[i] = false;
+        g_bCinturaBuff[i] = false;
+        g_bWarnedFar[i] = false;
+
+        // PASIVA 4 / 6 / 11 reset
+        g_iNerviosReviveCount[i] = 0;
+        g_fNerviosDmgMult[i]     = 1.0;
+        g_fAlmaLastRegen[i]      = 0.0;
+        g_bDollJumped[i]         = false;
+        g_iDollJumpCount[i]      = 0;
+    }
+    g_iDollAmyClient = -1;
+    g_iDollSallyClient = -1;
+}
+
+void Doll_OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast)
+{
+    int client = GetClientOfUserId(event.GetInt("userid"));
+    if (client <= 0 || client > MaxClients || !IsClientInGame(client)) return;
+
+    // PASIVA 4: Hookear Special Infected para multiplicador de daño de Sally
+    if (GetClientTeam(client) == TEAM_INFECTED)
+    {
+        SDKHook(client, SDKHook_OnTakeDamage, Doll_OnSIDamage);
+    }
+
+    char auth[32];
+    GetClientAuthId(client, AuthId_Steam2, auth, sizeof(auth));
+
+    if (Doll_MatchSteamID(auth, DOLL_AMY_STEAMID))
+    {
+        g_bDollAmy[client] = true;
+        g_iDollAmyClient = client;
+        g_bAmyDead[client] = false;
+
+        // DEBUG: anuncio en consola del servidor
+        int survivor = Doll_GetSurvCharSafe(client);
+        char survName[32];
+        switch(survivor)
+        {
+            case 0: strcopy(survName, sizeof(survName), "Nick");
+            case 1: strcopy(survName, sizeof(survName), "Rochelle");
+            case 2: strcopy(survName, sizeof(survName), "Coach");
+            case 3: strcopy(survName, sizeof(survName), "Ellis");
+            case 4: strcopy(survName, sizeof(survName), "Bill");
+            case 5: strcopy(survName, sizeof(survName), "Zoey");
+            case 6: strcopy(survName, sizeof(survName), "Francis");
+            case 7: strcopy(survName, sizeof(survName), "Louis");
+            default: strcopy(survName, sizeof(survName), "Desconocido");
+        }
+        PrintToServer("[Doll] === AMY ESPECIAL CONECTADA ===");
+        PrintToServer("[Doll] SteamID: %s", auth);
+        PrintToServer("[Doll] Client: %d | Nombre: %N", client, client);
+        PrintToServer("[Doll] Survivor: %s (ID %d)", survName, survivor);
+        PrintToServer("[Doll] Estado: Doll Amy activa");
+
+        if (survivor == 5)
+        {
+            PrintToServer("[Doll] ✓ Amy usando Zoey (correcto)");
+        }
+        else
+        {
+            PrintToServer("[Doll] ✗ ADVERTENCIA: Amy NO está usando Zoey (usa %s). Las pasivas Doll no funcionaran correctamente.", survName);
+            PrintToChat(client, "\x04[Doll]\x01 ADVERTENCIA: Debes usar a \x04Zoey\x01 para que las pasivas Doll funcionen.");
+        }
+
+        // Verificar si Sally también está conectada
+        if (g_iDollSallyClient > 0 && IsClientInGame(g_iDollSallyClient))
+        {
+            PrintToServer("[Doll] ✓ Sally especial detectada (client %d). Sistema Doll ACTIVO.", g_iDollSallyClient);
+        }
+        else
+        {
+            PrintToServer("[Doll] ✗ Sally especial NO detectada. Sistema Doll incompleto.");
+        }
+    }
+
+    if (Doll_MatchSteamID(auth, DOLL_SALLY_STEAMID))
+    {
+        g_bDollSally[client] = true;
+        g_iDollSallyClient = client;
+        g_bWarnedFar[client] = false;
+        SDKHook(client, SDKHook_OnTakeDamage, Doll_OnTakeDamage);
+
+        // DEBUG: anuncio en consola del servidor
+        int survivor = Doll_GetSurvCharSafe(client);
+        char survName[32];
+        switch(survivor)
+        {
+            case 0: strcopy(survName, sizeof(survName), "Nick");
+            case 1: strcopy(survName, sizeof(survName), "Rochelle");
+            case 2: strcopy(survName, sizeof(survName), "Coach");
+            case 3: strcopy(survName, sizeof(survName), "Ellis");
+            case 4: strcopy(survName, sizeof(survName), "Bill");
+            case 5: strcopy(survName, sizeof(survName), "Zoey");
+            case 6: strcopy(survName, sizeof(survName), "Francis");
+            case 7: strcopy(survName, sizeof(survName), "Louis");
+            default: strcopy(survName, sizeof(survName), "Desconocido");
+        }
+        PrintToServer("[Doll] === SALLY ESPECIAL CONECTADA ===");
+        PrintToServer("[Doll] SteamID: %s", auth);
+        PrintToServer("[Doll] Client: %d | Nombre: %N", client, client);
+        PrintToServer("[Doll] Survivor: %s (ID %d)", survName, survivor);
+        PrintToServer("[Doll] Estado: Doll Sally activa");
+
+        if (survivor == 1)
+        {
+            PrintToServer("[Doll] ✓ Sally usando Rochelle (correcto)");
+        }
+        else
+        {
+            PrintToServer("[Doll] ✗ ADVERTENCIA: Sally NO está usando Rochelle (usa %s). Las pasivas Doll no funcionaran correctamente.", survName);
+            PrintToChat(client, "\x04[Doll]\x01 ADVERTENCIA: Debes usar a \x04Rochelle\x01 para que las pasivas Doll funcionen.");
+        }
+
+        // Verificar si Amy también está conectada
+        if (g_iDollAmyClient > 0 && IsClientInGame(g_iDollAmyClient))
+        {
+            PrintToServer("[Doll] ✓ Amy especial detectada (client %d). Sistema Doll ACTIVO.", g_iDollAmyClient);
+        }
+        else
+        {
+            PrintToServer("[Doll] ✗ Amy especial NO detectada. Sistema Doll incompleto.");
+        }
+    }
+}
+
+void Doll_OnPlayerDeath(Event event, const char[] name, bool dontBroadcast)
+{
+    int victim = GetClientOfUserId(event.GetInt("userid"));
+    if (victim <= 0 || victim > MaxClients) return;
+
+    if (g_bDollAmy[victim])
+    {
+        g_bAmyDead[victim] = true;
+        if (g_iDollSallyClient > 0 && IsClientInGame(g_iDollSallyClient))
+        {
+            PrintHintText(g_iDollSallyClient, "<font color='#FF0000' size='24'>>> MUÑECA PRINCESA <<</font>\n<font color='#FF80C0'>Amy ha caido. Despierta, Sally.</font>");
+        }
+    }
+
+    if (g_bDollSally[victim])
+    {
+        g_bDodgeActive[victim] = false;
+        g_bDollControl[victim] = false;
+        g_bCinturaBuff[victim] = false;
+    }
+}
+
+// PASIVA 2 + 3: "TRAE ESA CINTURA PARA ACÁ" + Doll atrapada
+// Le recuerda a Sally que es una muñequita de juegos de la Princesa.
+// La cintura es el asa por donde la muñeca es arrastrada.
+void Doll_PreThink(int client)
+{
+    if (!g_bDollSally[client]) return;
+    if (!IsPlayerAlive(client)) return;
+    if (g_iDollAmyClient <= 0 || !IsClientInGame(g_iDollAmyClient) || !IsPlayerAlive(g_iDollAmyClient)) return;
+
+    float sallyPos[3], amyPos[3];
+    GetClientAbsOrigin(client, sallyPos);
+    GetClientAbsOrigin(g_iDollAmyClient, amyPos);
+    float dist = GetVectorDistance(sallyPos, amyPos);
+
+    if (dist >= CINTURA_WARN_DIST && dist < CINTURA_MAX_DIST && !g_bWarnedFar[client])
+    {
+        PrintHintText(client, "<font color='#FF80C0'>¡Te estás alejando mucho de Amy!</font>\n<font color='#FFFFFF'>Distancia: %.0f / %.0f</font>", dist, CINTURA_MAX_DIST);
+        g_bWarnedFar[client] = true;
+    }
+    else if (dist < CINTURA_WARN_DIST)
+    {
+        g_bWarnedFar[client] = false;
+    }
+
+    if (dist >= CINTURA_MAX_DIST)
+    {
+        // Los hilos de la Princesa cortan cualquier agarre de SI antes del TP.
+        // Temáticamente: la muñequita es jalada con tanta fuerza que los
+        // Hunter/Smoker/Charger/Jockey la sueltan.
+        bool wasGrappled = Doll_IsBeingGrappled(client);
+        Doll_FreeFromGrapples(client);
+
+        TeleportEntity(client, amyPos, NULL_VECTOR, NULL_VECTOR);
+
+        // Efecto visual: hilo de marioneta desde Amy hasta la cintura de Sally
+        float sallyCintura[3];
+        sallyCintura = amyPos; // ya teleportada, así que está junto a Amy
+        sallyCintura[2] += 36.0; // altura aprox. de la cintura
+        Doll_DrawPuppetThread(amyPos, sallyCintura);
+
+        g_bCinturaBuff[client] = true;
+        g_fCinturaBuffEnd[client] = GetEngineTime() + CINTURA_BUFF_DURATION;
+
+        // Mensaje a Sally: la Princesa la jaló de la cintura
+        if (wasGrappled)
+        {
+            PrintHintText(client, "<font color='#FF00FF' size='24'>>> TRAE ESA CINTURA PARA ACÁ <<</font>\n<font color='#FF80C0'>La Princesa cortó tus hilos y jaló tu cintura. Vuelve a tu cajita.</font>");
+        }
+        else
+        {
+            PrintHintText(client, "<font color='#FF00FF' size='24'>>> TRAE ESA CINTURA PARA ACÁ <<</font>\n<font color='#FF80C0'>La Princesa te jaló de la cintura. Vuelve a tu cajita.</font>");
+        }
+        EmitSoundToClient(client, "ambient/energy/force_field_loop1.wav");
+
+        // Mensaje a Amy: su muñequita intentó escapar de la cajita
+        if (IsClientInGame(g_iDollAmyClient) && !IsFakeClient(g_iDollAmyClient))
+        {
+            if (wasGrappled)
+            {
+                PrintHintText(g_iDollAmyClient, "<font color='#FF00FF' size='24'>>> TRAE ESA CINTURA PARA ACÁ <<</font>\n<font color='#FF80C0'>Cortaste los hilos que atrapaban a tu muñequita. Sally vuelve a su cajita.</font>");
+            }
+            else
+            {
+                PrintHintText(g_iDollAmyClient, "<font color='#FF00FF' size='24'>>> TRAE ESA CINTURA PARA ACÁ <<</font>\n<font color='#FF80C0'>Sally se alejó mucho, ella no puede escapar de su cajita.</font>");
+            }
+            EmitSoundToClient(g_iDollAmyClient, "ambient/energy/force_field_loop1.wav");
+        }
+
+        g_bWarnedFar[client] = false;
+    }
+
+    float now = GetEngineTime();
+    if (g_bCinturaBuff[client] && now > g_fCinturaBuffEnd[client])
+        g_bCinturaBuff[client] = false;
+    if (g_bDodgeActive[client] && now > g_fDodgeEnd[client])
+        g_bDodgeActive[client] = false;
+    if (g_bDollControl[client] && now > g_fDollControlEnd[client])
+        g_bDollControl[client] = false;
+}
+
+// PASIVA 3 + 9 + 10: Reducción de daño, dodge, división con Amy
+public Action Doll_OnTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
+{
+    if (!g_bDollSally[victim]) return Plugin_Continue;
+    if (!IsPlayerAlive(victim)) return Plugin_Continue;
+
+    float now = GetEngineTime();
+
+    // PASIVA 7: Doll Control → invulnerable
+    if (g_bDollControl[victim] && now < g_fDollControlEnd[victim])
+    {
+        damage = 0.0;
+        return Plugin_Changed;
+    }
+
+    // PASIVA 9: Dodge activo → invulnerable 2.5s
+    if (g_bDodgeActive[victim] && now < g_fDodgeEnd[victim])
+    {
+        damage = 0.0;
+        return Plugin_Changed;
+    }
+
+    // PASIVA 6: Inmunidad a daño de fuego
+    if (damagetype & DMG_BURN)
+    {
+        damage = 0.0;
+        if (IsClientInGame(victim) && !IsFakeClient(victim))
+            PrintHintText(victim, "<font color='#FF80C0'>Los hilos de Amy apagan el fuego. La muñequita no arde.</font>");
+        return Plugin_Changed;
+    }
+
+    // PASIVA 6: Anti-Witch — si Sally está sola, el instakill de la Witch es nulo
+    // Detectamos Witch como atacante
+    if (attacker > 0 && attacker <= MaxClients && GetClientTeam(attacker) == TEAM_INFECTED)
+    {
+        // Witch es un SI especial: clase witch (zombie class 7 en L4D2)
+        // Pero las witches son NPCs, no jugadores. Esto se maneja en Doll_OnWitchSpawn
+        // y vía SDKHook en la witch.
+    }
+
+    // PASIVA 9: 50% chance de dodge
+    if (!g_bDodgeActive[victim] && GetRandomInt(1, 100) <= DODGE_CHANCE)
+    {
+        g_bDodgeActive[victim] = true;
+        g_fDodgeEnd[victim] = now + DODGE_INVULN_DURATION;
+        PrintHintText(victim, "<font color='#FF00FF'>>> DODGE <<</font>\n<font color='#FF80C0'>2.5s de invulnerabilidad</font>");
+        damage = 0.0;
+        return Plugin_Changed;
+    }
+
+    // PASIVA 2: Negar daño de entorno (caída, etc)
+    if (damagetype & DMG_FALL || damagetype & DMG_CRUSH)
+    {
+        if (damage >= float(GetClientHealth(victim)))
+        {
+            damage = 0.0;
+            g_bCinturaBuff[victim] = true;
+            g_fCinturaBuffEnd[victim] = now + CINTURA_BUFF_DURATION;
+            PrintHintText(victim, "<font color='#FF00FF'>>> TRAE ESA CINTURA PARA ACÁ <<</font>\n<font color='#FF80C0'>Los hilos de la Princesa niegan el daño. La muñequita no se rompe sola.</font>");
+            return Plugin_Changed;
+        }
+    }
+
+    // PASIVA 3: Reducción de daño (50% o 75% con cintura)
+    float reduceMult = DOLL_DMG_REDUCE_BASE;
+    if (g_bCinturaBuff[victim] && now < g_fCinturaBuffEnd[victim])
+        reduceMult = DOLL_DMG_REDUCE_CINTURA;
+    damage *= (1.0 - reduceMult);
+
+    // PASIVA 10: Soy una Doll → dividir 50% del daño con Amy
+    if (g_iDollAmyClient > 0 && IsClientInGame(g_iDollAmyClient) && IsPlayerAlive(g_iDollAmyClient) && !g_bAmyDead[g_iDollAmyClient])
+    {
+        float amyDmg = damage * 0.25;  // Amy recibe 25% del original
+        damage *= 0.5;  // Sally recibe 50%
+        SDKHooks_TakeDamage(g_iDollAmyClient, 0, 0, amyDmg, DMG_GENERIC);
+    }
+
+    return Plugin_Changed;
+}
+
+// PASIVA 5: Muñeca Princesa
+bool Doll_IsPrincesaMode(int client)
+{
+    if (!g_bDollSally[client]) return false;
+    if (!IsPlayerAlive(client)) return false;
+    if (g_iDollAmyClient <= 0) return true;
+    if (!IsClientInGame(g_iDollAmyClient)) return true;
+    if (!IsPlayerAlive(g_iDollAmyClient)) return true;
+    if (g_bAmyDead[g_iDollAmyClient]) return true;
+    return false;
+}
+
+stock bool Doll_IsGrabImmune(int client)
+{
+    if (!g_bDollSally[client]) return false;
+    if (g_bDodgeActive[client] && GetEngineTime() < g_fDodgeEnd[client]) return true;
+    if (Doll_IsPrincesaMode(client)) return true;
+    return false;
+}
+
+// PASIVA 7: Doll Control
+Action Doll_CommandControl(int client, int args)
+{
+    client = Sonic_SoloClient(client);   // v3.77.79 MODO SOLO: consola/fake -> tu jugador
+    if (!g_bDollAmy[client]) return Plugin_Handled;
+    if (!IsPlayerAlive(client)) return Plugin_Handled;
+    if (g_iDollSallyClient <= 0 || !IsClientInGame(g_iDollSallyClient) || !IsPlayerAlive(g_iDollSallyClient))
+    {
+        PrintToChat(client, "\x04[Doll]\x01 Sally no está disponible.");
+        return Plugin_Handled;
+    }
+    g_bDollControl[g_iDollSallyClient] = true;
+    g_fDollControlEnd[g_iDollSallyClient] = GetEngineTime() + DOLL_CONTROL_DURATION;
+
+    PrintToChat(client, "\x04[Doll]\x01 Controlando a Sally por \x045s\x01. Es invulnerable.");
+    PrintToChat(g_iDollSallyClient, "\x04[Doll]\x01 Amy te está controlando. Eres invulnerable por 5s.");
+
+    return Plugin_Handled;
+}
+
+// PASIVA 8: Menú de resize
+Action Doll_CommandResize(int client, int args)
+{
+    client = Sonic_SoloClient(client);   // v3.77.79 MODO SOLO: consola/fake -> tu jugador
+    if (!g_bDollAmy[client]) return Plugin_Handled;
+    if (g_iDollSallyClient <= 0 || !IsClientInGame(g_iDollSallyClient))
+    {
+        PrintToChat(client, "\x04[Doll]\x01 Sally no está disponible.");
+        return Plugin_Handled;
+    }
+    Menu menu = new Menu(Doll_ResizeHandler);
+    menu.SetTitle("Tamaño de Sally\n \n");
+    menu.AddItem("0.5", "Pequeña (0.5x)");
+    menu.AddItem("0.75", "Mediana (0.75x)");
+    menu.AddItem("1.0", "Normal (1.0x)");
+    menu.AddItem("1.25", "Grande (1.25x)");
+    menu.AddItem("1.5", "Gigante (1.5x)");
+    menu.Display(client, 15);
+    return Plugin_Handled;
+}
+
+int Doll_ResizeHandler(Menu menu, MenuAction action, int param1, int param2)
+{
+    switch (action)
+    {
+        case MenuAction_End: delete menu;
+        case MenuAction_Select:
+        {
+            char info[16];
+            menu.GetItem(param2, info, sizeof(info));
+            float scale = StringToFloat(info);
+            if (g_iDollSallyClient > 0 && IsClientInGame(g_iDollSallyClient))
+            {
+                SetEntPropFloat(g_iDollSallyClient, Prop_Send, "m_flModelScale", scale);
+                PrintToChat(param1, "\x04[Doll]\x01 Tamaño de Sally: \x04%.2fx\x01", scale);
+            }
+        }
+    }
+    return 0;
+}
+
+// PASIVA 8: Detección de infectados especiales
+void Doll_DetectSpecialInfected(int client)
+{
+    if (!g_bDollSally[client]) return;
+    if (!IsPlayerAlive(client)) return;
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (!IsClientInGame(i) || !IsPlayerAlive(i)) continue;
+        if (GetClientTeam(i) != TEAM_INFECTED) continue;
+        float sallyPos[3], infectedPos[3];
+        GetClientAbsOrigin(client, sallyPos);
+        GetClientAbsOrigin(i, infectedPos);
+        float dist = GetVectorDistance(sallyPos, infectedPos);
+        if (dist <= 500.0)
+        {
+            int zombieClass = GetEntProp(i, Prop_Send, "m_zombieClass");
+            char className[32];
+            switch (zombieClass)
+            {
+                case 1: strcopy(className, sizeof(className), "Smoker");
+                case 2: strcopy(className, sizeof(className), "Boomer");
+                case 3: strcopy(className, sizeof(className), "Hunter");
+                case 4: strcopy(className, sizeof(className), "Spitter");
+                case 5: strcopy(className, sizeof(className), "Jockey");
+                case 6: strcopy(className, sizeof(className), "Charger");
+                case 8: strcopy(className, sizeof(className), "Tank");
+                default: strcopy(className, sizeof(className), "Infectado");
+            }
+            PrintHintText(client, "<font color='#FF80C0'>%s detectado a %.0fm</font>", className, dist / 50.0);
+        }
+    }
+}
+
+// PASIVA 9: Ghost mode durante dodge + PASIVA 11: Doble salto
+void Doll_OnPlayerRunCmd(int client, int buttons = 0)
+{
+    if (!g_bDollSally[client]) return;
+    if (!IsPlayerAlive(client)) return;
+    float now = GetEngineTime();
+    if (g_bDodgeActive[client] && now < g_fDodgeEnd[client])
+    {
+        SetEntProp(client, Prop_Data, "m_CollisionGroup", 1);
+    }
+    else
+    {
+        SetEntProp(client, Prop_Data, "m_CollisionGroup", 5);
+    }
+    static float lastDetect[MAXPLAYERS + 1];
+    if (now - lastDetect[client] >= 1.0)
+    {
+        Doll_DetectSpecialInfected(client);
+        lastDetect[client] = now;
+    }
+
+    // PASIVA 11: Doble salto (si Amy cayó)
+    if (buttons != 0)
+    {
+        Doll_HandleDoubleJump(client, buttons);
+    }
+
+    // PASIVA 6: Regeneración de alma
+    Doll_AlmaRegenTick(client);
+}
+
+// ============================================================================
+//  COMANDO DEBUG: sm_dolldebug
+//  Muestra el estado completo del sistema Doll en consola.
+//  Solo visible para la persona que lo ejecuta (no.broadcast).
+// ============================================================================
+
+Action Doll_CommandDebug(int client, int args)
+{
+    client = Sonic_SoloClient(client);   // v3.77.79 MODO SOLO: consola/fake -> tu jugador
+    PrintToConsole(client, "");
+    PrintToConsole(client, "========================================");
+    PrintToConsole(client, "  SISTEMA DOLL — ESTADO ACTUAL");
+    PrintToConsole(client, "========================================");
+    PrintToConsole(client, "");
+
+    // Estado de Amy
+    PrintToConsole(client, "[AMY]");
+    if (g_iDollAmyClient > 0 && IsClientInGame(g_iDollAmyClient))
+    {
+        int survivor = Doll_GetSurvCharSafe(g_iDollAmyClient);
+        char survName[32];
+        switch(survivor)
+        {
+            case 0: strcopy(survName, sizeof(survName), "Nick");
+            case 1: strcopy(survName, sizeof(survName), "Rochelle");
+            case 2: strcopy(survName, sizeof(survName), "Coach");
+            case 3: strcopy(survName, sizeof(survName), "Ellis");
+            case 4: strcopy(survName, sizeof(survName), "Bill");
+            case 5: strcopy(survName, sizeof(survName), "Zoey");
+            case 6: strcopy(survName, sizeof(survName), "Francis");
+            case 7: strcopy(survName, sizeof(survName), "Louis");
+            default: strcopy(survName, sizeof(survName), "Desconocido");
+        }
+        PrintToConsole(client, "  Conectada: SI (client %d, %N)", g_iDollAmyClient, g_iDollAmyClient);
+        PrintToConsole(client, "  Survivor: %s (ID %d)", survName, survivor);
+        PrintToConsole(client, "  Viva: %s", IsPlayerAlive(g_iDollAmyClient) ? "SI" : "NO");
+        PrintToConsole(client, "  Skin correcta (Zoey): %s", survivor == 5 ? "SI" : "NO");
+    }
+    else
+    {
+        PrintToConsole(client, "  Conectada: NO");
+    }
+    PrintToConsole(client, "");
+
+    // Estado de Sally
+    PrintToConsole(client, "[SALLY]");
+    if (g_iDollSallyClient > 0 && IsClientInGame(g_iDollSallyClient))
+    {
+        int survivor = Doll_GetSurvCharSafe(g_iDollSallyClient);
+        char survName[32];
+        switch(survivor)
+        {
+            case 0: strcopy(survName, sizeof(survName), "Nick");
+            case 1: strcopy(survName, sizeof(survName), "Rochelle");
+            case 2: strcopy(survName, sizeof(survName), "Coach");
+            case 3: strcopy(survName, sizeof(survName), "Ellis");
+            case 4: strcopy(survName, sizeof(survName), "Bill");
+            case 5: strcopy(survName, sizeof(survName), "Zoey");
+            case 6: strcopy(survName, sizeof(survName), "Francis");
+            case 7: strcopy(survName, sizeof(survName), "Louis");
+            default: strcopy(survName, sizeof(survName), "Desconocido");
+        }
+        PrintToConsole(client, "  Conectada: SI (client %d, %N)", g_iDollSallyClient, g_iDollSallyClient);
+        PrintToConsole(client, "  Survivor: %s (ID %d)", survName, survivor);
+        PrintToConsole(client, "  Viva: %s", IsPlayerAlive(g_iDollSallyClient) ? "SI" : "NO");
+        PrintToConsole(client, "  Skin correcta (Rochelle): %s", survivor == 1 ? "SI" : "NO");
+
+        // Estado de pasivas
+        float now = GetEngineTime();
+        PrintToConsole(client, "");
+        PrintToConsole(client, "  [PASIVAS]");
+        PrintToConsole(client, "    Doll Control: %s", (g_bDollControl[g_iDollSallyClient] && now < g_fDollControlEnd[g_iDollSallyClient]) ? "ACTIVO" : "inactivo");
+        PrintToConsole(client, "    Dodge: %s", (g_bDodgeActive[g_iDollSallyClient] && now < g_fDodgeEnd[g_iDollSallyClient]) ? "ACTIVO" : "inactivo");
+        PrintToConsole(client, "    Cintura Buff: %s", (g_bCinturaBuff[g_iDollSallyClient] && now < g_fCinturaBuffEnd[g_iDollSallyClient]) ? "ACTIVO (75%% reducción)" : "inactivo (50%% reducción base)");
+
+        // Distancia
+        if (g_iDollAmyClient > 0 && IsClientInGame(g_iDollAmyClient) && IsPlayerAlive(g_iDollSallyClient) && IsPlayerAlive(g_iDollAmyClient))
+        {
+            float sallyPos[3], amyPos[3];
+            GetClientAbsOrigin(g_iDollSallyClient, sallyPos);
+            GetClientAbsOrigin(g_iDollAmyClient, amyPos);
+            float dist = GetVectorDistance(sallyPos, amyPos);
+            PrintToConsole(client, "    Distancia a Amy: %.0f / %.0f (aviso a %.0f)", dist, CINTURA_MAX_DIST, CINTURA_WARN_DIST);
+            if (dist >= CINTURA_MAX_DIST) PrintToConsole(client, "    ⚠ CINTURA ACTIVADA (demasiado lejos)");
+            else if (dist >= CINTURA_WARN_DIST) PrintToConsole(client, "    ⚠ AVISO: acercándose al limite");
+        }
+
+        // Modo Princesa
+        PrintToConsole(client, "    Muñeca Princesa: %s", Doll_IsPrincesaMode(g_iDollSallyClient) ? "ACTIVO" : "inactivo");
+    }
+    else
+    {
+        PrintToConsole(client, "  Conectada: NO");
+    }
+    PrintToConsole(client, "");
+
+    // Resumen del sistema
+    PrintToConsole(client, "[SISTEMA]");
+    bool bothConnected = (g_iDollAmyClient > 0 && IsClientInGame(g_iDollAmyClient) && g_iDollSallyClient > 0 && IsClientInGame(g_iDollSallyClient));
+    PrintToConsole(client, "  Ambas conectadas: %s", bothConnected ? "SI" : "NO");
+    PrintToConsole(client, "  Sistema Doll: %s", bothConnected ? "ACTIVO" : "INACTIVO");
+    PrintToConsole(client, "");
+    PrintToConsole(client, "========================================");
+
+    if (client > 0 && client <= MaxClients)
+    {
+        PrintToChat(client, "\x04[Doll]\x01 Estado del sistema enviado a la consola. (presiona ~ para ver)");
+    }
+
+    return Plugin_Handled;
+}
+
+// ============================================================================
+//  PASIVA 4: NERVIOS DE ACERO
+//  Si Amy murió y Sally cae incapacitada, se reincorpora automáticamente.
+//  Máximo 3 revives por ronda.
+//  Cada revive aumenta el daño de Sally a infectados:
+//    Revive 1 → 2x daño
+//    Revive 2 → 4.5x daño
+//    Revive 3 → 7x daño
+//  Temáticamente: la muñequita sin dueña se vuelve más peligrosa
+//  cada vez que se levanta.
+// ============================================================================
+
+public void Doll_OnPlayerIncapacitated(Event event, const char[] name, bool dontBroadcast)
+{
+    int victim = GetClientOfUserId(event.GetInt("userid"));
+    if (victim <= 0 || victim > MaxClients || !g_bDollSally[victim]) return;
+    if (!Doll_IsPrincesaMode(victim)) return;  // Solo si Amy cayó
+    if (g_iNerviosReviveCount[victim] >= NERVIOS_MAX_REVIVES) return;
+
+    // Esperar 1.5s antes de revive (dar tiempo al juego a procesar la incap)
+    DataPack dp = new DataPack();
+    dp.WriteCell(victim);
+    CreateTimer(1.5, Doll_Timer_NerviosRevive, dp, TIMER_FLAG_NO_MAPCHANGE);
+}
+
+public Action Doll_Timer_NerviosRevive(Handle timer, DataPack dp)
+{
+    dp.Reset();
+    int client = dp.ReadCell();
+    dp.Close();
+
+    if (!g_bDollSally[client] || !IsClientInGame(client) || !IsPlayerAlive(client)) return Plugin_Stop;
+    if (g_iNerviosReviveCount[client] >= NERVIOS_MAX_REVIVES) return Plugin_Stop;
+
+    // Verificar que siga incapacitada
+    if (!GetEntProp(client, Prop_Send, "m_isIncapacitated")) return Plugin_Stop;
+
+    g_iNerviosReviveCount[client]++;
+
+    // Aplicar multiplicador según el nivel de revive
+    switch (g_iNerviosReviveCount[client])
+    {
+        case 1: g_fNerviosDmgMult[client] = NERVIOS_DMG_MULT_LV1;
+        case 2: g_fNerviosDmgMult[client] = NERVIOS_DMG_MULT_LV2;
+        case 3: g_fNerviosDmgMult[client] = NERVIOS_DMG_MULT_LV3;
+    }
+
+    // Reincorporar a Sally
+    SetEntProp(client, Prop_Send, "m_isIncapacitated", 0);
+    SetEntProp(client, Prop_Send, "m_isHangingFromLedge", 0);
+
+    // Restaurar HP
+    int newHp = GetClientHealth(client);
+    if (newHp < 50) SetEntityHealth(client, 50);
+
+    // Efecto visual + mensaje
+    float pos[3];
+    GetClientAbsOrigin(client, pos);
+    TE_SetupBeamRingPoint(pos, 10.0, 200.0,
+                          PrecacheModel("materials/sprites/laserbeam.vmt"),
+                          PrecacheModel("materials/sprites/halo01.vmt"),
+                          0, 0, 1.0, 3.0, 30.0, {255, 0, 128, 255}, 0, 0);
+    TE_SendToClient(client);
+
+    EmitSoundToClient(client, "ambient/energy/force_field_loop1.wav");
+
+    PrintHintText(client, "<font color='#FF0000' size='24'>>> NERVIOS DE ACERO <<</font>\n<font color='#FF80C0'>Revive %d / %d — Daño a infectados x%.1f</font>",
+                  g_iNerviosReviveCount[client], NERVIOS_MAX_REVIVES, g_fNerviosDmgMult[client]);
+
+    return Plugin_Stop;
+}
+
+// Helper: aplicar multiplicador de daño a infectados
+float Doll_GetNerviosDamageMult(int client)
+{
+    if (!g_bDollSally[client]) return 1.0;
+    return g_fNerviosDmgMult[client];
+}
+
+// ============================================================================
+//  PASIVA 6: CINTURA Y ALMA DOMINADA
+//  Amy tiene control completo de su muñeca. Es un juguete para los
+//  caprichos de Amy. Le otorga:
+//    - Regeneración: 1 HP cada 4s (2s si Amy cayó)
+//    - Inmunidad a daño de fuego (manejada en Doll_OnTakeDamage)
+//    - Anti-Witch: si Sally está sola, instakill de Witch = nullificado
+//    - Daño a Witch = 100x (instakill)
+// ============================================================================
+
+public void Doll_OnWitchSpawn(Event event, const char[] name, bool dontBroadcast)
+{
+    int witch = event.GetInt("witchid");
+    if (witch <= 0 || !IsValidEntity(witch)) return;
+
+    // Hookear daño a la witch para multiplicar x100 si Sally la golpea
+    SDKHook(witch, SDKHook_OnTakeDamage, Doll_OnWitchTakeDamage);
+}
+
+public Action Doll_OnWitchTakeDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
+{
+    // ¿Sally es la atacante?
+    if (attacker <= 0 || attacker > MaxClients) return Plugin_Continue;
+    if (!g_bDollSally[attacker]) return Plugin_Continue;
+
+    // Aplicar 100x daño (instakill)
+    damage *= 100.0;
+    return Plugin_Changed;
+}
+
+// PASIVA 4: Multiplicador de daño de Sally a infectados
+// Se hookea en los SI cuando spawnean para aplicar el multiplicador
+public Action Doll_OnSIDamage(int victim, int &attacker, int &inflictor, float &damage, int &damagetype)
+{
+    // ¿Sally es la atacante?
+    if (attacker <= 0 || attacker > MaxClients) return Plugin_Continue;
+    if (!g_bDollSally[attacker]) return Plugin_Continue;
+
+    // Aplicar multiplicador de Nervios de Acero si Amy cayó
+    if (!Doll_IsPrincesaMode(attacker)) return Plugin_Continue;
+
+    float mult = Doll_GetNerviosDamageMult(attacker);
+    if (mult > 1.0)
+    {
+        damage *= mult;
+        return Plugin_Changed;
+    }
+    return Plugin_Continue;
+}
+
+// Llamar desde Doll_PreThink para regen pasivo
+void Doll_AlmaRegenTick(int client)
+{
+    if (!g_bDollSally[client]) return;
+    if (!IsPlayerAlive(client)) return;
+
+    float now = GetEngineTime();
+    float interval = ALMA_REGEN_INTERVAL;
+    if (Doll_IsPrincesaMode(client)) interval = ALMA_REGEN_INTERVAL_DEAD;
+
+    if (now - g_fAlmaLastRegen[client] < interval) return;
+
+    int hp = GetClientHealth(client);
+    int maxHp = GetEntProp(client, Prop_Send, "m_iMaxHealth");
+    if (hp < maxHp)
+    {
+        SetEntityHealth(client, hp + 1);
+    }
+    g_fAlmaLastRegen[client] = now;
+}
+
+// ============================================================================
+//  PASIVA 11: UNA MUÑECA CONSENTIDA EN EL MUNDO
+//  Si Amy cayó, Sally puede alterar las reglas y ejecutar el doble salto
+//  de Amy. Refuerza la idea de que cuando Amy no está, Sally absorbe
+//  parte de su poder.
+// ============================================================================
+
+// Llamar desde Doll_OnPlayerRunCmd cuando se presione IN_JUMP en el aire
+void Doll_HandleDoubleJump(int client, int buttons)
+{
+    if (!g_bDollSally[client]) return;
+    if (!IsPlayerAlive(client)) return;
+    if (!Doll_IsPrincesaMode(client)) return;  // Solo si Amy cayó
+
+    // Detectar si está en el agua o en el suelo
+    int waterLevel = GetEntProp(client, Prop_Data, "m_nWaterLevel");
+    bool onGround = (GetEntityFlags(client) & FL_ONGROUND) != 0;
+
+    if (onGround || waterLevel >= 2)
+    {
+        // Reset: en el suelo, puede volver a hacer doble salto
+        g_bDollJumped[client] = false;
+        g_iDollJumpCount[client] = 0;
+        return;
+    }
+
+    // Si presiona salto en el aire y no ha hecho el doble salto
+    if ((buttons & IN_JUMP) && !g_bDollJumped[client])
+    {
+        g_bDollJumped[client] = true;
+        g_iDollJumpCount[client]++;
+
+        // Aplicar impulso vertical (doble salto)
+        float vel[3];
+        GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
+        vel[2] = DOLL_DOUBLEJUMP_FORCE;
+        TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vel);
+
+        // Efecto visual breve (solo Sally lo ve)
+        PrintHintText(client, "<font color='#FF80C0'>>> DOBLE SALTO DE AMY <<</font>");
+        EmitSoundToClient(client, "ambient/energy/zap1.wav");
+    }
+}
+
+// ============================================================================
+//  DETECCIÓN DE AGARRES — ¿Sally está siendo agarrada por un SI?
+//  Returns: true si está bajo efecto de Hunter/Smoker/Charger/Jockey
+// ============================================================================
+bool Doll_IsBeingGrappled(int client)
+{
+    if (!IsPlayerAlive(client)) return false;
+
+    // Hunter pounce
+    if (GetEntPropEnt(client, Prop_Send, "m_pounceAttacker") > 0)  return true;
+    // Smoker tongue
+    if (GetEntPropEnt(client, Prop_Send, "m_tongueOwner")   > 0)  return true;
+    // Charger pummel
+    if (GetEntPropEnt(client, Prop_Send, "m_pummelAttacker") > 0)  return true;
+    // Charger carry
+    if (GetEntPropEnt(client, Prop_Send, "m_carryAttacker")  > 0)  return true;
+    // Jockey ride
+    if (GetEntPropEnt(client, Prop_Send, "m_jockeyAttacker") > 0)  return true;
+
+    return false;
+}
+
+// ============================================================================
+//  LIBERACIÓN DE AGARRES — "TRAE ESA CINTURA PARA ACÁ"
+//
+//  Los hilos de la Princesa cortan cualquier agarre de Special Infected
+//  antes de teleportar a Sally. Temáticamente: la muñequita es jalada
+//  con tanta fuerza que ningún Hunter/Smoker/Charger/Jockey puede
+//  sostenerla.
+//
+//  Esto evita el caso frustrante donde Sally se teletransporta al lado
+//  de Amy mientras sigue being pounced/smoked/charged/rode.
+//
+//  v48: delega en Pin_Release.inc. La versión antigua solo ponía los
+//  enlaces a -1 y aturdia al SI con MOVETYPE_NONE + un timer que
+//  restauraba por ÍNDICE crudo (si el SI moria/desconectaba durante el
+//  stun, el restauraba el movetype del PRÓXIMO ocupante del slot).
+//  Además el motor nunca corria su camino de "fin de agarre", así que
+//  la música de agarre le seguida sonando a la victima en loop (bug
+//  reportado: "hunter/jockey/smoker liberados y la música sigue").
+//  PinRelease_Cleanse (v2.0): liberación por el CAMINO DEL MOTOR
+//  (L4D_Hunter_ReleaseVictim, L4D2_Jockey_EndRide, etc) + música
+//  cortada (L4D_StopMusic) + atacante aturdido con stagger seguro
+//  (SIStagger_Auto, se levanta garantizado). Sin escrituras crudas
+//  de enlaces: las versiones que cortaban con -1 crasheaban el
+//  engine cuando el infectado quedaba con su estado interno roto.
+// ============================================================================
+void Doll_FreeFromGrapples(int client)
+{
+    PinRelease_Cleanse(client);
+}
+
+// (v48: Doll_IsValidSI fue eliminado: su único consumidor era el viejo
+// Doll_StunSI, reemplazado por el stagger seguro de Pin_Release.)
+
+// ============================================================================
+//  EFECTO VISUAL: Hilo de Marioneta
+//  Dibuja un beam rosa brillante desde Amy (la Princesa) hasta la cintura
+//  de Sally (la muñequita). Refuerza visualmente la pasiva
+//  "TRAE ESA CINTURA PARA ACÁ".
+//
+//  IMPORTANTE: Solo Amy y Sally ven este efecto. Ningún otro jugador
+//  del servidor debe enterarse de la dinámica muñequita-princesa.
+// ============================================================================
+void Doll_DrawPuppetThread(float startPos[3], float endPos[3])
+{
+    // Construir lista de clientes que verán el efecto (solo Amy + Sally)
+    int viewers[2];
+    int numViewers = 0;
+
+    if (g_iDollSallyClient > 0 && IsClientInGame(g_iDollSallyClient) && !IsFakeClient(g_iDollSallyClient))
+    {
+        viewers[numViewers++] = g_iDollSallyClient;
+    }
+    if (g_iDollAmyClient > 0 && IsClientInGame(g_iDollAmyClient) && !IsFakeClient(g_iDollAmyClient))
+    {
+        viewers[numViewers++] = g_iDollAmyClient;
+    }
+
+    if (numViewers == 0) return; // nadie válido para ver el efecto
+
+    // Elevar startPos un poco (pecho/manos de Amy, como si el hilo saliera de ella)
+    startPos[2] += 40.0;
+
+    int color[4] = {255, 64, 192, 230};   // Rosa Princesa (#FF40C0)
+
+    int beamModel = PrecacheModel("materials/sprites/laserbeam.vmt");
+    int haloModel = PrecacheModel("materials/sprites/halo01.vmt");
+
+    // Beam de corta duración que simula el jalón del hilo
+    TE_SetupBeamPoints(startPos, endPos, beamModel, haloModel,
+                       0, 0, 0.6,       // startFrame, frameRate, life
+                       2.0, 2.0,        // startWidth, endWidth
+                       0, 0.0,          // fadeLength, amplitude
+                       color, 0);
+    TE_Send(viewers, numViewers);   // SOLO Amy + Sally
+
+    // Pulso extra en la cintura de Sally (efecto "agarre")
+    // Signature: TE_SetupBeamRingPoint(center[3], startRadius, endRadius,
+    //                                   ModelIndex, HaloIndex, StartFrame, FrameRate,
+    //                                   Life, Width, Amplitude, Color[4], Speed, Flags)
+    TE_SetupBeamRingPoint(endPos,
+                          1.5,       // startRadius (float) - radio inicial del anillo
+                          30.0,      // endRadius   (float) - radio final del anillo
+                          beamModel, // ModelIndex  (int)
+                          haloModel, // HaloIndex   (int)
+                          0,         // StartFrame  (int)
+                          0,         // FrameRate   (int)
+                          0.4,       // Life        (float)
+                          2.0,       // Width       (float)
+                          0.0,       // Amplitude   (float)
+                          color,     // Color[4]    (int[4])
+                          0,         // Speed       (int)
+                          0);        // Flags       (int)
+    TE_Send(viewers, numViewers);   // SOLO Amy + Sally
+}

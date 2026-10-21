@@ -1,0 +1,171 @@
+============================================================
+ SUITE 3.77.25 "AVATAR DE METAL SONIC + TRIO GMOD"
+ (Metal.inc v5.0-OM + Sonic_ability_manager 3.77.25
+  + Speed_sonic v3.3 + Rouge.inc despacho)
+============================================================
+
+PEDIDO TEXTUAL DEL OWNER
+------------------------
+"Bn Es hora del siguiente paso... Metal sonic Es tiepo del avatar de
+metal Sonic Ya sabes que hacer Los luas Gmod lo tienes todo eso lo
+tienes.... Usemos nuestra exp ya adquirida para poder hacer eso...
+pasar el coso este de metal avatar añadirle los fix y cosas que hemos
+hecho... mover la habilidad que tiene metal actualmente que es esa
+aura electrica a la habilidad 3 y la curacion seria en la X y para su
+habilidad Z que es la embestida (te lo dira el lua de Gmod) Usaremos
+el truco que usamos con sonic. (osea lo que me refiero a lo de
+desplazarse por el suelo ya que actualmente la embestida de metal
+usa algo diferente. Igual con el lua tienes la info ya sabes los
+materiales y bla bla adelante"
+
+QUE DICE EL LUA DE GMOD (noodles_om_pills_survivors_metalsonic.lua,
+1800 lineas — el pack de 118 Lua del OM, recuperado byte-exacto)
+------------------------------------------------------------------
+ * MODELO (l.51): model="models/Noodles/OM/metal.mdl", modelScale='1'
+   -> el avatar usa ESE modelo, escala 1, sin ajuste de origen (el
+   .mdl tiene el origen a los pies, como sonic.mdl).
+ * HABILIDADES alla: Charge (tecla E) + SELF REPAIR (tecla T,
+   l.172-179: ActivationKey KEY_T, cooldown heal_cooldownSucess).
+ * SELF REPAIR (l.960-1039 + l.1600-1644): toggle de UNA pulsacion.
+   Tick cada 2s (healingCooldown_OM = CurTime()+2): +7 HP
+   (heal_healamount 7), TotalHeals += 7, PARA sola si HP > 150 o
+   TotalHeals > 70 (10 ticks). Mientras repara: OM_NoMovement 6.7s
+   REFRESCADO por tick (congelado) + OM_Damage_Reduction = 1
+   (INVULNERABLE) + el golpe que la CANCELA (hook EntityTakeDamage
+   l.1621-1633 corta la cura). Al cerrar: heal_cooldown 24s
+   (heal_cooldownSucess) + healfinished.wav + si curo >= 1 tick:
+   anim HealToIldle + NoMovement 0.5s. Highlight VERDE del puppet
+   (MetalSonicHeal_highlight: dlight 0,255,0 brillo 3 radio 200 —
+   procedural del cliente alla).
+ * SONIDOS del heal (VPK om_): "Metal self repair activation (2).wav"
+   al arrancar, "Heal.wav" por tick, "healfinished.wav" al cerrar.
+ * ANIMS del metal.mdl (l.183-195 + ShouldAlternate l.247-273):
+   idle/walk/run/jump/fall + "heal" y "charge" sustituyen a las
+   basicas mientras duran (mismo sistema del spindash de Sonic) +
+   one-shots ChargeUp (windup, l.1704-1706), HealToIldle, Slam1/Slam2
+   (el estampado alterna PillAnim('Slam'..random), l.1368-1371).
+ * MOVIMIENTO del charge: OM_MoveForward cada 0.2s (l.1044-1050) —
+   el jugador SOLO dirige con la mira; la velocidad la fija el
+   speedhandeler "Charging" (3524 x 0.525 alla; 750 aqui por orden
+   v4.2 R36 del owner).
+
+QUE SE IMPLEMENTO
+-----------------
+ 1) AVATAR DE METAL SONIC (4o avatar del suite — tras Tails, Sonic
+    y Amy; patron sonic.inc v6.30 COMPLETO):
+    - Doble copia R/L: la R la ven los demas, la L SOLO el dueno
+      (transmit filters). Cuerpo del survivor RENDER_NONE.
+    - MODO TP heredado (tails_avatar_tp 1 default): la R viaja por
+      TeleportEntity por tick + reloj vivo = los demas la INTERPOLAN
+      suave; la L parentada + EF_NOINTERP + PULSO DE PAUSA
+      (tails_pausefix: es UN solo sistema para los 4 avatares).
+    - FOLLOW PostThink: yaw suave 900 grados/s con deadband 3 grados
+      (Tails_ExpDamp), contra-rotacion del parent, L contra los eye
+      angles del dueno — receta Sonic exacta.
+    - FSM de anims a 10 Hz (T_MetalAvatarThink): idle/walk/run/jump/
+      fall por velocidad + "charge" durante embestida/arrastre +
+      "heal" durante la reparacion + one-shots ChargeUp (windup),
+      Slam1/Slam2 alternando por golpe del estampado, HealToIldle al
+      cerrar la cura (con su lock 0.5s).
+    - Parpadeo rojo del WINDUP ahora sobre el AVATAR (el cuerpo esta
+      oculto; antes el tinte no se veia) — reset en todos los finales.
+    - RAGDOLL de muerte: prop_ragdoll metal.mdl heredando velocidad +
+      limpieza 15s + VENTANA ANTI-CORPSE 2s/200u (esconde el corpse
+      del survivor que spawnea el motor). La muerte del avatar corre
+      en el player_death POST propio (receta Sonic v3.76.2: en PRE se
+      veia el corpse).
+    - GATE: si models/Noodles/OM/metal.mdl NO esta en el VPK, el
+      avatar jamas se monta y todo lo demas del Metal sigue igual
+      (misma receta g_bSonicModelOK). Palanca: metalom_avatar 1
+      (auto-agregado al Sonic_Suite.cfg por la reconciliacion).
+ 2) EMBESTIDA (Z) POR EL SUELO — "el truco que usamos con sonic":
+    - FUERA: TODO el modo aereo FLYGRAVITY (los 4 helpers
+      AirGetMaxSpeed/AirSetMaxSpeed/AirModeEnter/AirModeExit + la
+      re-escritura de velocidad por frame, receta Amy v63).
+    - DENTRO: el mecanismo del spindash — SLOT 2 NUEVO del stack del
+      Speed_sonic (SPEED_STACK_SLOTS 2->3) alza m_flMaxspeed a 750,
+      re-afirmado por tick (auto-cura), y el AUTO-FORWARD se inyecta
+      en OnPlayerRunCmd (vel[0] saturado = el OM_MoveForward del
+      GMod): EL MOTOR mueve a Metal con fisica de caminar hacia donde
+      MIRA — sube escalones, sigue rampas, gravedad normal, NUNCA
+      despega, se frena contra la pared (que el Metal_HitWall detecta
+      para el slam). Aditivo puro: si Overdrive/speed/adrenalina
+      andan, la formula del stack los respeta.
+    - Launch instantaneo 750 (impulso unico clampeado por el tope ya
+      alzado) + sostenido + arrastre, los tres a 750 (orden v4.2).
+    - SE CONSERVA: grupo DEBRIS durante dash/arrastre (atraviesa
+      cuerpos), frenado suave de salida, windup congelado + icono,
+      FOV 105, loop electrico con watchdog, chispas/arcos/estela,
+      catch/arrastre/slam 3 golpes 0.167/0.417/0.717s, rebote.
+ 3) X = SELF REPAIR (nueva): port fiel del selfheal del lua (alla T,
+    aqui X): toggle de una pulsacion, tick 2s +7 HP / +7 acumulado,
+    para a 150 HP o 70 acumulado, CONGELADO mientras repara
+    (NoMovement 6.7s/tick), INVULNERABLE (el dano la cancela
+    bloqueandose, como el OM_Damage_Reduction=1 del lua), cooldown
+    24s al cerrar, anim "heal" + glow VERDE por tick + HealToIldle
+    de salida. Sonidos REALES del VPK con fallbacks stock
+    (ui/pickup_medkit + items/smallmedkit1 + items/healthcharger).
+ 4) C = V. MAXIMUM OVERDRIVE: la aura electrica + velocidad real se
+    MUEVE de la X a la C (pedido literal). CERO cambio de logica —
+    es la misma de siempre en su nueva tecla (el manager enruta).
+ 5) INTEGRACION: #include <Metal> se mueve ANTES de <Rouge> (el
+    OnEntityCreated central de Rouge despacha el filtro anti-ragdoll
+    del Metal); Metal_OnPlayerRunCmd gana vel[] y el manager traduce
+    su true a Plugin_Changed (el usercmd llega al motor).
+
+ARCHIVOS QUE CAMBIAN
+--------------------
+ - Sonic_ability_manager.sp (3.77.24 -> 3.77.25): routing Z/X/C del
+   Metal + vel[] al RunCmd + include move + changelog + version.
+ - include/Metal.inc (v4.2 -> v5.0-OM): +22 funciones (avatar/heal/
+   dash), -4 (helpers FLYGRAVITY fuera). ~1000 lineas nuevas.
+ - include/Speed_sonic.inc (v3.2 -> v3.3): SLOT 2 del stack.
+ - include/Rouge.inc: 6 lineas (despacho central).
+ - INTACTOS: sonic.inc v6.30-OM, Tails.inc v5.27-B, OM_Stun v2.0,
+   Amy, Knuckles, Sally, Cream, Sage, Shadow, Eggman, SI_Stagger,
+   Witch_Flight (verificados byte-identicos contra la 3.77.24).
+
+COMPILACION
+-----------
+ spcomp64 1.11.0.6970: 28 WARNINGS = BASELINE EXACTO (cero errores,
+ cero warnings nuevos). smx 384,652 B
+ sha256 cbb9fe0dcedc4d2474b2e03a04a1705c49e170e4db767bfe32e368e4136bdd23
+
+PLAN DE PRUEBA (2 minutos)
+--------------------------
+ 1. sm plugins reload Sonic_ability_manager -> sm_sjsver: debe decir
+    "Manager 3.77.25 ... Metal v5.0-OM (avatar metal.mdl + Z embestida
+    por suelo + X Self Repair + C Overdrive)".
+ 2. !metal (o el menu) -> el avatar de Metal debe montarse ya con el
+    metal.mdl: tu copia L con EF_NOINTERP (nace encajada; el pulso de
+    pausa lo cuadra si hace falta) y la de los DEMAS suave por TP.
+ 3. Z: windup 1s (parpadeo ROJO en el avatar + icono) -> embestida:
+    AHORA PISA EL SUELO — prueba subiendo una escalera y una rampa:
+    debe subirlas SIN despegarse (antes con FLYGRAVITY rebotaba/
+    planaba); contra pared = slam de 3 golpes con Slam1/Slam2.
+ 4. X con menos de 150 HP: "SELF REPAIR" — congelado, glow verde cada
+    2s con +7 HP (14/70... 70/70), anim heal; recibe un golpe: se
+    cancela SIN dano + cooldown 24s. A 150 HP o 70/70 cierra sola.
+ 5. C: Overdrive como siempre (aura + velocidad).
+ 6. Muerte: ragdoll metal.mdl + explosion; el corpse del survivor NO
+    debe verse (ventana anti-corpse). Cambio de personaje: avatar
+    fuera, cuerpo devuelto.
+
+RECETAS DE CALIBRACION (si algo no convence)
+--------------------------------------------
+ * Velocidad de la embestida: METAL_DASH_LAUNCH / METAL_DASH_SPEED /
+   METAL_DRAG_SPEED (Metal.inc, los tres en 750 por la orden v4.2).
+ * Heal: METAL_HEAL_AMOUNT 7 / METAL_HEAL_TICK 2.0 /
+   METAL_HEAL_HP_CAP 150 / METAL_HEAL_TOTAL_CAP 70 /
+   METAL_HEAL_COOLDOWN 24 (numeros del lua).
+ * Avatar off: sm_cvar metalom_avatar 0 (la FSM lo quita en <=0.1s).
+ * Modo TP off (R parentada como antes): sm_cvar tails_avatar_tp 0
+   (aplica a los 4 avatares: es el sistema compartido).
+ * Sin VPK om_ montado: todo cae a fallbacks (avatar no monta,
+   sonidos stock) — cero errores.
+
+OJO CFG
+-------
+ metalom_avatar se AUTO-AGREGA solo al Sonic_Suite.cfg (reconciliacion
+ de la 3.77.4, prefijo ya cubierto). Los valores que ya tengas
+ guardados en el cfg NO se tocan.

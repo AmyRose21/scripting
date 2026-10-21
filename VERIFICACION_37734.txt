@@ -1,0 +1,57 @@
+payload .34: 2,104,257 B | .33: 2,103,485 B (delta +772)
+
+[1] NUEVAS v69 (esperadas):
+  OK  knux_parry_projectiles
+  OK  v69-OM
+  OK  3.77.34
+
+[2] FUERA (reemplazadas por las v69):
+  OK (fuera) v68-OM
+      control .33 lo tenia: True
+  OK (fuera) 3.77.33
+      control .33 lo tenia: True
+
+[3] VIEJAS QUE DEBEN SEGUIR (parry completo + controles .32/.33):
+  OK  Knux_ParryScan
+  OK  Knux_ParryReflect
+  OK  Knux_ParryConeOK
+  OK  Knux_Event_SpitBurst
+  OK  T_KnuxSpitBurstBoom
+  OK  Knux_ParryExplosion
+  OK  T_KnuxParryWatch
+  OK  Knux_FindParriedSpit
+  OK  Knux_MarkParriedSpit
+  OK  T_KnuxKillEnt
+  OK  knux_parry_spit
+  OK  knux_parry_rocks
+  OK  knux_parry_radius
+  OK  Knux_FindWall
+  OK  Knux_FireRing
+  OK  Knux_HandPos
+  OK  Knux_FireOrbs
+  OK  Knux_KillFireOrbs
+  OK  Knux_SpawnFireOrb
+  OK  Knuckles_HandleSmokerCounter
+  OK  Knux_CounterBlockFx
+  OK  Knux_AvatarOneShot
+  OK  Knux_ApplyPunchHit
+  OK  Knux_PerformGroundSlam
+  OK  Knux_AvatarFollow
+  OK  spitter_projectile
+  OK  tank_rock
+
+[4] CVARS knux_* (strings en payload):
+  .33: 33 | .34: 34
+  nuevos: ['knux_parry_projectiles']
+  fuera:  []
+  OK (+1 exacto: knux_parry_projectiles)
+
+[5] SOURCE CHECKS (builds/OM37730/scripting):
+  OK  KNUCKLES_INC_VERSION v69-OM
+  OK  CreateConVar knux_parry_projectiles default "1"
+  OK  gate maestro en Knux_ParryScan
+  OK  fix m_hThrower: spit excluido en Reflect
+  OK  PLUGIN_VERSION 3.77.34
+  OK  changelog .34 en el .sp
+
+FORENSE 3.77.34: TODO OK — palanca maestra + fix del thrower del spit verificados en smx y fuente

@@ -1,0 +1,46 @@
+VERIFICACION 3.77.31 — CARGA DEL PUNO + ANIMS DEL BLOQUEO + PARRY
+====================================================================
+
+COMPILACION (scripts/build_om_37731.sh, spcomp 1.11.0.6970):
+  28 WARNINGS = LINEA BASE EXACTA (misma distribucion de siempre:
+  Doll 3 / Sally 14 / Metal 2 / OM_Stun 1 / manager x8 tag mismatch
+  en L3205-3208 — el monton conocido del bind de la .30 corrido por
+  el changelog). 0 ERRORES. CERO warnings del codigo nuevo v66.
+  (1er intento con 3 errores: TE_SetupGlowSprite no soporta COLOR
+   (su 5o arg es BRILLO int, no array) — flash del parry y orbes
+   reescritos con env_sprite + rendercolor (receta del propio nut) y
+   el GolfClub.ImpactWorld via EmitGameSoundToAll. Compilo limpio.)
+  smx: 410,018 B (vs 403,690 de la .30 = +6,328 B)
+  sha256: 423a1974f1b864c59141aea9071d42311a622df7fc1bf7f63113736a7f147634
+
+FORENSE (scripts/forense_37731.py, control .30 sha fff04b61... OK):
+  NUEVAS (11/11): Knux_ParryScan / Knux_ParryReflect / Knux_ParryConeOK
+    / Knux_ParryTouch / T_KnuxParryWatch / T_KnuxParryBoom /
+    T_KnuxKillEnt / Knux_ParryDetonate / Knux_FireOrbs /
+    Knux_KillFireOrbs / Knux_SpawnFireOrb — TODAS del v66, presentes.
+  ELIMINADAS (2/2): Knux_ScanForSpitterProjectile y Knux_FireGrenade
+    (el reflejo tosco v58) FUERA del smx.
+  CONTROL .30 (6/6): HandleSmokerCounter / CounterBlockFx /
+    AvatarOneShot / ApplyPunchHit / PerformGroundSlam / AvatarFollow
+    siguen.
+  MARCADORES v66 (17/17): v66-OM, knux_charge_t1/t2,
+    knux_punch_cd_cancel, knux_parry_spit/rocks/radius,
+    om/knuckles/phase1.wav, phase3.wav, Slam (1-4), tank_rock,
+    spitter_projectile, weapon_grenadelauncher, GolfClub.ImpactWorld,
+    counter, counter_hit, m_hThrower, 3.77.31.
+  3.77.30 AUSENTE como current (el bumpeo de version es lo esperado).
+
+INCLUDES: cambian SOLO Knuckles.inc (v65-OM -> v66-OM) y el manager
+  (3.77.30 -> 3.77.31). Los otros 13 verificados byte-identicos a la
+  suite .30 en el paquete (Amy/Cream/Eggman/Metal/OM_Stun/Pin_Release
+  /Rouge/Sally/Sage/Shadow/SI_Stagger/Speed_sonic/Tails).
+
+DIFTS INCLUIDOS: diff_37731_knuckles_v66.txt (894 lineas) y
+  diff_37731_sp.txt (47 lineas).
+
+NOTA DE DISENO (documentada en CAMBIOS): las anims counter/
+counter_hit miran a la DERECHA en el knuckles.mdl (aviso del owner)
+-> el avatar gira +90 durante el one-shot (KNUX_COUNTER_YAW_FIX,
+define en el cabezal); si en juego saliera al reves es 1 linea
+(-90.0). No se pudo verificar contra el .mdl real (el VPK om_ no
+esta en el entorno) — por eso la receta de inversion.

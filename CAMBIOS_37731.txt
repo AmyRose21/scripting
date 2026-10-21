@@ -1,0 +1,170 @@
+====================================================================
+ SUITE 3.77.31 — KNUCKLES: CARGA DEL PUÑO + ANIMS DEL BLOQUEO + PARRY
+ (Knuckles.inc v65-OM -> v66-OM + Sonic_ability_manager 3.77.31)
+====================================================================
+
+PEDIDO (textual del owner)
+--------------------------
+"1 que todo el puño Debes verificar sus 2 habilidades El puño Al
+usarse tiene activaciones muy parecidas al puño actual pero si notas
+el puño se puede cargar. (el lua lo dice todo) Y el bloqueo Aunque
+esta hay no hace su animacion de golpe ni de preparacion (en el bloq
+habiliti lo dice.) pero una cosa la animacion counter y counter_hit
+no estan mirando de frente si no esta mirando hacia la derecha (y no
+hacia el frente). Quizas debas ver con detenimiento el tema para
+estar del todo seguro. (por cierto el counter esta bn la mecanica de
+aguantar mas de un golpe Ya que no tendria sentido bloquear 1 si
+despues te vendra otro."
+"Una mejora adicional https://file.garden/.../chch_parrying.nut
+este sistema devuelve proyectiles Ahora para que serviria? para
+devolver escupitajos de spiter o rocas de tank con mas eficacia."
+
+====================================================================
+(1) LA CARGA DEL PUÑO DE 3 NIVELES — "el puño se puede cargar"
+====================================================================
+QUE DICE EL LUA (noodles_om_pills_survivors_knuckles.lua l.1105-1164,
+con defaults del om_survivors_register_noodles.lua)
+  * Punch_cancharge 1: mientras mantienes la carga...
+  * chargetime1 4.5s  -> NIVEL 2 (glow_2 + phase1.wav + destello)
+  * chargetime2-0.6s  -> las ORBES DE FUEGO aparecen en ambas manos
+    (Knuckles_FireOrb, efecto en LeftHand/RightHand)
+  * chargetime2 9.0s  -> NIVEL 3 (glow_3 + phase3.wav + destello)
+  * El PODER se lee AL SOLTAR (l.915-932): damageamount1 +5 /
+    damageamount2 +10 sobre basedamage 35 (x1.14/x1.29), stunamount
+    +1s por nivel sobre basestun 4, el lanzon 750*(additives+1) =
+    x1/x2/x3 (l.323) y OM_burntarget 8s si additives==2 (l.306).
+  * El CLICK suelta Slam{1-4}.wav aleatorio (l.1757-1765).
+  * Cancelar cobra cooldown_cancel 5s (l.1688); golpear cobra 24s alla
+    (nuestro knux_punch_cooldown 15 de siempre, sin cambio).
+
+IMPLEMENTACION (v66-OM)
+  * g_iKnuxChargeLevel 1/2/3 con las transiciones EXACTAS del lua:
+    nivel 2 = phase1.wav + pulso rojo (Knuckles_glow_duration);
+    nivel 3 = phase3.wav + pulso; las ORBES (2 env_sprite naranjas
+    255,140,0 aditivos sobre las manos) nacen 0.6s antes del nivel 3
+    y VIAJAN con el Knuckles a 20 Hz hasta soltar (mismo espiritu de
+    los RightHandFire/LeftHandFire del lua).
+  * El golpe escala con el nivel (Knux_ApplyPunchHit power 1/2/3):
+      - dano x1.15/x1.30 (la proporcion +5/+10 del original sobre
+        nuestro 100 a especiales / 1000 a comunes y witch)
+      - STUN DE ESTATUA OM_Stun 4/5/6s EMPUJABLE (OM_STUN_F_PUSH +
+        OM_Stun_Push): el especial queda ESTATUA CON ESTRELLAS que
+        VUELA con el lanzon y desliza al caer — exactamente el
+        Mutaul_OMStunCode del lua (estatua + empuje), ahora posible
+        gracias al OM_Stun v2.0 unificado. Los SI humanos (sin
+        estatua por paridad GMod) siguen con el stagger+fling de
+        siempre.
+      - lanzon x1/x2/x3: especiales 800->1600->2400, comunes
+        700->1400->2100, witch 800->1600->2400.
+      - QUEMA 8s al nivel 3 (IgniteEntity) en especiales y comunes
+        (la witch NO se quema: el fuego la ENFURECE — receta para
+        activarselo: 1 linea marcada en el codigo).
+  * El METEOR SMASH (soltar en el aire) tambien escala: dano
+    x1.15/x1.30 + quema de area al nivel 3.
+  * Cancelar con [R] ahora cobra el COOLDOWN CORTO del original
+    (knux_punch_cd_cancel 5.0) — antes no cobraba nada.
+  * Convars: knux_charge_t1 4.5 / knux_charge_t2 9.0.
+
+====================================================================
+(2) LAS ANIMACIONES DEL BLOQUEO (los 2 gestures que no salian)
+====================================================================
+QUE DICE EL LUA ("el bloq habiliti lo dice")
+  * ACTIVAR el counter (l.1617-1642): AddGesture(
+    ACT_GESTURE_RANGE_ATTACK1_LOW) con fade a los 1.25s -> la
+    PREPARACION (secuencia 'counter' del mdl).
+  * BLOQUEAR un golpe (l.589-614): AddGesture(
+    ACT_GESTURE_RANGE_ATTACK2_LOW) con fade a los 0.5s -> el GOLPE
+    (secuencia 'counter_hit').
+  * Nuestro v65 no reproducia NINGUNA de las dos.
+
+IMPLEMENTACION
+  * 'counter' como one-shot KNUX_ST_COUNTER al activar la postura
+    (lock 1.25s = el fade del lua) y 'counter_hit' como
+    KNUX_ST_COUNTER_HIT en cada bloqueo (lock 0.55s), sobre las DOS
+    copias del avatar (R y L).
+  * FIX DE FACING (tu aviso): counter y counter_hit miran a la
+    DERECHA en el mdl -> mientras corre el one-shot, el avatar gira
+    +90 (KNUX_COUNTER_YAW_FIX) para que la pose mire al FRENTE (el
+    giro lo suaviza el ExpDamp a 900 grados/s). *** SI EN EL JUEGO
+    SALIERA GIRADO AL OTRO LADO: cambiar KNUX_COUNTER_YAW_FIX de
+    90.0 a -90.0 (1 sola linea, esta en el cabezal de Knuckles.inc
+    justo debajo de los KNUX_LOCK_*) ***.
+  * La mecanica de aguantar MAS DE UN GOLPE queda intacta (como
+    pediste); cada bloqueo re-dispara el counter_hit.
+
+====================================================================
+(3) EL PARRY — "devolver escupitajos de spitter o rocas de tank
+    con mas eficacia" (receta ChCh_Parrying v2.1)
+====================================================================
+QUE ES EL chch_parrying.nut (tu pregunta "que era esto?")
+  Un VScript de L4D2 de la comunidad (estilo ULTRAKILL): al EMPUJAR
+  (shove) devuelve proyectiles (molotovs/pipes/bile/spit/granadas/
+  ROCAS) hacia donde apuntas y permite "parry" de charger/hunter/
+  witch/melee. Lo que nos interesa para el Knuckles: el sistema de
+  REFLEJO con deteccion de cono.
+
+IMPLEMENTACION (adaptado a la POSTURA DEFENSIVA — es su "bloqueo")
+  * Mientras la postura este activa, los escupitajos del spitter y
+    las ROCAS DEL TANK dentro de 300u (knux_parry_radius) y en tu
+    CONO FRONTAL (dot 0.30 ~72 grados por lado; emergencia <100u
+    siempre) se DEVUELVEN hacia DONDE APUNTAS con piso de 900 uu/s
+    (la roca sale a x1.5) — credito del dano para ti via m_hThrower.
+  * El proyectil devuelto DETONA al aterrizar, al tocar a un
+    infectado o a los 5s: env_explosion (visual) + particula
+    weapon_grenadelauncher + dano MANUAL SOLO a infectados (roca
+    500 en 250u, spit 250 en 150u — los numeros exactos del ChCh).
+    JAMAS dana a tu equipo (QoL del original). El flash azul cian
+    del parry sale en el punto exacto del reflejo.
+  * Esto REEMPLAZA el reflejo tosco de la v58 (matar el spit y
+    respawnear una grenade_launcher): ahora el spit/roca DE VERDAD
+    regresa y castiga al que lo tiro.
+  * Convars: knux_parry_spit 1 / knux_parry_rocks 1 / (0 = apagar
+    cada uno). La roca que se te escape entre ticks tampoco te tumba
+    (el guard de la postura en OnKnockedDown sigue).
+
+QUE NO CAMBIA
+-------------
+Cero cambios en las habilidades del puno/postura/metoro/glide/latch,
+cero cambios en otros 13 personajes (includes byte-identicos a la
+.30), cero materiales nuevos (las orbes usan el glow01 de siempre),
+el meteoro y el counter multi-golpe intactos.
+
+PLAN DE PRUEBA (3 minutos)
+--------------------------
+ A. Z con Knuckles: pulso rojo. Espera 4.5s: "CARGA NIVEL 2" +
+    phase1.wav. A los ~8.4s: ORBES DE FUEGO en las dos manos. A los
+    9s: "NIVEL 3 MAXIMO" + phase3.wav.
+ B. CLICK a nivel 1 vs un hunter: 100 de dano, estatua 4s que vuela.
+    Repite a nivel 3: el hunter sale DISPARADO (x3), estatua 6s,
+    ARDIENDO 8s.
+ C. CLICK en el aire a nivel 3: el meteor smash pega mas y el area
+    QUEMA.
+ D. [R] cancelando: cooldown de solo 5s (antes cobraba el doble o
+    nada).
+ E. X (postura): el avatar hace la animacion de PREPARACION
+    (counter) mirando al FRENTE. Que te golpee un hunter: pulso
+    blanco + la animacion de GOLPE (counter_hit) tambien al frente.
+    Si alguna de las dos sale mirando a la IZQUIERDA: 1 linea
+    (KNUX_COUNTER_YAW_FIX -90.0, receta de arriba).
+ F. Con la postura activa, que un tank te tire una ROCA: flash
+    azul, la roca REGRESA a donde apuntas y al tocarlo/aterrizar
+    EXPLOTA (500 al tank y a los infectados cercanos).
+ G. Igual con el spit del spitter: el escupitajo regresa y estalla
+    en su cara (250).
+ H. Tu equipo junto a la explosion del parry: NO recibe dano.
+
+RECETAS DE CALIBRACION
+----------------------
+ * knux_charge_t1 / knux_charge_t2 — tiempos de carga (4.5/9.0 del
+   lua GMod).
+ * knux_punch_cd_cancel — cooldown del cancel (5.0).
+ * knux_parry_radius / knux_parry_spit / knux_parry_rocks — el
+   parry (300 / 1 / 1).
+ * KNUX_COUNTER_YAW_FIX (cabezal de Knuckles.inc) — el giro de las
+   anims del bloqueo (90.0; -90.0 si sale al reves).
+ * Quema de la witch a nivel 3: buscar "la witch NO se quema" en
+   Knux_ApplyPunchHit (1 linea lista).
+ * Parry de granadas propias del equipo (molotovs/pipes): NO incluido
+   para no secuestrar los lanzamientos de tus companeros; la receta
+   seria el mismo patron de Knux_ParryScan con las classnames
+   molotov_projectile/pipe_bomb_projectile.

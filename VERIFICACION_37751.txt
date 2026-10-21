@@ -1,0 +1,71 @@
+VERIFICACION 3.77.51 — checklist completo (todo verificado antes de empacar)
+
+[1] BASE CORRECTA
+  [x] Arbol base = scripting3.zip del owner (commit f4bf209), 13.775.820 B,
+      descargado HOY de https://file.garden/aoWRYc0-p1TyFbL9/scripting3.zip
+      (NO es el zip de rondas anteriores: el de la 3.77.50 rechazada tenia
+      el manager v3.77.26 de 3.583 lineas; el de HOY trae SU manager real
+      de 4.535 lineas ya en 3.77.50 con todo 3.77.43-49 aplicado).
+  [x] Su fusion del balance verificada presente y correcta:
+      Rouge v10.3: rouge_kick_damage 225 / rouge_kick_radius 118.75 /
+        rouge_parry_common_dmg 145 / rouge_parry_si_dmg 290 /
+        rouge_parry_duration 7.0  -> OK, NO se toco
+      Knuckles v76: knux_punch_cooldown 11 / knux_counter_cooldown 16 /
+        knux_sky_cooldown 16 -> OK, NO se toco (cd_cancel queda 5.0 como
+        lo dejo el; palanca documentada)
+      sonic v6.32: sonicom_spin_damage 121.5 / _tank 141.75 /
+        sonicom_peel_cd_rescue 17 / _fail 37 + FIX DEL AGARRE completo
+        -> OK, NO se toco
+      Metal v5.7: CATCH 7.75 / DRAG_DMG_ENEMY 7.75 / SLAM_DMG_ENEMY
+        18.875 / CHARGE_COOLDOWN 13.125 / CD_CANCELLED 6.5625 -> OK
+      Metal v5.7 HUECO ENCONTRADO: WALL_SLAM 3.25/1.25 (v4.2 sin el
+        +25%) -> CORREGIDO en v5.7.1 (4.0625/1.5625)
+
+[2] COMPILACION (spcomp64 1.12.0.7253 de Linux = la version EXACTA del
+    compilador del owner, descargado de sm.alliedmods.net smdrop 1.12)
+  [x] SU manager .sp INTACTO compila LIMPIO: 0 errores / 0 warnings,
+      460.210 B (esto responde su pregunta: su arbol NO esta roto)
+  [x] Manager 3.77.51 (con los cambios): 0 errores / 0 warnings,
+      460.301 B (+91 B = exactamente version/changelog/banner + los
+      2 floats del Metal)
+  [x] Anti caida v3.0: 0 errores / 0 warnings, 8.405 B
+  [x] Formato de salida verificado identico a SUS smx existentes
+      (magic FFPS, version 0x0102, mismo layout): su Sonic_ability_
+      manager.smx del 9-oct y su Parry.smx tienen exactamente el mismo
+      formato de cabecera que los entregados
+  [x] spcomp 1.11 sobre su arbol: FALLA (handles.inc error 118 — sus
+      includes son era-1.12+). CONFIRMADO: no debe bajar al 11.
+
+[3] ANTI CAIDA v3.0 — LOGICA
+  [x] Con avatar vivo (prop parentado con targetname del suite):
+      dano de caida = 0.0
+  [x] Sin avatar: dano x (1 - sm_falldmg_reduce) = 0.60 con default
+  [x] Chequeo cada 0.1s (sm_avatar_fall_check), timer repetitivo SIN
+      TIMER_FLAG_NO_MAPCHANGE (el flag mataba el timer en el cambio
+      de mapa), OnMapStart limpia el estado
+  [x] Re-ajuste al vuelo: compara estado viejo vs nuevo por pasada y
+      anota SOLO los cambios con LogMessage
+  [x] Lista de targetnames = copia 1:1 de su OM_SweepOrranAvatars
+      (23 nombres: actuales R/L + sonic_ball_om + legacy)
+  [x] Firma de deteccion = m_hMoveParent (la copia _l de cada
+      personaje SIEMPRE nace parentada: verificado en Knux_/Amy_/
+      Metal_/Rouge_/Shadow_/Sonic_CreateAvatarProp de SUS includes)
+  [x] Supresion de gritos v2 intacta (L4D_OnFalling/LedgeGrabbed/
+      FatalFalling/SpeakResponseConcept_Pre)
+  [x] FIX fallback DMG_FALL v2: 1<<8 (blast, erroneo) -> 1<<5 (caida)
+  [x] Master sm_nofalldmg 0 = vanilla sin tocar
+  [x] 100% autocontenido: sin natives, sin cambios al manager
+
+[4] NO TOCADOS (verificados byte a byte contra su zip con cmp)
+  [x] include/sonic.inc        [x] Parry.sp
+  [x] include/Rouge.inc        [x] chch_parrying.nut
+  [x] include/Knuckles.inc     [x] knuckles_parry_state.nut
+  [x] include/Amy.inc          [x] Speed_sonic.sp
+  [x] include/Tails.inc        [x] resto del arbol intacto
+  [x] include/Shadow.inc
+
+[5] KIT
+  [x] 2 smx + 3 fuentes + 3 diffs + CAMBIOS + MANIFIESTO sha256
+  [x] Nada se asume del estado de su server (leccion 3.77.46):
+      el kit trae TODO lo necesario en ambos caminos (smx directo o
+      compilar tu mismo)

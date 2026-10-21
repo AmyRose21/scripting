@@ -1,0 +1,126 @@
+================================================================================
+ VERIFICACION — SUITE 3.77.36 PARITY DELEGADO (2026-10-10)
+ Compilador: SourcePawn Compiler 1.11.0.6970 (spcomp64)
+ Forense: scripts/forense_37736.py (control .35 = cbe5918b... exacto del owner;
+ control Parry = v1.4 original del owner compilado al vuelo)
+================================================================================
+
+BUILD — Sonic_ability_manager.sp 3.77.36:
+  28 warnings = LINEA BASE EXACTA (Doll 3 / Sally 14 / Metal 2 / OM_Stun 1 /
+  manager x8 corridas a L3331-3334 por el changelog). CERO de Knuckles.inc.
+  smx 412,805 B sha256 350db22cbbbdb42f9fdd66b9ed3c07b40a51d14a7d14ef70e959f040fd9a7e7a
+
+BUILD — Parry.sp v1.5 (libreria ukparry):
+  2 warnings = EXACTAMENTE los mismos 2 del v1.4 original del owner
+  (cv_ParryMinSpeed l.33->58 y fwd de CheckEnemies l.146->191, solo
+  desplazados por el codigo nuevo). CERO warnings nuevos. Logica intacta.
+  smx 10,663 B sha256 770960ad4bff9725797bcbdbc50f3eeff6a4073d57c5c19b10b291d6a4cc0ff4
+
+manager payload .36: 2,105,648 B | .35: 2,104,825 B (delta +823)
+Parry   payload 1.5: 32,983 B | 1.4: 29,190 B (delta +3,793)
+
+[1] NUEVAS v71 (manager, esperadas):
+  OK  v71-OM
+      control .35 lo tenia: False (debe ser False)
+  OK  3.77.36
+      control .35 lo tenia: False (debe ser False)
+  OK  knux_parry_delegate
+      control .35 lo tenia: False (debe ser False)
+  OK  UK_ParryProjectiles
+      control .35 lo tenia: False (debe ser False)
+  OK  UK_PerformParry
+      control .35 lo tenia: False (debe ser False)
+  OK  ukparry
+      control .35 lo tenia: False (debe ser False)
+
+[2] FUERA (manager, reemplazadas):
+  OK (fuera) v70-OM
+      control .35 lo tenia: True (debe ser True)
+  OK (fuera) 3.77.35
+      control .35 lo tenia: True (debe ser True)
+
+[3] VIEJAS QUE DEBEN SEGUIR (fallback v70 intacto + cadena completa):
+  OK  Knux_ParryScan
+  OK  Knux_ParryReflect
+  OK  Knux_ParryConeOK
+  OK  Knux_Event_SpitBurst
+  OK  T_KnuxSpitBurstBoom
+  OK  Knux_ParryExplosion
+  OK  T_KnuxParryWatch
+  OK  Knux_FindParriedSpit
+  OK  Knux_MarkParriedSpit
+  OK  T_KnuxKillEnt
+  OK  knux_parry_projectiles
+  OK  knux_parry_spit
+  OK  knux_parry_rocks
+  OK  knux_parry_radius
+  OK  knux_parry_spit_owner
+  OK  Knux_FindWall
+  OK  Knux_FireRing
+  OK  Knux_HandPos
+  OK  Knux_FireOrbs
+  OK  Knuckles_HandleSmokerCounter
+  OK  Knux_CounterBlockFx
+  OK  Knux_ApplyPunchHit
+  OK  Knux_PerformGroundSlam
+  OK  Knux_AvatarFollow
+  OK  spitter_projectile
+  OK  tank_rock
+  OK  m_hThrower
+
+[4] CVARS knux_* (manager):
+  .35: 35 | .36: 36
+  nuevos: ['knux_parry_delegate']
+  fuera:  []
+  OK (+1 exacto: knux_parry_delegate)
+
+[5] SOURCE CHECKS (arbol builds/OM37730/scripting):
+  OK  KNUCKLES_INC_VERSION v71-OM
+  OK  nativa declarada en Knuckles.inc
+  OK  delegacion: LibraryExists + llamada + return
+  OK  fallback v70 intacto (ParryReflect sigue llamado)
+  OK  CreateConVar knux_parry_delegate default "1"
+  OK  MarkNativeAsOptional en AskPluginLoad2
+  OK  PLUGIN_VERSION 3.77.36
+  OK  changelog .36 en el .sp
+  OK  Parry.sp v1.5
+  OK  Parry.sp: AskPluginLoad2 registra ukparry
+  OK  Parry.sp: split PerformParryProjectiles
+  OK  Parry.sp: comando sm_ukparry
+  OK  Parry.sp: logica v1.4 intacta (m_hThrower + m_hOwnerEntity)
+
+[6] PARRY.SMX v1.5 (nuevos + viejos):
+  OK  ukparry (nuevo)
+      control v1.4 lo tenia: False (debe ser False)
+  OK  UK_PerformParry (nuevo)
+      control v1.4 lo tenia: False (debe ser False)
+  OK  UK_ParryProjectiles (nuevo)
+      control v1.4 lo tenia: False (debe ser False)
+  OK  sm_ukparry (nuevo)
+      control v1.4 lo tenia: False (debe ser False)
+  OK  proyectil(es) devueltos (nuevo)
+      control v1.4 lo tenia: False (debe ser False)
+  OK  PerformParry (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  CheckAndParry (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  ParryProjectile (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  CheckEnemies (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  ParryInfected (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  ParryWitch (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  DoParryEffects (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  IsLookingAt (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  PrecacheParticle (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  spitter_projectile (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  tank_rock (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  grenade_launcher_projectile (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  molotov_projectile (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  pipe_bomb_projectile (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  vomitjar_projectile (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  m_hThrower (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  m_hOwnerEntity (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  uk_parry_radius (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  uk_parry_damage (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  l4d2_ultrakill_parry (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  m_flNextShoveTime (viejo, debe seguir en 1.5 Y en control 1.4)
+  OK  weapons/golf_club/hit_world_01.wav (viejo, debe seguir en 1.5 Y en control 1.4)
+
+FORENSE 3.77.36: TODO OK — delegacion verificada en smx y fuente (manager + Parry.smx)

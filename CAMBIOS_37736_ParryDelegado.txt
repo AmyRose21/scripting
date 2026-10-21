@@ -1,0 +1,129 @@
+================================================================================
+ SUITE 3.77.36 — "EL PARRY DE PROYECTILES DE KNUCKLES SE DELEGA AL PLUGIN
+ ULTRAKILL PARRY DEL OWNER" (Knuckles.inc v71-OM + manager 3.77.36 + Parry.smx v1.5)
+ Fecha: 2026-10-10
+================================================================================
+
+PEDIDO DEL OWNER (1-a-1):
+  "Me rindo no sirve. la unica manera es llamar a la funcion de mi plugin
+  existente para que este se encarge ya el smx no hara su parry de
+  proyectil propio sin o lo manejara el vscript"
+
+HECHO EXACTAMENTE ESO:
+  El manager (nuestro smx) YA NO hace su propio parry de proyectiles.
+  La postura de Knuckles AHORA LLAMA A LA FUNCION DE TU PLUGIN — el
+  Parry.smx "[L4D2] Ultrakill Parry" que ya tienes (el port del
+  chch_parrying.nut) — y TU PLUGIN se encarga de devolver el proyectil.
+
+================================================================================
+ COMO FUNCIONA LA DELEGACION
+================================================================================
+
+  [Postura de Knuckles (manager 3.77.36)]   [TU PLUGIN Parry.smx v1.5]
+   Knux_ParryScan (cada 0.05s)  ──llama──►  UK_ParryProjectiles(client)
+   si "ukparry" esta montado                   │
+                                               ▼
+                                        PerformParryProjectiles:
+                                        tu escaneo de siempre (6 clases,
+                                        uk_parry_radius 200, cono 0.4)
+                                               ▼
+                                        ParryProjectile (TU logica, intacta):
+                                        - m_hThrower     = quien parrya
+                                        - m_hOwnerEntity = quien parrya
+                                          → el charco del spit devuelto NACE
+                                            DE KNUCKLES: quema a la SPITTER
+                                            y a los infectados, NUNCA a los
+                                            aliados
+                                        - velocidad hacia donde apunta
+                                          (piso 1200, x1.5 si venia rapido)
+                                        - sonido golf club + flash cian
+
+  El puente es una NATIVA de SourceMod (la forma correcta de llamar una
+  funcion de un plugin desde otro plugin):
+  - Parry.sp v1.5 registra la libreria "ukparry" + la nativa
+    UK_ParryProjectiles en AskPluginLoad2 (patron left4dhooks). La LOGICA
+    DEL PARRY QUEDO IDENTICA a tu v1.4 — solo se expuso la mitad de
+    proyectiles aparte (PerformParryProjectiles) para que el manager pueda
+    llamarla sin activar el parry de infectados/witch (eso sigue siendo del
+    counter melee de Knuckles).
+  - El manager declara la nativa como OPCIONAL (MarkNativeAsOptional):
+    el suite carga con o sin Parry.smx montado. Sin el plugin, la postura
+    usa su codigo interno v70 (fallback automatico — nada se rompe).
+
+  EXTRA de prueba: sm_ukparry — comando manual para verificar TU plugin
+  sin depender del suite (en juego: sm_ukparry sobre uno mismo; consola
+  del server: sm_ukparry <userid>). Responde cuantos proyectiles devolvio.
+
+================================================================================
+ INSTALACION (¡IMPORTANTE: SON DOS SMX!)
+================================================================================
+
+  1. addons/sourcemod/plugins/Sonic_ability_manager.smx   ← reemplazar (el .36)
+  2. addons/sourcemod/plugins/Parry.smx                   ← TU PLUGIN, ahora
+     en v1.5 (el de este paquete). Si ya tenias el Parry.smx v1.4 montado,
+     REEMPLAZALO por este: el v1.4 NO tiene la nativa y la delegacion no
+     encontraria la libreria (el manager caeria a su codigo interno).
+  3. Reinicio de mapa (changelevel).
+
+  Si no instalas el Parry.smx: todo funciona igual, pero la postura usa el
+  codigo INTERNO del manager (comportamiento v70) — la delegacion solo
+  actua con el plugin montado.
+
+  Los includes (scripting/include/) y el Parry.sp/ukparry.inc van solo si
+  quieres recompilar tu lado; para jugar bastan los DOS smx.
+
+================================================================================
+ PRUEBA EN 2 MINUTOS
+================================================================================
+
+  a) sm_sjsver  →  debe decir "Manager 3.77.36 ... Knuckles v71-OM".
+  b) En partida: spitter escupiendo, activa la postura de Knuckles mirando
+     al escupitajo → sale devuelto hacia donde apuntas (sonido golf club +
+     flash cian = lo devuelve TU plugin) y al caer, el charco quema A LA
+     SPITTER y a los infectados — a los aliados no les pasa nada.
+  c) Prueba manual del plugin (sin postura): con un spit volando cerca,
+     escribe "sm_ukparry" en consola — responde cuantos devolvió.
+  d) Rocas del tank: igual — la roca vuelve con la velocidad de TU plugin.
+
+================================================================================
+ PALANCAS (todas auto-agregadas al Sonic_Suite.cfg)
+================================================================================
+
+  knux_parry_delegate     1  ← v71: 1 = el parry de proyectiles lo hace TU
+                                PLUGIN cuando esta montado; 0 = codigo
+                                interno del manager (v70). Sin el plugin
+                                montado SIEMPRE usa el interno.
+  knux_parry_projectiles  1  ← v69: 0 = la postura no devuelve NADA (solo
+                                golpes fisicos, como siempre).
+  uk_parry_radius       200  ← TU plugin: radio de deteccion del parry.
+  uk_parry_damage       100  ← TU plugin: dano del parry de infectados/witch
+                                (no se usa desde la delegacion — el manager
+                                solo llama a la mitad de PROYECTILES).
+
+  Nota: con la delegacion activa, el spit devuelto se comporta 100% como
+  TU plugin lo hace (el charco es de Knuckles y NO hay explosion extra al
+  caer: el boom del spit_burst del manager queda dormido al delegar — sus
+  listas nunca se llenan porque quien devuelve el proyectil es tu plugin).
+
+================================================================================
+ ARCHIVOS DEL PAQUETE
+================================================================================
+
+  Sonic_ability_manager.smx   manager 3.77.36 (Knuckles v71-OM)
+  Parry.smx                   TU plugin en v1.5 (libreria ukparry + nativas)
+  Sonic_ability_manager.sp    fuente del manager 3.77.36
+  Parry.sp                    fuente de tu plugin v1.5
+  ukparry.inc                 interfaz de la libreria (documentacion)
+  include/                    16 includes (Knuckles v71-OM nuevo; los otros
+                              15 byte-identicos a la .35)
+  materials/icons/            10 (identicos a la .35)
+  REFERENCIA_chch_parrying.nut  el VScript de referencia (intacto)
+  diff_37736_parry_v15.txt    v1.4 → v1.5 de TU plugin (168 lineas)
+  diff_37736_knuckles_v71.txt v70-OM → v71-OM (103 lineas)
+  diff_37736_sp.txt           manager .35 → .36 (60 lineas)
+  VERIFICACION_37736.txt      forense completo (75/75 checks)
+  worklog.md                  registro de la tarea
+
+  sha256:
+    Sonic_ability_manager.smx  350db22cbbbdb42f9fdd66b9ed3c07b40a51d14a7d14ef70e959f040fd9a7e7a
+    Parry.smx                  770960ad4bff9725797bcbdbc50f3eeff6a4073d57c5c19b10b291d6a4cc0ff4

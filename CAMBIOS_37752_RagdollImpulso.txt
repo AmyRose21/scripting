@@ -1,0 +1,178 @@
+====================================================================
+ SUITE SONIC 3.77.52 — "EL RAGDOLL FALSO POR FIN HEREDA EL IMPULSO"
+ sonic.inc v6.33-OM + Rouge.inc v10.4-OM — construido 100% sobre TU
+ arbol (scripting3.zip del commit f4bf209, el 3.77.51)
+====================================================================
+
+EL BUG Y LA AUTOPSIA (con el fuente del MOTOR en la mano)
+--------------------------------------------------------------------
+Tu reporte: "el ragdoll falso no hereda ningun impulso, ni en el aire
+ni en el piso — la fuerza del golpe final de Sonic, el martillo de
+Amy y la autodestruccion de Metal deberian empujarlo COMO EMPUJAN
+LOS AUTOS".
+
+Veredicto (hl2sdk branch l4d2, archivos physobj.cpp + physics_prop_
+ragdoll.cpp + baseentity.cpp + takedamageinfo.cpp):
+
+  (a) Escribirle velocidad a la ENTIDAD con PROPS (m_vecVelocity,
+      m_angVelocity) no mueve NADA: los huesos sobreescriben la
+      velocidad de la entidad cada tick (la v6.9 lo probo a las
+      malas). TeleportEntity-vel es distinto: el motor lo reenvia
+      al hueso RAIZ (baseentity.cpp L4296: pPhys->SetVelocity) —
+      eso vuela, pero sin giro por hueso y sin control.
+
+  (b) La ONDA env_physexplosion de la v6.11 le pasaba su fuerza al
+      ragdoll por CBaseEntity::VPhysicsTakeDamage -> ApplyForceOffset
+      SOLO al hueso raiz, y esa fuerza pasaba ANTES por la licuadora
+      de CalculateExplosiveDamageForce: clamp a 30000, x
+      phys_pushscale, x Damage_NoPhysicsForce de las reglas. Los
+      autos (CPhysicsProp) van por otro camino que en tu server SI
+      empuja; el embudo del ragdoll termina en CERO. Por eso el
+      doble nacia y caia en seco. Tres versiones cebando el pollo.
+
+  (c) Bonus comico: el "escalado por masa" de la v6.11 leia m_iMass,
+      un campo que prop_ragdoll NO TIENE (es de prop_physics). El
+      "peso GMod" que supuestamente calibraba el empujon era un
+      cuento. Que descanse en paz.
+
+EL FIX — CASCADA DE 2 CAPAS, AMBAS CON FISICA REAL (sonic.inc v6.33)
+--------------------------------------------------------------------
+CAPA 1 — LA RECETA GMOD LITERAL (Sonic_RagPhysLaunch):
+  En GMod el OM lanza el doble con UNA linea de Lua por hueso:
+  ragdoll:GetPhysicsObjectNum(i):SetVelocity(dir*700). Eso aca:
+    - Los punteros IPhysicsObject de los huesos estan EXPUESTOS en
+      el datamap del prop_ragdoll (el motor los declara con
+      DEFINE_PHYSPTR): "m_pPhysicsObject" = hueso 0,
+      "m_ragdoll.list[i].pObject" = huesos 1..23, y
+      "m_ragdoll.listCount" = la cuenta. Se leen con FindDataMapInfo
+      + GetEntityAddress + LoadFromAddress. Cero gamedata, cero
+      firmas binarias.
+    - A cada hueso se le llama DIRECTO por SDKCall_Raw contra la
+      interfaz publica IPhysicsObject (vphysics_interface.h — la
+      misma desde 2004 en TODOS los Source): SetVelocity(lineal,
+      angular). Lineal IGUAL para todos (vuela compacto) + giro
+      random POR HUESO (el AddAngleVelocity del lua). El impulso
+      entra AL SIMULADOR: arco, tumbado y rebotes los hace el motor,
+      determinista. INDEPENDIENTE DE LA MASA: todo cuerpo vuela
+      igual, exactamente como el GMod.
+
+CAPA 2 — PLAN B MOTOR PURO (Sonic_RagFlingEngine):
+  Si la capa 1 no se puede armar (sin left4dhooks, datamap raro,
+  sondas desacordadas): TeleportEntity-vel = el motor llama
+  pPhys->SetVelocity(vel) sobre el hueso RAIZ (baseentity.cpp
+  L4296, ruta SDK verificada) — la MISMA ruta que ya hace volar los
+  cuerpos del Barrido de Rouge en tu server. Cero SDKCall, cero
+  left4dhooks: no hay puerta que se pueda cerrar.
+
+LA ONDA v6.11 SE RETIRO COMPLETA (Sonic_RagBlast + serial +
+targetname + env_physexplosion por spawn): su fuerza jamas llego al
+doble en tu server — no tiene nada que aportar como fallback. La
+onda de Amy (Amy_PropBlastWake, la que empuja AUTOS) queda INTACTA:
+es otro sistema y ese si funciona para lo suyo.
+
+BLINDAJE (ningun camino termina en crash — lo peor es la 3.77.51)
+--------------------------------------------------------------------
+  - El indice de vtable depende del OS (Linux suma +1: su destructor
+    virtual ocupa 2 slots): L4D_GetServerOS de left4dhooks (que tu
+    suite YA requiere) elige la tabla. Indices contados del header
+    del BRANCH L4D2, no de memoria: IsAsleep win=2/lin=3,
+    IsMotionEnabled win=9/lin=10, IsMoveable win=10/lin=11,
+    GetMass win=29/lin=30, SetVelocity win=50/lin=51.
+    (El patron SDKCall_Raw + virtual ya vive en tu server:
+    l4d2_block_no_steam_logon.sp usa el mismo.)
+  - CUATRO sondas semanticas validan la mesa ANTES de tocar nada:
+    IsMotionEnabled==1 (acabamos de mandar el input EnableMotion),
+    IsMoveable==1, IsAsleep en {0,1} y GetMass en [0.05, 10000].
+    Si UNA falla -> capa 2 automaticamente.
+  - Los vecinos de las sondas en la vtable son lecturas bool puras:
+    hasta un desfase hipotetico caeria en un getter inocuo.
+
+QUE CAMBIO (3 archivos tuyos, cirugia minima; diffs incluidos)
+--------------------------------------------------------------------
+  * include/sonic.inc (v6.32 -> v6.33):
+      - NUEVO: el bloque v6.33 = Sonic_RagPhysPrep + Sonic_RagPhysReady
+        + Sonic_RagPhysCacheOffsets + Sonic_RagPhysLaunch (capa 1)
+        + Sonic_RagFlingEngine (capa 2).
+      - Sonic_SpawnFlingRagdoll (golpe final de Sonic / martillo de
+        Amy / self-destruct de Metal — el embudo de los 3) y
+        Sonic_SpawnWitchRagdoll (ritual de la witch): ahora usan la
+        CASCADA. FUERA el targetname/serial/onda.
+      - RETIRADO: Sonic_RagBlast completo + #defines BLASTBACK/
+        BLASTDOWN/BLASTRAD + g_iSonicRagSerial (la plomeria muerta
+        de la onda).
+      - sonicom_ragblast CAMBIA DE SIGNIFICADO: ahora es la VELOCIDAD
+        de lanzamiento en u/s (700 = el SetVelocity*700 del GMod, la
+        usan ambas capas). Mismo default, mismo rango (50..5000) —
+        no hay que tocar tu cfg.
+  * include/Rouge.inc (v10.3 -> v10.4):
+      - Rouge_FlingRagdoll (el cuerpo del Barrido Z contra comunes):
+        FUERA el m_angVelocity de la entidad (puro humo); ahora
+        capa 1 (SetVelocity dir*500 + 300z + giro random POR HUESO)
+        y capa 2 = el TeleportEntity que ya usaba (compartido ahora,
+        con el levanton incluido).
+  * Sonic_ability_manager.sp (3.77.51 -> 3.77.52): SOLO version +
+    changelog + banner del sm_sjsver. CERO cambios de logica.
+
+QUE NO SE TOCO
+--------------------------------------------------------------------
+  TODO lo demas queda BYTE A BYTE igual (verificado con diff -r
+  contra tu zip): EnableMotion+Wake al nacer, spawn +24u, DEBRIS,
+  victima fantasma, hueco seguro v6.13, restauracion vigilada,
+  OM_Stun, Amy_PropBlastWake (la onda de los AUTOS), avatares,
+  parry, Anti caida, cst, todos los demas .inc.
+
+INSTALACION — 2 CAMINOS (nada se asume del estado de tu server)
+--------------------------------------------------------------------
+  CAMINO A (directo, recomendado): copia Sonic_ability_manager.smx a
+    addons/sourcemod/plugins/ (reemplaza el viejo) y los 3 fuentes
+    (Sonic_ability_manager.sp, include/sonic.inc v6.33,
+    include/Rouge.inc v10.4) a tus carpetas scripting. Cambio de
+    mapa y listo.
+  CAMINO B (compilar tu mismo): copia los 3 fuentes y compila con TU
+    spcomp 1.12 como siempre — verificado con 1.12.0.7253 (el mismo
+    que usas): 0 errores, 0 warnings, la linea base exacta de tu
+    3.77.51 (recompilada de referencia para comparar).
+
+VERIFICACION EN 2 MINUTOS
+--------------------------------------------------------------------
+  1. sm_sjsver -> debe decir "Manager 3.77.52 ... Sonic v6.33-OM
+     ... RAGDOLL CON IMPULSO REAL" y "Rouge v10.4-OM".
+  2. Golpe final de Sonic a un especial: el doble tiene que SALIR
+     VOLANDO en la direccion del golpe, con arco y GIRANDO, aterrizar
+     donde antes — la victima reaparece donde cayo su doble (igual
+     que siempre).
+  3. Martillo lanzado de Amy a un especial: idem.
+  4. Self-destruct de Metal entre especiales: TODOS los dobles
+     salen despedidos en direccion contraria a Metal.
+  5. Barrido (Z) de Rouge contra comunes: los cuerpos vuelan con
+     dir*500 + 300z y girando POR HUESO (el look del lua, completo).
+  6. Ritual de la witch: la witch-doble vuela igual que el resto.
+
+PALANCAS
+--------------------------------------------------------------------
+  - Velocidad de lanzamiento: sonicom_ragblast (default 700 = GMod).
+    Subelo si quieres que vuele mas lejos (rango 50..5000).
+  - El "levanton" vertical (+30% de la velocidad en Z, salvo Rouge
+    que conserva su 300 fijo) y el giro (900 max) estan en los
+    #define SONIC_RAG_PHYSLIFT / SONIC_RAG_TUMBLE del sonic.inc
+    v6.33 — compilar para cambiarlos.
+  - Si left4dhooks no esta cargado en el server, todo corre en capa
+    2 automaticamente (vuelo real igual, giro natural del arrastre).
+
+VERIFICACION TECNICA (lo que ya esta hecho, no tienes que hacerlo)
+--------------------------------------------------------------------
+  * Compilado con spcomp 1.12.0.7253 (EL tuyo): 0 errores,
+    0 warnings — linea base EXACTA de tu 3.77.51 (recompilada de
+    referencia: mismos ceros).
+  * smx 461.671 B sha256
+    7cad73c684bfab45a28e9b0dc6d261a4d5e01e3211094b7ef4629190e20550eb
+  * Forense del payload: 26/26 marcadores presentes (las 5 funciones
+    v6.33, los 3 campos de datamap, L4D_GetServerOS, FindDataMapInfo,
+    PrepSDKCall_SetVirtual, versiones...) + la ONDA retirada
+    verificada AUSENTE del binario (Sonic_RagBlast, g_iSonicRagSerial,
+    targetentityname; el env_physexplosion que queda es el de
+    Amy_PropBlastWake, la onda de los AUTOS, intacta) + regresion
+    intacta (SpawnWitchRagdoll, Amy_OM_HammerHitTarget, Metal_Detonate,
+    RagSafeSpot, OM_Stun, ChCh_KnxNotify, ...).
+  * diff -r contra tu arbol: SOLO difieren los 3 archivos de esta
+    entrega. Todo lo demas byte a byte identico.

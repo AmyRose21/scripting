@@ -1,0 +1,2049 @@
+--- incoming/restore_20261010/suite37744/suite_37744_directo_smx/include/Rouge.inc	2026-10-10 11:15:10.000000000 +0000
++++ download/suite_37745_rouge_om/include/Rouge.inc	2026-10-10 12:32:15.849455698 +0000
+@@ -1,5 +1,84 @@
+ /*
+  * ======================================================
++ *  [MODULO] Rouge the Bat - Spy & Night Ops v10-OM (KIT GMOD + AVATAR)
++ *
++ *  v10-OM - "EL KIT DEL GMOD + SU PROPIA ENTRADA EN EL VSCRIPT" (ronda
++ *          32, 2026-10-10, manager 3.77.45). Pedido del owner: "Aun
++ *          tienes los Lua de Gmod? Si aun los tienes incluyelas con sus
++ *          pasivas de rouge y habilidades (y si las otras 2 habilidades
++ *          que ya tiene muevelas a la 3 y 4) [...] la habilidad de flash
++ *          sera modificada: se fusionada con la granada quimica en la
++ *          habilidad 4 ella tendra tambien un Parry (tipo counter de
++ *          knuckles pero un tanto mas debil pero aun asi podra activar
++ *          la devolucion de proyectiles". Los Lua SI estan (pack 118 de
++ *          la Task 25) — portadas las mecanicas EXACTAS del
++ *          redimated_om_pills_survivors_rouge.lua:
++ *
++ *          LAYOUT NUEVO (Z/X/C/B como los 4 slots del suite):
++ *            Z (H1) BARRIDO      = Sweep Kick del lua (carga 0.35 ->
++ *                                embestida 550 con i-frames + primer
++ *                                golpe: stagger/dano/ragdoll volado,
++ *                                blazekick.wav; desde pared = lanzazo
++ *                                1500). Recarga 28 hit / 15 miss (lua).
++ *            X (H2) CONTRAGOLPE  = counter estilo Knuckles PERO MAS
++ *                                DEBIL: 4s (vs 8s de knux), devoluciones
++ *                                a media fuerza (comunes 50, SI 100 +
++ *                                empuje 500) — y SU PROPIA ENTRADA EN EL
++ *                                VSCRIPT: Rouge_ParryNotifyNut ->
++ *                                ChCh_RougeNotify (chch_parrying.nut
++ *                                v2.9, patron supertank: la entrada es
++ *                                la identidad) -> DEVOLUCION DE
++ *                                PROYECTILES COMPLETA (roca/saliva/
++ *                                granadas + enemigos en cono).
++ *            C (H3) BAT BOMB    = movida intacta desde la X.
++ *            B (H4) CEBO+FLASH  = el Cebo Quimico movido desde la Z Y
++ *                                FUSIONADO con la Flash Bang del lua:
++ *                                la granada quimica ahora APLANA (destello
++ *                                + om/rouge/flashbomb.wav) a todo lo que
++ *                                mire la explosion en 400u con linea de
++ *                                vision: comunes/witch estatua, SI
++ *                                stagger + lentitud x0.7 durante 6s (la
++ *                                rougeslowdown del lua), tank lento.
++ *                                Sigue teniendo su explosion + charco de
++ *                                acido. Onda Negra: fuera de los slots
++ *                                (reemplazada; queda en consola:
++ *                                sm_rouge_wave).
++ *
++ *          PASIVAS DEL LUA (todas portadas):
++ *            - ENERGIA (rouge_latchbar): 30 inicial / 100 max / regen
++ *              1.2/s (17/1000 por tick del lua); alimenta TODO lo de
++ *              abajo; histeresis del lua: si llega a <=1 no vuelve a
++ *              agarrar hasta 35 (Rouge_OM_regenserious).
++ *            - AGARRE DE PARED (LatchOntoWall_OM_Knuckels, el mismo
++ *              sistema del lua — aqui es la receta del Knuckles.inc del
++ *              suite): pegada a pared en el aire (max 2 por vuelo),
++ *              drena energia 23/s, SPACE = lanzazo aim*700+60z (15
++ *              energia), rompe sola si la energia muere o llega al piso.
++ *            - SALTOS EN EL AIRE (Flap): 3 por vuelo, 16 de energia
++ *              cada uno, impulso 400-30*usados (el 400 del lua), xy
++ *              x0.85, anim flap + om/rouge/flap.wav.
++ *            - REDUCCION PASIVA: recibe el 90% del dano
++ *              (passivereduction 90 del lua); durante el Barrido tiene
++ *              I-FRAMES completos (el lua pone OM_Damage_Reduction=0).
++ *            - Y las de siempre: planeo SHIFT, inmunidad de caida,
++ *              evasion instintiva.
++ *
++ *          AVATAR (patron Knuckles v75/Tails/Metal — 6o avatar del
++ *          suite): rouge.mdl del VPK (FileExists, SI el modelo no esta
++ *          montado TODO cae al survivor normal, CERO dependencia),
++ *          copias R/L + sync TP/parentado + pulso de pausa + adopcion
++ *          de huerfanos en el montaje + FSM con las secuencias del lua
++ *          (idle/walk/run/jump/fall/latch/flap/SweepKick +
++ *          IdleLowHealth/WalkLowHealth/RunLowHealth <=60 HP +
++ *          DownedIdle/DownedWalk) + ragdoll de muerte rouge.mdl 15s.
++ *
++ *          SONIDOS DEL LUA (con guard + fallback vanilla): carga del
++ *          barrido om/knuckles/punchstart.wav (107 de pitch), golpe
++ *          om/blaze/blazekick.wav, aleteo om/rouge/flap.wav, pared
++ *          om/knuckles/Latch.wav, destello om/rouge/flashbomb.wav. El
++ *          contragolpe suena con SU flashbomb (la ventana del VScript
++ *          lleva Rouge_Window_Sound en el .nut v2.9).
++ * ======================================================
+  *  [MODULO] Rouge the Bat - Spy & Night Ops v9.1 (Tactical Rework)
+  *
+  *  v9.1 - ONDA NEGRA: FIX CRITICO + CINEMATICA (ronda 31). El owner
+@@ -163,7 +242,7 @@
+     #endinput
+ #endif
+ #define _Rouge_included
+-#define ROUGE_INC_VERSION "v9.1"   // v9.1: sonda de version (sm_sjsver del manager)
++#define ROUGE_INC_VERSION "v10-OM"   // v10-OM: KIT GMOD COMPLETO + avatar rouge.mdl (manager 3.77.45)
+ 
+ #if !defined _sourcemod_included
+     #include <sourcemod>
+@@ -243,6 +322,47 @@
+ #define ROUGE_WAVE_SPHERE_LIFT  40.0    // altura del nucleo sobre el punto de cast (la succion tira hacia arriba)
+ 
+ // =======================
++// v10-OM: CONFIG DEL KIT GMOD (defaults = lua GMod)
++// =======================
++#define ROUGE_OM_MODEL        "models/Noodles/OM/rouge.mdl"
++#define ROUGE_AVATAR_NAME     "rouge_avatar_om"
++#define ROUGE_AVATAR_NAME_L   "rouge_avatar_om_l"
++
++// FSM de animacion — las secuencias del rouge.mdl que usa el lua GMod
++// (anims.default: idle/walk/run/glide="fall"/Jump2="jump"/SweepKick/Flap
++//  + ShouldAlternate: latch/Downed*/lowhealth)
++#define ROUGE_ST_IDLE         0
++#define ROUGE_ST_WALK         1
++#define ROUGE_ST_RUN          2
++#define ROUGE_ST_JUMP         3    // Jump2 -> "jump" (one-shot con ventana)
++#define ROUGE_ST_FALL         4    // caida Y planeo (el lua: glide="fall")
++#define ROUGE_ST_LATCH        5    // loop: agarrada de pared
++#define ROUGE_ST_FLAP         6    // one-shot: Flap (aleteo)
++#define ROUGE_ST_KICK         7    // one-shot: SweepKick (el barrido)
++#define ROUGE_ST_IDLE_LOW     8    // IdleLowHealth (HP <= 60, el lua)
++#define ROUGE_ST_WALK_LOW     9
++#define ROUGE_ST_RUN_LOW      10
++#define ROUGE_ST_DOWNED_IDLE  11   // DownedIdle (incap)
++#define ROUGE_ST_DOWNED_WALK  12
++#define ROUGE_ANIM_COUNT      13
++
++#define ROUGE_LOCK_FLAP       0.45
++#define ROUGE_LOCK_KICK       0.95
++#define ROUGE_LOCK_LATCHOFF   0.40
++
++// fases del Barrido (Sweep Kick)
++#define ROUGE_KICK_NONE       0
++#define ROUGE_KICK_CHARGING   1
++#define ROUGE_KICK_DASH       2
++
++// tintes del avatar (misma matematica fade simetrica del UI GMod)
++#define ROUGE_TINT_DUR        0.25
++#define ROUGE_TINT_FADE       0.125
++
++#define ROUGE_SLOW_SLOTS      64    // pool de lentitud (flash/parry)
++#define ROUGE_SND_LEVEL       87    // AdvancedPillSound del lua
++
++// =======================
+ // Variables Globales
+ // =======================
+ float g_fRougeBaitCooldown[MAXPLAYERS + 1];
+@@ -251,6 +371,61 @@
+ 
+ bool g_bRougeGliding[MAXPLAYERS + 1];
+ 
++// ---- v10-OM: estado del KIT GMOD ----
++float g_fRougeEnergy[MAXPLAYERS + 1];        // rouge_latchbar (0..max)
++bool  g_bRougeRegenSerious[MAXPLAYERS + 1];  // histeresis <=1 -> espera 35
++int   g_iRougeLatches[MAXPLAYERS + 1];       // agarres de pared restantes
++bool  g_bRougeLatched[MAXPLAYERS + 1];       // pegada a la pared ahora
++float g_fRougeLatchYaw[MAXPLAYERS + 1];      // yaw de la normal (mirar afuera)
++int   g_iRougeUsedJumps[MAXPLAYERS + 1];     // aleteos usados en el vuelo
++float g_fRougeJumpCDUntil[MAXPLAYERS + 1];   // cd de aleteos al aterrizar
++int   g_iRougePrevButtons[MAXPLAYERS + 1];   // borde del SPACE
++
++int   g_iRougeKickPhase[MAXPLAYERS + 1];     // NONE/CHARGING/DASH
++float g_fRougeKickChargeEnd[MAXPLAYERS + 1];
++float g_fRougeKickDashEnd[MAXPLAYERS + 1];
++float g_vRougeKickDir[MAXPLAYERS + 1][3];
++bool  g_bRougeKickHit[MAXPLAYERS + 1];       // ya golpeo a alguien
++float g_fRougeKickCDUntil[MAXPLAYERS + 1];
++
++bool  g_bRougeCountering[MAXPLAYERS + 1];    // contragolpe activo
++float g_fRougeCounterEnd[MAXPLAYERS + 1];
++float g_fRougeCounterCDUntil[MAXPLAYERS + 1];
++float g_fRougeBlockFxNext[MAXPLAYERS + 1];
++
++// ---- v10-OM: avatar espejo (patron Knuckles v75) ----
++ConVar g_cvRougeAvatar;
++bool   g_bRougeModelOK = false;
++int    g_iRougeAvatar[MAXPLAYERS + 1];       // EntRef copia R (0 = sin avatar)
++int    g_iRougeAvatarL[MAXPLAYERS + 1];      // EntRef copia L
++int    g_iRougeBodyRender[MAXPLAYERS + 1];   // render ORIGINAL del survivor
++int    g_iRougeAnimState[MAXPLAYERS + 1];    // estado FSM actual
++float  g_fRougeAnimLock[MAXPLAYERS + 1];     // lock de one-shot en curso
++float  g_fRougeJumpStart[MAXPLAYERS + 1];    // t0 de la ventana del jump
++float  g_fRougeBodyYaw[MAXPLAYERS + 1];      // yaw suavizado del avatar
++float  g_fRougeYawLastT[MAXPLAYERS + 1];
++bool   g_bRougeSmSnap[MAXPLAYERS + 1];
++float  g_fRougeSmLoc[MAXPLAYERS + 1][3];
++float  g_fRougeSmLocL[MAXPLAYERS + 1][3];
++int    g_iRougeTintR[MAXPLAYERS + 1], g_iRougeTintG[MAXPLAYERS + 1], g_iRougeTintB[MAXPLAYERS + 1];
++float  g_fRougeTintEnd[MAXPLAYERS + 1];
++float  g_fRougeDeathHideUntil[MAXPLAYERS + 1];
++float  g_vRougeDeathOrigin[MAXPLAYERS + 1][3];
++Handle g_hRougeAvatarThink = null;
++float  g_fRougeHUDNext[MAXPLAYERS + 1];
++float  g_fRougeHUDLastVal[MAXPLAYERS + 1];
++
++// ---- v10-OM: sonidos del lua (guard + fallback) ----
++bool g_bRougeSndFlap = false, g_bRougeSndFlash = false;
++bool g_bRougeSndBlazeKick = false, g_bRougeSndPunchStart = false, g_bRougeSndLatch = false;
++bool g_bRougeSndSwing = false;
++
++// ---- v10-OM: pool de lentitud (SI/tank) ----
++int    g_iRougeSlowRef[ROUGE_SLOW_SLOTS];
++float  g_fRougeSlowEnd[ROUGE_SLOW_SLOTS];
++float  g_fRougeSlowMul[ROUGE_SLOW_SLOTS];
++Handle g_hRougeSlowTick = null;
++
+ // v8.0: Evasion Instintiva
+ ConVar g_cvRougeEvadeChance;
+ float g_fRougeLastEvade[MAXPLAYERS + 1];   // throttle anti-spam de VFX
+@@ -295,6 +470,15 @@
+ ConVar g_cvRougeBaitCD, g_cvRougeBaitDamage;
+ ConVar g_cvRougeBombDamage, g_cvRougeBombRadius, g_cvRougeBombTimer, g_cvRougeBombCD;
+ ConVar g_cvRougeWaveCD, g_cvRougeWaveRadius, g_cvRougeWaveDamage;   // v9.0: H3 Onda Negra
++// v10-OM: kit GMod
++ConVar g_cvRougeEnergyStart, g_cvRougeEnergyMax, g_cvRougeEnergyRegen;
++ConVar g_cvRougeLatchMax, g_cvRougeLatchDrain, g_cvRougeLatchJumpCost, g_cvRougeLatchLaunch;
++ConVar g_cvRougeFlapMax, g_cvRougeFlapCost, g_cvRougeFlapPower, g_cvRougeFlapCD;
++ConVar g_cvRougePassiveRed;
++ConVar g_cvRougeKickCharge, g_cvRougeKickSpeed, g_cvRougeKickDuration, g_cvRougeKickRadius;
++ConVar g_cvRougeKickDamage, g_cvRougeKickStun, g_cvRougeKickCDHit, g_cvRougeKickCDMiss, g_cvRougeKickReward;
++ConVar g_cvRougeParryCD, g_cvRougeParryDuration, g_cvRougeParryCommon, g_cvRougeParrySIDmg, g_cvRougeParryPush;
++ConVar g_cvRougeFlashRadius, g_cvRougeFlashSlowDur, g_cvRougeFlashSlow, g_cvRougeFlashStun, g_cvRougeFlashReward;
+ 
+ #define Rouge_IsValidClient(%1) (1 <= %1 <= MaxClients && IsClientInGame(%1) && IsPlayerAlive(%1))
+ #define Rouge_IsValidEntity(%1) (IsValidEntity(%1) && (%1) != INVALID_ENT_REFERENCE)
+@@ -318,6 +502,44 @@
+     // v8.0: Pasiva Evasion Instintiva (reemplazo de la Treasure Vision)
+     g_cvRougeEvadeChance = CreateConVar("rouge_evade_chance", "30.0", "Probabilidad (0-100) de evadir un ataque y aturdir al atacante", _, true, 0.0, true, 100.0);
+ 
++    // ---- v10-OM: KIT GMOD (defaults del lua) ----
++    g_cvRougeEnergyStart = CreateConVar("rouge_energy_start", "30.0", "v10: energia inicial (lua passive_energy_starter 30)", _, true, 0.0, true, 100.0);
++    g_cvRougeEnergyMax   = CreateConVar("rouge_energy_max", "100.0", "v10: energia maxima (lua passive_energy_maximum 100)", _, true, 10.0, true, 500.0);
++    g_cvRougeEnergyRegen = CreateConVar("rouge_energy_regen", "1.2", "v10: regeneracion por segundo (lua 17/1000 por tick ~ 1.12/s)", _, true, 0.0, true, 50.0);
++    g_cvRougeLatchMax    = CreateConVar("rouge_latch_max", "2", "v10: agarres de pared por vuelo (lua passive_latches_maximum 2)", _, true, 0.0, true, 10.0);
++    g_cvRougeLatchDrain  = CreateConVar("rouge_latch_drain", "23.0", "v10: drenaje de energia por segundo agarrada (lua 0.35/tick)", _, true, 0.0, true, 200.0);
++    g_cvRougeLatchJumpCost = CreateConVar("rouge_latchjump_cost", "15.0", "v10: energia del salto desde pared (lua 15)", _, true, 0.0, true, 100.0);
++    g_cvRougeLatchLaunch = CreateConVar("rouge_latch_launch", "700.0", "v10: potencia del lanzazo desde pared (lua launchy_power 700)", _, true, 0.0, true, 3000.0);
++    g_cvRougeFlapMax     = CreateConVar("rouge_flap_max", "3", "v10: aleteos por vuelo (lua passive_midairjumps_maximum 3)", _, true, 0.0, true, 10.0);
++    g_cvRougeFlapCost    = CreateConVar("rouge_flap_cost", "16.0", "v10: energia por aleteo (lua 16)", _, true, 0.0, true, 100.0);
++    g_cvRougeFlapPower   = CreateConVar("rouge_flap_power", "400.0", "v10: impulso vertical del aleteo (lua jumppower 400)", _, true, 0.0, true, 1000.0);
++    g_cvRougeFlapCD      = CreateConVar("rouge_flap_cd", "6.0", "v10: cd por aleteo usado al aterrizar (lua cdperjump 6)", _, true, 0.0, true, 60.0);
++    g_cvRougePassiveRed  = CreateConVar("rouge_passive_reduction", "0.90", "v10: fraccion de dano que recibe (lua passivereduction 90 -> 0.9)", _, true, 0.05, true, 1.0);
++
++    g_cvRougeKickCharge   = CreateConVar("rouge_kick_charge", "0.35", "v10: carga del Barrido (lua sweepkick_chargeup 0.35)", _, true, 0.0, true, 3.0);
++    g_cvRougeKickSpeed    = CreateConVar("rouge_kick_speed", "550.0", "v10: velocidad de la embestida (lua sweepkick_speed 550)", _, true, 100.0, true, 2000.0);
++    g_cvRougeKickDuration = CreateConVar("rouge_kick_duration", "0.9", "v10: duracion de la embestida (SequenceDuration del SweepKick)", _, true, 0.2, true, 3.0);
++    g_cvRougeKickRadius   = CreateConVar("rouge_kick_radius", "95.0", "v10: radio de golpe (lua FindInSphere 95)", _, true, 30.0, true, 300.0);
++    g_cvRougeKickDamage   = CreateConVar("rouge_kick_damage", "150.0", "v10: dano del barrido (escala L4D2 del lua 15)", _, true, 0.0, true, 5000.0);
++    g_cvRougeKickStun     = CreateConVar("rouge_kick_stun", "2.5", "v10: stagger del SI golpeado (lua basestun 5, recortado a L4D2)", _, true, 0.0, true, 10.0);
++    g_cvRougeKickCDHit    = CreateConVar("rouge_kick_cd_hit", "28.0", "v10: recarga al GOLPEAR (lua sweepkick_cd_hit 28)", _, true, 0.0, true, 120.0);
++    g_cvRougeKickCDMiss   = CreateConVar("rouge_kick_cd_miss", "15.0", "v10: recarga al FALLAR (lua sweepkick_cd_miss 15)", _, true, 0.0, true, 120.0);
++    g_cvRougeKickReward   = CreateConVar("rouge_kick_reward", "30.0", "v10: energia al golpear (lua sweepkick_reward 30)", _, true, 0.0, true, 100.0);
++
++    g_cvRougeParryCD       = CreateConVar("rouge_parry_cooldown", "25.0", "v10: recarga del Contragolpe (mas largo que el de Knuckles: es mas debil)", _, true, 0.0, true, 120.0);
++    g_cvRougeParryDuration = CreateConVar("rouge_parry_duration", "4.0", "v10: duracion del Contragolpe (knux_counter_duration 8 -> aqui 4, un tanto mas debil)", _, true, 0.5, true, 30.0);
++    g_cvRougeParryCommon   = CreateConVar("rouge_parry_common_dmg", "50.0", "v10: devolucion a comunes (Knuckles devuelve 100)", _, true, 0.0, true, 500.0);
++    g_cvRougeParrySIDmg    = CreateConVar("rouge_parry_si_dmg", "100.0", "v10: devolucion a especiales (Knuckles 200)", _, true, 0.0, true, 1000.0);
++    g_cvRougeParryPush     = CreateConVar("rouge_parry_push", "500.0", "v10: empuje de la devolucion (Knuckles 800)", _, true, 0.0, true, 2000.0);
++
++    g_cvRougeFlashRadius   = CreateConVar("rouge_flash_radius", "400.0", "v10: radio del destello del Cebo+Flash (lua FindInSphere 400)", _, true, 50.0, true, 1500.0);
++    g_cvRougeFlashSlowDur  = CreateConVar("rouge_flash_slowdur", "6.0", "v10: duracion de la lentitud post-destello (lua slowdownduration 6)", _, true, 0.0, true, 30.0);
++    g_cvRougeFlashSlow     = CreateConVar("rouge_flash_slow", "0.70", "v10: multiplicador de velocidad post-destello (lua 0.7)", _, true, 0.1, true, 1.0);
++    g_cvRougeFlashStun     = CreateConVar("rouge_flash_stun", "1.5", "v10: estatua de comunes/witch ante el destello (la ceguera)", _, true, 0.0, true, 10.0);
++    g_cvRougeFlashReward   = CreateConVar("rouge_flash_reward", "20.0", "v10: energia si el destello alcanzo a alguien (lua smokebomb_reward 20)", _, true, 0.0, true, 100.0);
++
++    g_cvRougeAvatar = CreateConVar("rouge_avatar", "1", "Rouge OM: avatar espejo (rouge.mdl del VPK de recursos, patron Tails/Sonic/Amy/Metal/Knuckles)", _, true, 0.0, true, 1.0);
++
+     // v9.0: Habilidad 3 - Onda Negra (Black Wave)
+     g_cvRougeWaveCD     = CreateConVar("rouge_wave_cooldown", "17.0", "v9: recarga de la Onda Negra (Habilidad 3)", _, true, 0.0, true, 120.0);
+     g_cvRougeWaveRadius = CreateConVar("rouge_wave_radius", "1000.0", "v9: rango de la Onda Negra (rango S)", _, true, 100.0, true, 3000.0);
+@@ -327,9 +549,13 @@
+     Rouge_LoadGamedata();
+ 
+     // Comandos
+-    RegConsoleCmd("sm_rouge_kick", Command_RougeKick); // Mantiene el nombre por compatibilidad
++    RegConsoleCmd("sm_rouge_kick", Command_RougeKick); // Mantiene el nombre por compatibilidad (el CEBO QUIMICO)
+     RegConsoleCmd("sm_rouge_bomb", Command_RougeBomb);
+-    RegConsoleCmd("sm_rouge_wave", Command_RougeBlackWave);   // v9.0: Habilidad 3 (Onda Negra)
++    RegConsoleCmd("sm_rouge_wave", Command_RougeBlackWave);   // v9.0: Onda Negra — v10: fuera de slots, SOLO consola
++    // v10-OM: el kit nuevo
++    RegConsoleCmd("sm_rouge_sweep", Command_RougeSweepKick);  // H1 (Z): Barrido
++    RegConsoleCmd("sm_rouge_counter", Command_RougeCounter);  // H2 (X): Contragolpe
++    RegServerCmd("rouge_parry_blocked", Rouge_CmdParryBlocked, "v10: el VScript bloqueo algo en la ventana de Rouge (tinte + sonido)");
+ 
+     // Hooks de eventos
+     HookEvent("player_spawn", Rouge_Event_PlayerSpawn);
+@@ -423,6 +649,26 @@
+     // avatar (la lógica vive en Knuckles.inc, incluido antes que Rouge)
+     Knuckles_OnEntityCreated(entity, classname);
+ 
++    // v10-OM Rouge: idem para las muertes de la Rouge con avatar — la
++    // logica es NUESTRA y vive aqui abajo (Rouge_CheckDeathRagdoll)
++    if (StrEqual(classname, "prop_ragdoll")
++        || StrEqual(classname, "prop_physics")
++        || StrEqual(classname, "prop_physics_override")
++        || StrEqual(classname, "prop_dynamic")
++        || StrEqual(classname, "prop_dynamic_override")
++        || StrEqual(classname, "cs_ragdoll")
++        || StrEqual(classname, "survivor_death_model"))
++    {
++        float nowOM = GetEngineTime();
++        for (int i = 1; i <= MaxClients; i++)
++        {
++            if (g_fRougeDeathHideUntil[i] == 0.0 || nowOM >= g_fRougeDeathHideUntil[i])
++                continue;
++            RequestFrame(Rouge_CheckDeathRagdoll, EntIndexToEntRef(entity));
++            return;
++        }
++    }
++
+     // Si estamos esperando un insect_swarm (flag activado tras SDKCall)
+     if (g_bRougeAcidSpawn)
+     {
+@@ -442,6 +688,27 @@
+ 
+ public void Rouge_OnMapStart()
+ {
++    // v10-OM: AVATAR — rouge.mdl del VPK (deteccion FileExists estilo
++    // star_stun: ve los VPK montados; sin el archivo TODO cae al
++    // survivor normal, CERO dependencia)
++    g_bRougeModelOK = FileExists(ROUGE_OM_MODEL, true);
++    if (g_bRougeModelOK) PrecacheModel(ROUGE_OM_MODEL, true);
++
++    // v10-OM: sonidos del lua GMod (guard + fallback vanilla)
++    g_bRougeSndFlap      = PrecacheSound("om/rouge/flap.wav", true);            // aleteo (l.1004)
++    g_bRougeSndFlash     = PrecacheSound("om/rouge/flashbomb.wav", true);       // destello (l.1246)
++    g_bRougeSndBlazeKick = PrecacheSound("om/blaze/blazekick.wav", true);       // golpe del barrido (l.869)
++    g_bRougeSndPunchStart= PrecacheSound("om/knuckles/punchstart.wav", true);   // carga del barrido (l.776)
++    g_bRougeSndLatch     = PrecacheSound("om/knuckles/Latch.wav", true);        // pared (l.663, el mismo del lua)
++    g_bRougeSndSwing     = PrecacheSound("om/knuckles/swing.wav", true);        // liberacion del barrido (l.805)
++
++    // v10-OM: FSM del avatar (10 Hz, patron T_KnuxAvatarThink) + pool de lentitud
++    delete g_hRougeAvatarThink;
++    g_hRougeAvatarThink = CreateTimer(0.1, T_RougeAvatarThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
++    delete g_hRougeSlowTick;
++    g_hRougeSlowTick = CreateTimer(0.2, T_RougeSlowTick, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
++    Rouge_SlowClear();
++
+     // Precache de sonidos
+     PrecacheSound(ROUGE_SND_KICK_HIT, true);
+     PrecacheSound(ROUGE_SND_THROW, true);
+@@ -483,6 +750,18 @@
+ 
+ public void Rouge_OnMapEnd()
+ {
++    // v10-OM: timers del kit GMod (mueren con el mapa: NO_MAPCHANGE)
++    delete g_hRougeAvatarThink;
++    delete g_hRougeSlowTick;
++    Rouge_SlowClear();
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        g_iRougeAvatar[i] = 0;     // las entidades murieron con el mapa
++        g_iRougeAvatarL[i] = 0;
++        g_iRougeAnimState[i] = -1;
++        g_fRougeDeathHideUntil[i] = 0.0;
++    }
++
+     if (g_hRougeActiveBombs != null) g_hRougeActiveBombs.Clear();
+     if (g_hRougeAcidPools != null)   g_hRougeAcidPools.Clear();
+ 
+@@ -546,6 +825,10 @@
+ 
+     SDKUnhook(client, SDKHook_PreThink, Rouge_PreThink);
+     SDKHook(client, SDKHook_PreThink, Rouge_PreThink);
++
++    // v10-OM: sentinel del render del cuerpo (patron Knuckles — el
++    // avatar lo pisa al montar y lo devuelve al morir)
++    g_iRougeBodyRender[client] = -1;
+ }
+ 
+ public void Rouge_Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
+@@ -585,6 +868,17 @@
+     // que otros modulos acaban de restaurar en su propia limpieza de muerte.
+     if (g_iPlayerCharIdx[client] != ROUGE_INDEX) return;
+ 
++    // v10-OM: MUERTE DEL AVATAR — ragdoll rouge.mdl con la velocidad del
++    // momento + ventana anti-corpse (receta Knuckles v75/Metal v5.0) y el
++    // cuerpo del survivor vuelve a verse para el spectate/revive.
++    if (g_iRougeAvatar[client] != 0)
++    {
++        Rouge_SpawnDeathRagdoll(client);
++        g_fRougeDeathHideUntil[client] = GetEngineTime() + 2.0;
++        GetClientAbsOrigin(client, g_vRougeDeathOrigin[client]);
++        Rouge_KillAvatarOnly(client);
++    }
++
+     Rouge_ResetState(client);
+ }
+ 
+@@ -592,6 +886,33 @@
+ {
+     if (client < 0 || client > MaxClients) return;
+ 
++    // v10-OM: kit GMod — el contragolpe avisa SU apagado al VScript
++    // (patron Knux_ResetState v75: la ventana muere con el estado)
++    if (g_bRougeCountering[client])
++        Rouge_ParryNotifyNut(client, false, 0.0);
++    g_bRougeCountering[client] = false;
++    g_fRougeCounterEnd[client] = 0.0;
++    if (g_iRougeKickPhase[client] != ROUGE_KICK_NONE)
++    {
++        if (g_iRougeKickPhase[client] == ROUGE_KICK_DASH)
++            SDKUnhook(client, SDKHook_Touch, Rouge_OnTouch);
++        SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
++    }
++    g_iRougeKickPhase[client] = ROUGE_KICK_NONE;
++    g_bRougeKickHit[client] = false;
++    if (g_bRougeLatched[client])
++    {
++        if (IsClientInGame(client) && IsPlayerAlive(client))
++            SetEntityMoveType(client, MOVETYPE_WALK);
++    }
++    g_bRougeLatched[client] = false;
++    g_iRougeLatches[client] = 0;
++    g_iRougeUsedJumps[client] = 0;
++    g_fRougeJumpCDUntil[client] = 0.0;
++    g_iRougePrevButtons[client] = 0;
++    g_fRougeEnergy[client] = g_cvRougeEnergyStart != null ? g_cvRougeEnergyStart.FloatValue : 30.0;
++    g_bRougeRegenSerious[client] = false;
++
+     g_bRougeGliding[client]     = false;
+     g_fRougeBaitCooldown[client] = 0.0;
+     g_fRougeBombCooldown[client] = 0.0;
+@@ -623,6 +944,233 @@
+     if (!Rouge_IsValidClient(client)) return;
+     if (g_iPlayerCharIdx[client] != ROUGE_INDEX) return;
+ 
++    // ============================ v10-OM: NUCLEO DEL KIT GMOD ============
++    float now = GetEngineTime();
++    static float s_fLastT[MAXPLAYERS + 1];
++    float dt = now - s_fLastT[client];
++    s_fLastT[client] = now;
++    if (dt <= 0.0 || dt > 0.3) dt = 0.015;
++
++    int buttons10 = GetClientButtons(client);
++    bool jumpPressed = ((buttons10 & IN_JUMP) != 0 && (g_iRougePrevButtons[client] & IN_JUMP) == 0);
++    g_iRougePrevButtons[client] = buttons10;
++
++    bool airborne = !(GetEntityFlags(client) & FL_ONGROUND);
++
++    // ---- CONTRAGOLPE: expiracion ----
++    if (g_bRougeCountering[client] && now >= g_fRougeCounterEnd[client])
++        Rouge_StopCounter(client);
++
++    // ---- BARRIDO: maquina de fases (carga -> embestida) ----
++    if (g_iRougeKickPhase[client] == ROUGE_KICK_CHARGING)
++    {
++        if (now >= g_fRougeKickChargeEnd[client])
++        {
++            // liberar la embestida (el lua suelta el SweepKick al acabar
++            // la carga: anim + velocidad delante + i-frames)
++            g_iRougeKickPhase[client] = ROUGE_KICK_DASH;
++            g_fRougeKickDashEnd[client] = now + g_cvRougeKickDuration.FloatValue;
++            g_bRougeKickHit[client] = false;
++
++            float ang[3], fwd[3];
++            GetClientEyeAngles(client, ang); ang[0] = 0.0; ang[2] = 0.0;
++            GetAngleVectors(ang, fwd, NULL_VECTOR, NULL_VECTOR);
++            g_vRougeKickDir[client][0] = fwd[0];
++            g_vRougeKickDir[client][1] = fwd[1];
++            g_vRougeKickDir[client][2] = 0.0;
++
++            SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
++            Rouge_AvatarOneShot(client, ROUGE_ST_KICK, ROUGE_LOCK_KICK);
++            if (g_bRougeSndSwing) EmitSoundToAll("om/knuckles/swing.wav", client, _, ROUGE_SND_LEVEL);
++            else EmitSoundToAll(ROUGE_SND_KICK_HIT, client, _, 120);
++            SDKHook(client, SDKHook_Touch, Rouge_OnTouch);
++        }
++        else
++        {
++            // carga: paso corto (el lua clava la velocidad a walk*1.5)
++            SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 0.7);
++        }
++    }
++    else if (g_iRougeKickPhase[client] == ROUGE_KICK_DASH)
++    {
++        if (now >= g_fRougeKickDashEnd[client])
++        {
++            // fin de la embestida: recarga segun si golpeo (lua cd_hit/cd_miss)
++            SDKUnhook(client, SDKHook_Touch, Rouge_OnTouch);
++            SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
++            g_iRougeKickPhase[client] = ROUGE_KICK_NONE;
++            g_fRougeKickCDUntil[client] = now + (g_bRougeKickHit[client]
++                ? g_cvRougeKickCDHit.FloatValue : g_cvRougeKickCDMiss.FloatValue);
++            if (!g_bRougeKickHit[client])
++                PrintCenterText(client, "Barrido al aire (%.0fs de recarga)", g_cvRougeKickCDMiss.FloatValue);
++        }
++        else
++        {
++            // mantener la embestida (el lua setea la velocidad por tick)
++            float vel[3];
++            GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++            vel[0] = g_vRougeKickDir[client][0] * g_cvRougeKickSpeed.FloatValue;
++            vel[1] = g_vRougeKickDir[client][1] * g_cvRougeKickSpeed.FloatValue;
++            TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vel);
++        }
++    }
++
++    // ---- ENERGIA: regen + histeresis del lua (<=1 seria -> pide 35) ----
++    float emax = g_cvRougeEnergyMax.FloatValue;
++    if (!g_bRougeLatched[client])
++    {
++        g_fRougeEnergy[client] += g_cvRougeEnergyRegen.FloatValue * dt;
++        if (g_fRougeEnergy[client] > emax) g_fRougeEnergy[client] = emax;
++    }
++    if (g_fRougeEnergy[client] <= 1.0) g_bRougeRegenSerious[client] = true;
++    if (g_bRougeRegenSerious[client] && g_fRougeEnergy[client] >= 35.0)
++        g_bRougeRegenSerious[client] = false;
++
++    // ---- SUELO: recarga de agarres + cd de aleteos (el lua) ----
++    if (!airborne)
++    {
++        if (g_iRougeUsedJumps[client] > 0)
++            g_fRougeJumpCDUntil[client] = now + g_cvRougeFlapCD.FloatValue * float(g_iRougeUsedJumps[client]);
++        g_iRougeUsedJumps[client] = 0;
++        g_iRougeLatches[client] = g_cvRougeLatchMax.IntValue;
++        if (g_bRougeLatched[client]) g_bRougeLatched[client] = false;
++    }
++
++    // ---- AGARRE DE PARED (LatchOntoWall_OM_Knuckels del lua) ----
++    if (g_bRougeLatched[client])
++    {
++        // mantenimiento: drenaje + condiciones de ruptura
++        g_fRougeEnergy[client] -= g_cvRougeLatchDrain.FloatValue * dt;
++
++        bool soltar = false;
++        if (g_fRougeEnergy[client] <= 0.0) soltar = true;
++
++        // el suelo esta a menos de 25u? (el lua rompe el agarre)
++        float pos[3], down[3], vGround[3];
++        GetClientAbsOrigin(client, pos);
++        down[0] = pos[0]; down[1] = pos[1]; down[2] = pos[2] - 900.0;
++        Handle tr = TR_TraceRayFilterEx(pos, down, MASK_SOLID_BRUSHONLY, RayType_EndPoint, Rouge_TraceFilter_World, 0);
++        if (TR_DidHit(tr))
++        {
++            TR_GetEndPosition(vGround, tr);
++            if (GetVectorDistance(pos, vGround) < 25.0) soltar = true;
++        }
++        delete tr;
++
++        // SPACE = lanzazo desde la pared (launchy_power del lua)
++        if (jumpPressed)
++        {
++            soltar = true;
++            float aim[3], launch[3];
++            GetClientEyeAngles(client, aim);
++            GetAngleVectors(aim, launch, NULL_VECTOR, NULL_VECTOR);
++            launch[0] *= g_cvRougeLatchLaunch.FloatValue;
++            launch[1] *= g_cvRougeLatchLaunch.FloatValue;
++            launch[2] = g_cvRougeLatchLaunch.FloatValue * 0.35 + 60.0;
++            SetEntityMoveType(client, MOVETYPE_WALK);
++            TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, launch);
++            g_fRougeEnergy[client] -= g_cvRougeLatchJumpCost.FloatValue;
++            Rouge_AvatarOneShot(client, ROUGE_ST_JUMP, ROUGE_LOCK_LATCHOFF);
++            if (g_bRougeSndFlap) EmitSoundToAll("om/rouge/flap.wav", client, _, ROUGE_SND_LEVEL);
++            PrintCenterText(client, "¡Lanzada desde la pared!");
++        }
++
++        if (soltar)
++        {
++            if (g_bRougeLatched[client])
++            {
++                SetEntityMoveType(client, MOVETYPE_WALK);
++                g_bRougeLatched[client] = false;
++            }
++        }
++    }
++    else if (airborne)
++    {
++        // pegarse: pared al frente (20u del lua) + agarres + energia
++        if (g_iRougeLatches[client] > 0
++            && g_fRougeEnergy[client] > 1.0
++            && !g_bRougeRegenSerious[client]
++            && g_iRougeKickPhase[client] == ROUGE_KICK_NONE)
++        {
++            float pos[3], end[3], fwd[3], ang[3];
++            GetClientAbsOrigin(client, pos);
++            GetClientEyeAngles(client, ang); ang[0] = 0.0; ang[2] = 0.0;
++            GetAngleVectors(ang, fwd, NULL_VECTOR, NULL_VECTOR);
++            end[0] = pos[0] + fwd[0] * 20.0;
++            end[1] = pos[1] + fwd[1] * 20.0;
++            end[2] = pos[2] + fwd[2] * 20.0;
++
++            Handle trw = TR_TraceRayFilterEx(pos, end, MASK_SOLID, RayType_EndPoint, Rouge_TraceFilter_World, 0);
++            bool hitWall = TR_DidHit(trw);
++            float normal[3];
++            if (hitWall)
++            {
++                TR_GetPlaneNormal(trw, normal);
++                if (normal[2] > 0.5 || normal[2] < -0.5) hitWall = false;  // pared VERTICAL nada mas (lua)
++            }
++            if (hitWall)
++            {
++                // lejos del piso (>25u, el lua)
++                float down[3], vGround[3];
++                down[0] = pos[0]; down[1] = pos[1]; down[2] = pos[2] - 900.0;
++                Handle trg = TR_TraceRayFilterEx(pos, down, MASK_SOLID_BRUSHONLY, RayType_EndPoint, Rouge_TraceFilter_World, 0);
++                bool sueloLejos = true;
++                if (TR_DidHit(trg))
++                {
++                    TR_GetEndPosition(vGround, trg);
++                    if (GetVectorDistance(pos, vGround) < 25.0) sueloLejos = false;
++                }
++                delete trg;
++
++                if (sueloLejos)
++                {
++                    g_bRougeLatched[client] = true;
++                    g_iRougeLatches[client]--;
++                    g_bRougeGliding[client] = false;
++                    g_iRougeKickPhase[client] = ROUGE_KICK_NONE;
++
++                    float stop[3] = {0.0, 0.0, 0.0};
++                    TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, stop);
++                    SetEntityMoveType(client, MOVETYPE_NONE);
++                    // mirar HACIA AFUERA de la pared (pill_assignedangle del lua)
++                    g_fRougeLatchYaw[client] = RadToDeg(ArcTangent2(normal[1], normal[0]));
++
++                    if (g_bRougeSndLatch) EmitSoundToAll("om/knuckles/Latch.wav", client, _, ROUGE_SND_LEVEL);
++                    else EmitSoundToAll("weapons/knife/knife_hit_wall1.wav", client, _, ROUGE_SND_LEVEL);
++                    PrintCenterText(client, "🦇 Agarrada (SPACE para lanzarte)");
++                }
++            }
++            delete trw;
++        }
++
++        // ---- ALETEO (Flap del lua): 3 por vuelo, 16 de energia ----
++        if (jumpPressed && !g_bRougeLatched[client]
++            && g_iRougeKickPhase[client] == ROUGE_KICK_NONE
++            && g_iRougeUsedJumps[client] < g_cvRougeFlapMax.IntValue
++            && now >= g_fRougeJumpCDUntil[client]
++            && g_fRougeEnergy[client] - g_cvRougeFlapCost.FloatValue > 0.0)
++        {
++            g_iRougeUsedJumps[client]++;
++            float vel[3];
++            GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++            vel[2] = g_cvRougeFlapPower.FloatValue
++                   - (g_cvRougeFlapPower.FloatValue * 0.075) * float(g_iRougeUsedJumps[client]);
++            vel[0] *= 0.85;
++            vel[1] *= 0.85;
++            TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vel);
++            g_fRougeEnergy[client] -= g_cvRougeFlapCost.FloatValue;
++            g_bRougeGliding[client] = false;
++            Rouge_AvatarOneShot(client, ROUGE_ST_FLAP, ROUGE_LOCK_FLAP);
++            if (g_bRougeSndFlap) EmitSoundToAll("om/rouge/flap.wav", client, _, ROUGE_SND_LEVEL);
++            else EmitSoundToAll("player/survivor/hit/crowbar_swing_miss1.wav", client, _, 100);
++        }
++    }
++
++    // ---- tinte del avatar + HUD de energia ----
++    Rouge_TintThink(client);
++    Rouge_EnergyHUD(client);
++    // ========================== FIN NUCLEO v10-OM ========================
++
+     // v8.0: cancelar si esta incapacitada o AGARRADA (antes solo se
+     // comprobaba el hunter: un jockey/smoker/charger la agarraba en
+     // pleno planeo y el PreThink seguia peleando con la velocidad).
+@@ -636,7 +1184,24 @@
+         // v8.0 FIX: solo apagar el planeo (NO llamar a ResetState:
+         // eso ponia a 0 los cooldowns de las habilidades = reset
+         // gratis de CDs con solo ser agarrada planeando).
++        // v10-OM: el kit GMod se ROMPE limpio (agarre/incap): barrido
++        // fuera, pared fuera, contragolpe fuera (con SU recarga y SU
++        // aviso de apagado al VScript) — sin tocar los cooldowns.
+         g_bRougeGliding[client] = false;
++        if (g_iRougeKickPhase[client] != ROUGE_KICK_NONE)
++        {
++            if (g_iRougeKickPhase[client] == ROUGE_KICK_DASH)
++                SDKUnhook(client, SDKHook_Touch, Rouge_OnTouch);
++            SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
++            g_iRougeKickPhase[client] = ROUGE_KICK_NONE;
++        }
++        if (g_bRougeLatched[client])
++        {
++            SetEntityMoveType(client, MOVETYPE_WALK);
++            g_bRougeLatched[client] = false;
++        }
++        if (g_bRougeCountering[client])
++            Rouge_StopCounter(client);
+         return;
+     }
+ 
+@@ -723,6 +1288,80 @@
+     if (!Rouge_IsValidClient(victim)) return Plugin_Continue;
+     if (g_iPlayerCharIdx[victim] != ROUGE_INDEX) return Plugin_Continue;
+ 
++    // v10-OM: I-FRAMES DEL BARRIDO (el lua pone OM_Damage_Reduction=0
++    // durante el SweepKick: embiste intocable)
++    if (g_iRougeKickPhase[victim] == ROUGE_KICK_DASH)
++    {
++        damage = 0.0;
++        return Plugin_Handled;
++    }
++
++    // v10-OM: CONTRAGOLPE — bloqueo TODO y devuelvo la version DEBIL
++    // (comunes 50 / SI 100 + empuje 500 / tank 100 + empuje / witch
++    // estatua 1.2s — Knuckles devuelve el doble y desarma 5s). La
++    // DEVOLUCION DE PROYECTILES la lleva SU ventana del VScript
++    // (ChCh_RougeNotify del chch_parrying.nut v2.9).
++    if (g_bRougeCountering[victim] && attacker > 0)
++    {
++        float vPos[3], aPos[3], push[3];
++        GetClientAbsOrigin(victim, vPos);
++
++        if (attacker <= MaxClients && IsClientInGame(attacker) && GetClientTeam(attacker) == TEAM_INFECTED)
++        {
++            int zClass = GetEntProp(attacker, Prop_Send, "m_zombieClass");
++            if (zClass == 8)
++            {
++                // TANK: devolucion debil (Knuckles lo desarma 5s)
++                SDKHooks_TakeDamage(attacker, victim, victim, g_cvRougeParrySIDmg.FloatValue, DMG_CLUB);
++                GetEntPropVector(attacker, Prop_Data, "m_vecAbsOrigin", aPos);
++                MakeVectorFromPoints(vPos, aPos, push);
++                NormalizeVector(push, push);
++                ScaleVector(push, g_cvRougeParryPush.FloatValue); push[2] = 250.0;
++                TeleportEntity(attacker, NULL_VECTOR, NULL_VECTOR, push);
++            }
++            else
++            {
++                // ESPECIAL: stagger seguro + devolucion (receta reducida)
++                SDKHooks_TakeDamage(attacker, victim, victim, g_cvRougeParrySIDmg.FloatValue, DMG_CLUB);
++                SIStagger_Stagger(attacker, victim, vPos, 1.2);
++                GetEntPropVector(attacker, Prop_Data, "m_vecAbsOrigin", aPos);
++                MakeVectorFromPoints(vPos, aPos, push);
++                NormalizeVector(push, push);
++                ScaleVector(push, g_cvRougeParryPush.FloatValue); push[2] = 250.0;
++                TeleportEntity(attacker, NULL_VECTOR, NULL_VECTOR, push);
++            }
++        }
++        else
++        {
++            char cls[32];
++            GetEntityClassname(attacker, cls, sizeof(cls));
++            if (StrEqual(cls, "infected"))
++            {
++                SDKHooks_TakeDamage(attacker, victim, victim, g_cvRougeParryCommon.FloatValue, DMG_CLUB);
++            }
++            else if (StrEqual(cls, "witch"))
++            {
++                if (IsValidEntity(attacker) && GetEngineTime() >= g_fRougeBlockFxNext[victim])
++                {
++                    Sonic_WitchStun(attacker, 1.2);
++                    GetEntPropVector(attacker, Prop_Data, "m_vecAbsOrigin", aPos);
++                    MakeVectorFromPoints(vPos, aPos, push);
++                    NormalizeVector(push, push);
++                    ScaleVector(push, 400.0); push[2] = 220.0;
++                    TeleportEntity(attacker, NULL_VECTOR, NULL_VECTOR, push);
++                }
++            }
++        }
++
++        if (GetEngineTime() >= g_fRougeBlockFxNext[victim])
++        {
++            g_fRougeBlockFxNext[victim] = GetEngineTime() + 0.4;
++            Rouge_CounterBlockFx(victim);
++        }
++        damage = 0.0;
++        return Plugin_Handled;
++    }
++
+     // Inmunidad a dano de caida (planeo de murcielago)
+     if (damagetype & DMG_FALL)
+     {
+@@ -739,6 +1378,15 @@
+         return Plugin_Handled;
+     }
+ 
++    // v10-OM: REDUCCION PASIVA del lua (passivereduction 90 -> recibe
++    // el 90% de todo lo que llega vivo hasta aqui)
++    if (damage > 0.0 && g_cvRougePassiveRed != null)
++    {
++        damage *= g_cvRougePassiveRed.FloatValue;
++        if (damage <= 0.05) damage = 0.05;
++        return Plugin_Changed;
++    }
++
+     return Plugin_Continue;
+ }
+ 
+@@ -874,6 +1522,428 @@
+ }
+ 
+ // =======================
++// =====================================================================
++//  v10-OM — HABILIDAD 1 (Z): BARRIDO (Sweep Kick del lua GMod)
++//  carga 0.35s (paso corto + punchstart 107) -> embestida a 550 con
++//  I-FRAMES (OM_Damage_Reduction=0 del lua) + primer golpe por TOUCH:
++//  comun = dano + ragdoll VOLADO (dir*500), especial = stagger 2.5 +
++//  dano, tank = dano + empuje, witch = estatua. blazekick.wav. Recarga
++//  28 al golpear / 15 al fallar (sweepkick_cd_hit/cd_miss). Desde la
++//  pared: el lanzazo 1500 del lua (kick con LatchOntoWall).
++// =====================================================================
++public Action Command_RougeSweepKick(int client, int args)
++{
++    if (!Rouge_IsValidClient(client)) return Plugin_Handled;
++    // El Barrido es de la Rouge REAL (sus granadas se prestan al set de
++    // Sage; el kit de combate no — misma regla de la evasion/planeo).
++    if (g_iPlayerCharIdx[client] != ROUGE_INDEX) return Plugin_Handled;
++
++    float now = GetEngineTime();
++
++    // desde la PARED: el lua convierte el kick en lanzazo (aim*1500)
++    if (g_bRougeLatched[client])
++    {
++        g_bRougeLatched[client] = false;
++        SetEntityMoveType(client, MOVETYPE_WALK);
++        float aim[3], launch[3];
++        GetClientEyeAngles(client, aim);
++        GetAngleVectors(aim, launch, NULL_VECTOR, NULL_VECTOR);
++        launch[0] *= 1500.0; launch[1] *= 1500.0; launch[2] = 60.0;
++        TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, launch);
++        Rouge_AvatarOneShot(client, ROUGE_ST_JUMP, ROUGE_LOCK_LATCHOFF);
++        if (g_bRougeSndSwing) EmitSoundToAll("om/knuckles/swing.wav", client, _, ROUGE_SND_LEVEL);
++        PrintCenterText(client, "¡Lanzazo desde la pared!");
++        return Plugin_Handled;
++    }
++
++    if (g_iRougeKickPhase[client] != ROUGE_KICK_NONE) return Plugin_Handled;
++    if (g_bRougeCountering[client]) return Plugin_Handled;
++    if (g_bRougeGliding[client]) return Plugin_Handled;
++
++    if (now < g_fRougeKickCDUntil[client])
++    {
++        PrintCenterText(client, "BARRIDO: recarga %.1fs", g_fRougeKickCDUntil[client] - now);
++        return Plugin_Handled;
++    }
++
++    // carga (sweepkick_chargeup 0.35 + punchstart.wav pitch 107 del lua)
++    g_iRougeKickPhase[client] = ROUGE_KICK_CHARGING;
++    g_fRougeKickChargeEnd[client] = now + g_cvRougeKickCharge.FloatValue;
++    if (g_bRougeSndPunchStart) EmitSoundToAll("om/knuckles/punchstart.wav", client, _, ROUGE_SND_LEVEL, 107);
++    else EmitSoundToAll("weapons/knife/knife_deploy.wav", client, _, ROUGE_SND_LEVEL);
++    Rouge_AvatarTintPulse(client, 255, 60, 120);
++    PrintCenterText(client, "Cargando el barrido...");
++    return Plugin_Handled;
++}
++
++// golpe del barrido: lo dispara el TOUCH durante la embestida (la
++// esfera de 95u del lua, resuelta por colision — cero escaneo por tick)
++public Action Rouge_OnTouch(int client, int other)
++{
++    if (g_iRougeKickPhase[client] != ROUGE_KICK_DASH) return Plugin_Continue;
++    if (g_bRougeKickHit[client]) return Plugin_Continue;
++    if (other <= 0 || !IsValidEntity(other)) return Plugin_Continue;
++
++    // la esfera del lua (FindInSphere 95): el toque cuenta solo si el
++    // cuerpo alcanza esa distancia de Rouge
++    float cPos[3], oPos[3];
++    GetClientAbsOrigin(client, cPos);
++    GetEntPropVector(other, Prop_Send, "m_vecOrigin", oPos);
++    if (GetVectorDistance(cPos, oPos) > g_cvRougeKickRadius.FloatValue) return Plugin_Continue;
++
++    char cls[32];
++    GetEntityClassname(other, cls, sizeof(cls));
++
++    // comun: dano + ragdoll volado en la direccion del barrido (el lua
++    // flingea dir*500 con CreateRagdolLCharacter_OM)
++    if (StrEqual(cls, "infected"))
++    {
++        g_bRougeKickHit[client] = true;
++        SDKHooks_TakeDamage(other, client, client, g_cvRougeKickDamage.FloatValue, DMG_CLUB);
++        if (IsValidEntity(other) && GetEntProp(other, Prop_Send, "m_iHealth") <= 0)
++            Rouge_FlingRagdoll(other, g_vRougeKickDir[client]);
++        Rouge_KickFeedback(client);
++        return Plugin_Handled;
++    }
++
++    // witch: estatua (el lua congelaba con el stun de martillo)
++    if (StrEqual(cls, "witch"))
++    {
++        g_bRougeKickHit[client] = true;
++        SDKHooks_TakeDamage(other, client, client, g_cvRougeKickDamage.FloatValue, DMG_CLUB);
++        Sonic_WitchStun(other, 1.5);
++        Rouge_KickFeedback(client);
++        return Plugin_Handled;
++    }
++
++    // especial / tank (player infectado): stagger + dano + empujon
++    if (other <= MaxClients && IsClientInGame(other) && GetClientTeam(other) == TEAM_INFECTED && IsPlayerAlive(other))
++    {
++        g_bRougeKickHit[client] = true;
++        SDKHooks_TakeDamage(other, client, client, g_cvRougeKickDamage.FloatValue, DMG_CLUB);
++        float vPos[3], aPos[3], push[3];
++        GetClientAbsOrigin(client, vPos);
++        int zClass = GetEntProp(other, Prop_Send, "m_zombieClass");
++        if (zClass != 8)
++            SIStagger_Stagger(other, client, vPos, g_cvRougeKickStun.FloatValue);
++        GetEntPropVector(other, Prop_Data, "m_vecAbsOrigin", aPos);
++        MakeVectorFromPoints(vPos, aPos, push);
++        NormalizeVector(push, push);
++        ScaleVector(push, 450.0); push[2] = 260.0;
++        TeleportEntity(other, NULL_VECTOR, NULL_VECTOR, push);
++        Rouge_KickFeedback(client);
++        return Plugin_Handled;
++    }
++
++    return Plugin_Continue;
++}
++
++// el jugo del golpe del barrido: blazekick.wav + energia (reward 30)
++void Rouge_KickFeedback(int client)
++{
++    if (g_bRougeSndBlazeKick) EmitSoundToAll("om/blaze/blazekick.wav", client, _, ROUGE_SND_LEVEL);
++    else EmitSoundToAll(ROUGE_SND_KICK_HIT, client, _, ROUGE_SND_LEVEL);
++    g_fRougeEnergy[client] += g_cvRougeKickReward.FloatValue;
++    float emax = g_cvRougeEnergyMax.FloatValue;
++    if (g_fRougeEnergy[client] > emax) g_fRougeEnergy[client] = emax;
++    Rouge_AvatarTintPulse(client, 255, 200, 255);
++    PrintCenterText(client, "¡BARRIDO! (+%.0f energia)", g_cvRougeKickReward.FloatValue);
++}
++
++// ragdoll volado del comun golpeado (receta CreateRagdolLCharacter_OM
++// del lua: el cuerpo sale con dir*500 y gira — patron ragdoll del suite)
++void Rouge_FlingRagdoll(int victim, const float dir[3])
++{
++    if (!IsValidEntity(victim)) return;
++
++    char model[96];
++    GetEntPropString(victim, Prop_Data, "m_ModelName", model, sizeof(model));
++    if (model[0] == '\0') return;
++
++    int rag = CreateEntityByName("prop_ragdoll");
++    if (rag <= 0 || !IsValidEntity(rag)) return;
++
++    float pos[3], ang[3];
++    GetEntPropVector(victim, Prop_Send, "m_vecOrigin", pos);
++    GetEntPropVector(victim, Prop_Send, "m_angRotation", ang);
++
++    DispatchKeyValue(rag, "model", model);
++    DispatchSpawn(rag);
++    TeleportEntity(rag, pos, ang, NULL_VECTOR);
++
++    float vel[3];
++    vel[0] = dir[0] * 500.0;
++    vel[1] = dir[1] * 500.0;
++    vel[2] = 300.0;
++    TeleportEntity(rag, NULL_VECTOR, NULL_VECTOR, vel);
++
++    float angVel[3];
++    angVel[0] = GetRandomFloat(-900.0, 900.0);
++    angVel[1] = GetRandomFloat(-900.0, 900.0);
++    angVel[2] = GetRandomFloat(-400.0, 400.0);
++    SetEntPropVector(rag, Prop_Data, "m_angVelocity", angVel);
++
++    AcceptEntityInput(victim, "BecomeRagdoll");
++    CreateTimer(3.0, T_RougeRagdollCleanup, EntIndexToEntRef(rag), TIMER_FLAG_NO_MAPCHANGE);
++}
++
++public Action T_RougeRagdollCleanup(Handle timer, any ref)
++{
++    int ent = EntRefToEntIndex(view_as<int>(ref));
++    if (ent > 0 && IsValidEntity(ent))
++        AcceptEntityInput(ent, "Kill");
++    return Plugin_Stop;
++}
++
++// =====================================================================
++//  v10-OM — HABILIDAD 2 (X): CONTRAGOLPE (counter estilo Knuckles pero
++//  MAS DEBIL + SU PROPIA ENTRADA EN EL VSCRIPT)
++//  4s de ventana (vs 8s del Knuckles), devoluciones a media fuerza (el
++//  bloqueo SI es total) y — la parte que manda — la ventana del
++//  chch_parrying.nut v2.9 SE ABRE SOLA: Rouge_ParryNotifyNut ->
++//  RunScriptCode -> ChCh_RougeNotify(idx, 1, dur) (patron supertank
++//  SetAmyMode: la entrada ES la identidad; sin consola, sin gates).
++//  Ahi vive la DEVOLUCION DE PROYECTILES completa (roca/saliva/
++//  granadas + enemigos en cono).
++// =====================================================================
++public Action Command_RougeCounter(int client, int args)
++{
++    if (!Rouge_IsValidClient(client)) return Plugin_Handled;
++    if (g_iPlayerCharIdx[client] != ROUGE_INDEX) return Plugin_Handled;
++    if (g_iRougeKickPhase[client] != ROUGE_KICK_NONE) return Plugin_Handled;
++
++    // toggle (como la postura de Knuckles: X otra vez la apaga)
++    if (g_bRougeCountering[client])
++    {
++        Rouge_StopCounter(client);
++        return Plugin_Handled;
++    }
++
++    float now = GetEngineTime();
++    if (now < g_fRougeCounterCDUntil[client])
++    {
++        PrintCenterText(client, "CONTRAGOLPE: recarga %.1fs", g_fRougeCounterCDUntil[client] - now);
++        return Plugin_Handled;
++    }
++
++    g_bRougeCountering[client] = true;
++    g_fRougeCounterEnd[client] = now + g_cvRougeParryDuration.FloatValue;
++
++    // paso defensivo + tinte magenta del avatar
++    SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 0.5);
++    Rouge_AvatarTintPulse(client, 255, 120, 220);
++    if (g_bRougeSndFlash) EmitSoundToAll("om/rouge/flashbomb.wav", client, _, ROUGE_SND_LEVEL, _, 0.5);
++    else EmitSoundToAll("weapons/knife/knife_deploy.wav", client, _, ROUGE_SND_LEVEL);
++
++    PrintCenterText(client, "🛡️ ¡CONTRAGOLPE! (%.0fs — devuelve proyectiles)", g_cvRougeParryDuration.FloatValue);
++
++    // LA VENTANA DEL VSCRIPT SE ABRE AQUI (patron supertank)
++    Rouge_ParryNotifyNut(client, true, g_cvRougeParryDuration.FloatValue);
++    return Plugin_Handled;
++}
++
++void Rouge_StopCounter(int client)
++{
++    g_bRougeCountering[client] = false;
++    // la postura se apaga -> SU ventana del parry tambien (directo)
++    Rouge_ParryNotifyNut(client, false, 0.0);
++    if (IsClientInGame(client))
++        SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
++    g_fRougeCounterCDUntil[client] = GetEngineTime() + g_cvRougeParryCD.FloatValue;
++    PrintCenterText(client, "Contragolpe terminado.");
++}
++
++// =====================================================================
++//  v10-OM — EL PUENTE DIRECTO AL VSCRIPT (patron supertank, clon
++//  exacto del Knux_ParryNotifyNut v75 / Amy_ParryNotifyNut v104):
++//  RunScriptCode -> ChCh_RougeNotify del chch_parrying.nut v2.9 en un
++//  logic_script PROPIO. El guard "in getroottable()" lo hace no-op
++//  silencioso si el .nut no esta cargado.
++// =====================================================================
++#define ROUGE_SCRIPT_RUNNER_NAME "rouge_parry_runner"
++
++void Rouge_ParryNotifyNut(int client, bool on, float dur)
++{
++    if (client <= 0 || client > MaxClients || !IsClientInGame(client)) return;
++
++    int runner = Rouge_FindScriptRunner();
++    if (runner == -1 || !IsValidEntity(runner)) return;
++
++    char code[192];
++    Format(code, sizeof(code),
++        "local r = getroottable(); if(\"ChCh_RougeNotify\" in r) r.ChCh_RougeNotify(%d, %d, %.2f)",
++        client, on ? 1 : 0, dur);
++
++    SetVariantString(code);
++    AcceptEntityInput(runner, "RunScriptCode");
++}
++
++// Helper: encontrar o crear NUESTRO logic_script (leccion v51 de Amy:
++// JAMAS reusar el logic_script de un mapa — pisaria su estado).
++int Rouge_FindScriptRunner()
++{
++    int entity = -1;
++    char nameBuf[32];
++    while ((entity = FindEntityByClassname(entity, "logic_script")) != -1)
++    {
++        if (!IsValidEntity(entity)) continue;
++        GetEntPropString(entity, Prop_Data, "m_iName", nameBuf, sizeof(nameBuf));
++        if (StrEqual(nameBuf, ROUGE_SCRIPT_RUNNER_NAME, false)) return entity;
++    }
++    entity = CreateEntityByName("logic_script");
++    if (entity != -1) {
++        DispatchKeyValue(entity, "targetname", ROUGE_SCRIPT_RUNNER_NAME);
++        DispatchSpawn(entity);
++    }
++    return entity;
++}
++
++// FX del bloqueo del contragolpe: pulso BLANCO + SU sonido (el
++// rouge_parry_blocked que manda el .nut v2.9 cuando SU ventana bloquea)
++void Rouge_CounterBlockFx(int client)
++{
++    Rouge_AvatarTintPulse(client, 255, 255, 255);
++    if (g_bRougeSndFlash)
++        EmitSoundToAll("om/rouge/flashbomb.wav", client, _, ROUGE_SND_LEVEL, _, 0.5);
++    else
++        EmitSoundToAll(ROUGE_SND_KICK_HIT, client, _, ROUGE_SND_LEVEL);
++}
++
++// el VSCRIPT bloqueo algo en la ventana de Rouge (puente inverso,
++// patron knx_parry_blocked / amyparry_strike — el .nut ya puso SU hint
++// y SU sonido; aqui solo el tinte del avatar)
++public Action Rouge_CmdParryBlocked(int args)
++{
++    if (args < 1) return Plugin_Handled;
++    char s[16];
++    GetCmdArg(1, s, sizeof(s));
++    int client = StringToInt(s);
++    if (client <= 0 || client > MaxClients || !IsClientInGame(client)) return Plugin_Handled;
++    if (g_iPlayerCharIdx[client] != ROUGE_INDEX) return Plugin_Handled;
++    if (!IsPlayerAlive(client) || GetClientTeam(client) != TEAM_SURVIVOR) return Plugin_Handled;
++    if (GetEngineTime() < g_fRougeBlockFxNext[client]) return Plugin_Handled;
++    g_fRougeBlockFxNext[client] = GetEngineTime() + 0.4;
++
++    Rouge_CounterBlockFx(client);
++    return Plugin_Handled;
++}
++
++// =====================================================================
++//  v10-OM — POOL DE LENTITUD (la rougeslowdown del lua): el destello
++//  del Cebo+Flash deja a los especiales/tank al 70% durante 6s. El
++//  motor pelea el lagged: se re-afirma a 5 Hz hasta expirar.
++// =====================================================================
++void Rouge_SlowAdd(int ent, float mul, float dur)
++{
++    if (ent <= 0 || !IsValidEntity(ent)) return;
++    int ref = EntIndexToEntRef(ent);
++    float now = GetEngineTime();
++
++    for (int i = 0; i < ROUGE_SLOW_SLOTS; i++)
++    {
++        if (g_iRougeSlowRef[i] == ref)
++        {
++            g_fRougeSlowEnd[i] = now + dur;
++            g_fRougeSlowMul[i] = mul;
++            return;
++        }
++    }
++    for (int i = 0; i < ROUGE_SLOW_SLOTS; i++)
++    {
++        if (g_iRougeSlowRef[i] == 0 || !IsValidEntity(EntRefToEntIndex(g_iRougeSlowRef[i])))
++        {
++            g_iRougeSlowRef[i] = ref;
++            g_fRougeSlowEnd[i] = now + dur;
++            g_fRougeSlowMul[i] = mul;
++            return;
++        }
++    }
++}
++
++public Action T_RougeSlowTick(Handle timer)
++{
++    float now = GetEngineTime();
++    for (int i = 0; i < ROUGE_SLOW_SLOTS; i++)
++    {
++        if (g_iRougeSlowRef[i] == 0) continue;
++        int ent = EntRefToEntIndex(g_iRougeSlowRef[i]);
++        if (ent <= 0 || !IsValidEntity(ent) || now >= g_fRougeSlowEnd[i])
++        {
++            if (ent > 0 && IsValidEntity(ent) && ent <= MaxClients && IsClientInGame(ent)
++                && HasEntProp(ent, Prop_Send, "m_flLaggedMovementValue"))
++                SetEntPropFloat(ent, Prop_Send, "m_flLaggedMovementValue", 1.0);
++            g_iRougeSlowRef[i] = 0;
++            continue;
++        }
++        if (ent <= MaxClients && IsClientInGame(ent)
++            && HasEntProp(ent, Prop_Send, "m_flLaggedMovementValue"))
++            SetEntPropFloat(ent, Prop_Send, "m_flLaggedMovementValue", g_fRougeSlowMul[i]);
++    }
++    return Plugin_Continue;
++}
++
++void Rouge_SlowClear()
++{
++    for (int i = 0; i < ROUGE_SLOW_SLOTS; i++) g_iRougeSlowRef[i] = 0;
++}
++
++// =====================================================================
++//  v10-OM — HUD DE ENERGIA (la rouge_latchbar del lua, barra purpura
++//  Color(175,0,245)): 10 bloques en el hint, solo cuando cambia (o
++//  refresco lento si esta quieta y llena no molesta: se calla).
++// =====================================================================
++void Rouge_EnergyHUD(int client)
++{
++    float now = GetEngineTime();
++    if (now < g_fRougeHUDNext[client]) return;
++
++    float emax = g_cvRougeEnergyMax.FloatValue;
++    float frac = g_fRougeEnergy[client] / (emax > 0.0 ? emax : 100.0);
++    if (frac < 0.0) frac = 0.0;
++    if (frac > 1.0) frac = 1.0;
++
++    // callada si esta LLENA y estable (el lua la muestra siempre, aqui
++    // el hint es un recurso compartido: 1.2s de refresco cuando cambia,
++    // nada cuando esta al tope estable)
++    bool full = (frac >= 0.999);
++    if (full && g_fRougeHUDLastVal[client] >= 0.999) return;
++
++    g_fRougeHUDNext[client] = now + 1.2;
++    g_fRougeHUDLastVal[client] = frac;
++
++    int blocks = RoundToNearest(frac * 10.0);
++    if (blocks < 0) blocks = 0;
++    if (blocks > 10) blocks = 10;
++
++    char bar[64];
++    int p = 0;
++    for (int i = 0; i < 10; i++)
++    {
++        if (i < blocks) { bar[p++] = '#'; }
++        else            { bar[p++] = '-'; }
++    }
++    bar[p] = '\0';
++
++    if (g_bRougeRegenSerious[client])
++        PrintHintText(client, "Energia [%s] %d%% (AGOTADA — se recupera a 35)", bar, RoundToNearest(frac * 100.0));
++    else
++        PrintHintText(client, "Energia [%s] %d%%", bar, RoundToNearest(frac * 100.0));
++}
++
++// filtro de trace: SOLO mundo/props (el lua excluia players/NPC/ragdolls)
++public bool Rouge_TraceFilter_World(int entity, int contentsMask, any data)
++{
++    if (entity > 0 && entity <= MaxClients) return false;
++    if (entity > MaxClients)
++    {
++        static char cls[16];
++        GetEntityClassname(entity, cls, sizeof(cls));
++        if (StrEqual(cls, "infected", false) || StrEqual(cls, "witch", false)) return false;
++    }
++    return true;
++}
++
++// =======================
+ // HABILIDAD 1: CEBO QUIMICO (con FIX del charco de acido real)
+ // ==========================================================
+ 
+@@ -1052,9 +2122,111 @@
+ 
+     EmitSoundToAll(ROUGE_SND_BOOM, ownerClient > 0 ? ownerClient : 0);
+ 
++    // 6. v10-OM: LA FUSION CON LA FLASH BANG DEL LUA — el Cebo Quimico
++    //    ahora es el CEBO+FLASH: tras la explosion quimica llega el
++    //    DESTELLO que ciega (estatua) lo que tenga linea de vision en
++    //    400u: comunes/witch congelados, especiales stagger + lentitud
++    //    x0.7 durante 6s (la rougeslowdown), tank lento.
++    Rouge_FlashBang(pos, ownerClient);
++
+     return Plugin_Stop;
+ }
+ 
++// =====================================================================
++//  v10-OM — EL DESTELLO DEL CEBO+FLASH (la Flash Bang del lua):
++//  FindInSphere 400 + Visible() del lua -> aqui: radio + TR LOS.
++//  * comunes/witch: OM_Stun (FL_FROZEN, tinte CYAN de ceguera)
++//  * especiales: stagger 1.2 + lentitud x0.7 6s (SLOW de arriba)
++//  * tank: lentitud x0.85 3s (resiste)
++//  * si alcanzo a ALGUIEN: +20 de energia (smokebomb_reward del lua)
++//  * VFX: destello BLANCO triple + om/rouge/flashbomb.wav
++// =====================================================================
++void Rouge_FlashBang(const float pos[3], int owner)
++{
++    float radius = g_cvRougeFlashRadius.FloatValue;
++
++    // VFX del destello (el om_rouge_flash del lua: blanco total)
++    TE_SetupGlowSprite(pos, g_iRougeGlowSprite, 0.45, 35.0, 255);
++    TE_SendToAll();
++    TE_SetupGlowSprite(pos, g_iRougeHaloSprite, 0.6, 55.0, 210);
++    TE_SendToAll();
++    TE_SetupBeamRingPoint(pos, 20.0, radius, g_iRougeBeamSprite, 0, 0, 30, 0.5, 22.0, 0.0, {255, 255, 255, 235}, 0, 0);
++    TE_SendToAll();
++
++    if (g_bRougeSndFlash) EmitSoundToAll("om/rouge/flashbomb.wav", _, SNDCHAN_AUTO, ROUGE_SND_LEVEL);
++    else EmitSoundToAll(ROUGE_SND_BOOM, _, SNDCHAN_AUTO, 120);
++
++    bool hitSomeone = false;
++    float target[3];
++
++    // ---- comunes + witch (con linea de vision al destello) ----
++    int ent = -1;
++    while ((ent = FindEntityByClassname(ent, "infected")) != -1)
++    {
++        if (!IsValidEntity(ent)) continue;
++        GetEntPropVector(ent, Prop_Send, "m_vecOrigin", target);
++        if (GetVectorDistance(pos, target) > radius) continue;
++        target[2] += 40.0;
++        Handle tr = TR_TraceRayFilterEx(pos, target, MASK_SOLID_BRUSHONLY, RayType_EndPoint, Rouge_TraceFilter_World, 0);
++        bool clear = !TR_DidHit(tr);   // el Visible(ent2) del lua
++        delete tr;
++        if (!clear) continue;
++
++        OM_Stun(ent, g_cvRougeFlashStun.FloatValue, owner, 0.0, DMG_OM_CLUB, false, OM_STUN_F_CYAN);
++        hitSomeone = true;
++    }
++    ent = -1;
++    while ((ent = FindEntityByClassname(ent, "witch")) != -1)
++    {
++        if (!IsValidEntity(ent)) continue;
++        GetEntPropVector(ent, Prop_Send, "m_vecOrigin", target);
++        if (GetVectorDistance(pos, target) > radius) continue;
++        target[2] += 40.0;
++        Handle tr = TR_TraceRayFilterEx(pos, target, MASK_SOLID_BRUSHONLY, RayType_EndPoint, Rouge_TraceFilter_World, 0);
++        bool clear = !TR_DidHit(tr);
++        delete tr;
++        if (!clear) continue;
++
++        Sonic_WitchStun(ent, g_cvRougeFlashStun.FloatValue);
++        hitSomeone = true;
++    }
++
++    // ---- especiales y tank (players del equipo 3) ----
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (i == owner) continue;
++        if (!IsClientInGame(i) || !IsPlayerAlive(i) || GetClientTeam(i) != TEAM_INFECTED) continue;
++        GetClientAbsOrigin(i, target);
++        if (GetVectorDistance(pos, target) > radius) continue;
++        target[2] += 40.0;
++        Handle tr = TR_TraceRayFilterEx(pos, target, MASK_SOLID_BRUSHONLY, RayType_EndPoint, Rouge_TraceFilter_World, 0);
++        bool clear = !TR_DidHit(tr);
++        delete tr;
++        if (!clear) continue;
++
++        int zClass = GetEntProp(i, Prop_Send, "m_zombieClass");
++        if (zClass == 8)
++        {
++            Rouge_SlowAdd(i, 0.85, 3.0);   // el tank resiste el destello
++        }
++        else
++        {
++            SIStagger_Stagger(i, owner, pos, 1.2);
++            Rouge_SlowAdd(i, g_cvRougeFlashSlow.FloatValue, g_cvRougeFlashSlowDur.FloatValue);
++        }
++        hitSomeone = true;
++    }
++
++    // ---- recompensa de energia (smokebomb_reward 20 del lua) ----
++    if (hitSomeone && owner > 0 && IsClientInGame(owner) && IsPlayerAlive(owner))
++    {
++        g_fRougeEnergy[owner] += g_cvRougeFlashReward.FloatValue;
++        float emax = g_cvRougeEnergyMax.FloatValue;
++        if (g_fRougeEnergy[owner] > emax) g_fRougeEnergy[owner] = emax;
++        PrintCenterText(owner, "💥 ¡CEBO+FLASH! (+%.0f energia)", g_cvRougeFlashReward.FloatValue);
++    }
++}
++
+ // FIX: Crear un charco de acido REAL que hace dano
+ // v7.1: Crea un charco de acido nativo usando SDKCall a CSpitterProjectile_Create
+ // Sistema basado en el plugin "Prototype Grenades" de Silvers.
+@@ -2199,6 +3371,11 @@
+     if (!IsValidClient(client)) return;
+     if (g_iPlayerCharIdx[client] != ROUGE_INDEX) return;
+ 
++    // v10-OM: el avatar se mata ENTERO (cambio de personaje /
++    // disconnect: NO ragdoll — no murio). El ragdoll sale en el
++    // Event_PlayerDeath del hook de evento (la muerte de verdad).
++    Rouge_KillAvatar(client);
++
+     // v8.0: la Treasure Vision fue retirada; ya no hay glows rosas que
+     // limpiar. Solo resetear el estado propio (planeo, destello de
+     // evasion, cooldowns).
+@@ -2213,3 +3390,719 @@
+ 
+ // Puente de compatibilidad
+ public void Rouge_OnPlayerRunCmd(int client, int &buttons) {}
++
++// =====================================================================
++// =====================================================================
++//  v10-OM — AVATAR ESPEJO ROUGE.MDL (el 6o avatar del suite: patron
++//  Tails/Sonic/Amy/Metal/Knuckles v75). copia R (la que ven los DEMAS,
++//  parentada o por TP segun tails_avatar_tp) + copia L (la que ve el
++//  dueno, contra-rotada con sus eye angles) + cuerpo del survivor
++//  oculto (RENDER_NONE) + FSM 10 Hz con las secuencias del rouge.mdl
++//  que usa el lua GMod + pulso de pausa en cada montaje + ADOPCION de
++//  huerfanos (v72-OM: esta FSM es la UNICA creadora de props con sus
++//  nombres — un prop asi que ella no rastrea muere en el instante del
++//  montaje) + ragdoll de muerte 15s + filtro anti-corpse 2s.
++// =====================================================================
++// =====================================================================
++
++// tabla de secuencias (indices = ROUGE_ST_*) — los nombres EXACTOS del
++// lua (anims.default + ShouldAlternate del redimated_om_pills_survivors_rouge)
++static const char g_sRougeAnimSeq[ROUGE_ANIM_COUNT][20] = {
++    "idle", "walk", "run", "jump", "fall",
++    "latch",
++    "flap", "SweepKick",
++    "IdleLowHealth", "WalkLowHealth", "RunLowHealth",
++    "DownedIdle", "DownedWalk"
++};
++
++int Rouge_CreateAvatarProp(int client, const char[] model, const char[] targetname, bool tpMode = false)
++{
++    int av = CreateEntityByName("prop_dynamic_override");
++    if (av <= 0 || !IsValidEntity(av)) return 0;
++
++    DispatchKeyValue(av, "model", model);
++    DispatchKeyValue(av, "targetname", targetname);
++    DispatchKeyValue(av, "solid", "0");
++    DispatchKeyValue(av, "disableshadows", "1");
++    DispatchSpawn(av);
++
++    float pos[3], ang[3];
++    GetClientAbsOrigin(client, pos);
++    GetClientAbsAngles(client, ang);
++    ang[0] = 0.0;                          // pitch NUNCA
++    ang[2] = 0.0;                          // roll NUNCA
++    g_fRougeBodyYaw[client]  = ang[1];
++    g_fRougeYawLastT[client] = GetEngineTime();
++    TeleportEntity(av, pos, ang, NULL_VECTOR);
++
++    float loc[3];
++    Tails_AvatarLocalAngles(0.0, ang[1], g_fRougeBodyYaw[client], loc);
++
++    if (!tpMode)
++    {
++        // parentado (modo Tails default: el motor mueve la posicion,
++        // cero delay de red, anims suaves; aqui solo se escriben angulos)
++        SetVariantString("!activator");
++        AcceptEntityInput(av, "SetParent", client);
++        if (HasEntProp(av, Prop_Send, "m_angRotation"))
++            SetEntPropVector(av, Prop_Send, "m_angRotation", loc);
++    }
++
++    for (int k = 0; k < 3; k++)
++    {
++        g_fRougeSmLoc[client][k]  = loc[k];
++        g_fRougeSmLocL[client][k] = loc[k];
++    }
++    g_bRougeSmSnap[client] = true;
++
++    if (!tpMode)
++        Tails_SetAvatarNoInterp(av, true);
++    return av;
++}
++
++// v72-OM (adopcion): un prop con NUESTRO nombre que esta FSM no rastrea
++// es un huerfano por definicion — muere en el instante del montaje.
++bool Rouge_IsMyAvatarRef(int ref)
++{
++    if (ref == 0 || ref == INVALID_ENT_REFERENCE) return false;
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_iRougeAvatar[i] == ref) return true;
++        if (g_iRougeAvatarL[i] == ref) return true;
++    }
++    return false;
++}
++
++void Rouge_KillGhostAvatarProps()
++{
++    static const char sGhostNames[][] = { "rouge_avatar_om", "rouge_avatar_om_l" };
++    static const char sClasses[][] = { "prop_dynamic_override", "prop_dynamic" };
++    int ghosts[8];
++    int ng = 0;
++    char nameBuf[64];
++
++    // primero se recolecta, luego se mata — el FindEntityByClassname
++    // tras un Kill a mitad de loop es tierra de nadie en L4D2
++    for (int c = 0; c < sizeof(sClasses); c++)
++    {
++        int ent = -1;
++        while ((ent = FindEntityByClassname(ent, sClasses[c])) != -1)
++        {
++            if (!IsValidEntity(ent)) continue;
++            GetEntPropString(ent, Prop_Data, "m_iName", nameBuf, sizeof(nameBuf));
++            if (nameBuf[0] == '\0') continue;
++
++            for (int n = 0; n < sizeof(sGhostNames); n++)
++            {
++                if (!StrEqual(nameBuf, sGhostNames[n], false)) continue;
++                if (Rouge_IsMyAvatarRef(EntIndexToEntRef(ent))) break;
++                if (ng < sizeof(ghosts)) ghosts[ng++] = EntIndexToEntRef(ent);
++                break;
++            }
++        }
++    }
++
++    for (int g = 0; g < ng; g++)
++    {
++        int e = EntRefToEntIndex(ghosts[g]);
++        if (e > 0 && IsValidEntity(e)) AcceptEntityInput(e, "Kill");
++    }
++
++    if (ng > 0)
++        PrintToServer("[Rouge v10-OM] Adopcion del montaje: %d huerfano(s) del avatar eliminado(s).", ng);
++}
++
++// Monta el avatar completo (R + L + cuerpo oculto). pulsePause SOLO para
++// montajes de ciclo de vida (spawn/seleccion/reparacion tardia de la FSM).
++void Rouge_CreateAvatar(int client, bool pulsePause = true)
++{
++    if (!g_bRougeModelOK) return;
++    if (!IsClientInGame(client) || !IsPlayerAlive(client)) return;
++    if (GetClientTeam(client) != 2) return;
++
++    // v72-OM (reemplazo limpio): si este cliente ya tenia un R o L vivo
++    // (montaje doble por orden raro de eventos), muere AQUI enterito.
++    {
++        int oldR = EntRefToEntIndex(g_iRougeAvatar[client]);
++        if (g_iRougeAvatar[client] != 0 && oldR > 0 && IsValidEntity(oldR))
++        {
++            SDKUnhook(oldR, SDKHook_SetTransmit, Rouge_TransmitAvatarR);
++            AcceptEntityInput(oldR, "Kill");
++        }
++        g_iRougeAvatar[client] = 0;
++
++        int oldL = EntRefToEntIndex(g_iRougeAvatarL[client]);
++        if (g_iRougeAvatarL[client] != 0 && oldL > 0 && IsValidEntity(oldL))
++        {
++            SDKUnhook(oldL, SDKHook_SetTransmit, Rouge_TransmitAvatarL);
++            AcceptEntityInput(oldL, "Kill");
++        }
++        g_iRougeAvatarL[client] = 0;
++    }
++
++    // v72-OM: ADOPCION — todo prop de ESTE modulo que la FSM no rastrea
++    // es un huerfano: muere en este instante del montaje.
++    Rouge_KillGhostAvatarProps();
++
++    int av = Rouge_CreateAvatarProp(client, ROUGE_OM_MODEL, ROUGE_AVATAR_NAME, Tails_AvatarTPOn());
++    if (av == 0) return;
++
++    SetVariantString("idle");
++    AcceptEntityInput(av, "SetAnimation");
++    g_iRougeAnimState[client] = 0;
++
++    SDKHook(av, SDKHook_SetTransmit, Rouge_TransmitAvatarR);
++
++    g_iRougeAvatarL[client] = 0;
++    Rouge_CreateAvatarL(client);
++
++    // ocultar el cuerpo del survivor (el avatar ES el personaje ahora)
++    RenderMode curMode = GetEntityRenderMode(client);
++    if (curMode != RENDER_NONE)
++        g_iRougeBodyRender[client] = view_as<int>(curMode);
++    else if (g_iRougeBodyRender[client] == -1)
++        g_iRougeBodyRender[client] = view_as<int>(RENDER_NORMAL);
++    SetEntityRenderMode(client, RENDER_NONE);
++
++    g_iRougeAvatar[client] = EntIndexToEntRef(av);
++
++    // per-tick: angulos locales (contra-rotacion del parent)
++    SDKHook(client, SDKHook_PostThink, Rouge_AvatarFollow);
++
++    // PULSO DE PAUSA en cada montaje de ciclo de vida (la misma infra
++    // sv_pausable del suite; convar tails_pausefix manda para TODOS los
++    // avatares — es UN solo sistema, 6o avatar del suite)
++    if (pulsePause)
++        Tails_PauseFix_Trigger(client);
++}
++
++void Rouge_CreateAvatarL(int client)
++{
++    if (!g_bRougeModelOK) return;
++    if (!IsClientInGame(client) || !IsPlayerAlive(client)) return;
++    if (GetClientTeam(client) != 2) return;
++    if (g_iRougeAvatar[client] == 0) return;
++
++    int av = Rouge_CreateAvatarProp(client, ROUGE_OM_MODEL, ROUGE_AVATAR_NAME_L);
++    if (av == 0) return;
++
++    SetVariantString("idle");
++    AcceptEntityInput(av, "SetAnimation");
++
++    SDKHook(av, SDKHook_SetTransmit, Rouge_TransmitAvatarL);
++
++    g_iRougeAvatarL[client] = EntIndexToEntRef(av);
++}
++
++void Rouge_KillAvatarL(int client)
++{
++    if (client < 1 || client > MaxClients) return;
++    int avL = EntRefToEntIndex(g_iRougeAvatarL[client]);
++    if (g_iRougeAvatarL[client] != 0 && avL > 0 && IsValidEntity(avL))
++    {
++        SDKUnhook(avL, SDKHook_SetTransmit, Rouge_TransmitAvatarL);
++        AcceptEntityInput(avL, "Kill");
++    }
++    g_iRougeAvatarL[client] = 0;
++}
++
++// Mata las copias R+L y devuelve el cuerpo. SIN desenganchar el follow
++// (lo hace Rouge_KillAvatar).
++void Rouge_KillAvatarOnly(int client)
++{
++    if (client < 1 || client > MaxClients) return;
++
++    Rouge_KillAvatarL(client);
++
++    int av = EntRefToEntIndex(g_iRougeAvatar[client]);
++    if (g_iRougeAvatar[client] != 0 && av > 0 && IsValidEntity(av))
++    {
++        SDKUnhook(av, SDKHook_SetTransmit, Rouge_TransmitAvatarR);
++        AcceptEntityInput(av, "Kill");
++    }
++    g_iRougeAvatar[client] = 0;
++    g_iRougeAnimState[client] = -1;
++
++    // devolver el cuerpo (specate/revive/cambio de personaje)
++    if (IsClientInGame(client) && g_iRougeBodyRender[client] != -1)
++    {
++        SetEntityRenderMode(client, view_as<RenderMode>(g_iRougeBodyRender[client]));
++        g_iRougeBodyRender[client] = -1;
++        SetEntityRenderColor(client, 255, 255, 255, 255);
++    }
++}
++
++void Rouge_KillAvatar(int client)
++{
++    if (client < 1 || client > MaxClients) return;
++    Rouge_KillAvatarOnly(client);
++    SDKUnhook(client, SDKHook_PostThink, Rouge_AvatarFollow);
++}
++
++// Transmit filters (patron Sonic/Metal): la R no la ve su dueno (tiene
++// su L), la L la ve SOLO su dueno.
++public Action Rouge_TransmitAvatarR(int entity, int client)
++{
++    if (client < 1) return Plugin_Continue;
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_iRougeAvatar[i] != 0 && EntRefToEntIndex(g_iRougeAvatar[i]) == entity)
++        {
++            if (client == i && g_iRougeAvatarL[i] != 0
++                && EntRefToEntIndex(g_iRougeAvatarL[i]) > 0)
++                return Plugin_Handled;   // el dueno tiene su copia L
++            return Plugin_Continue;
++        }
++    }
++    return Plugin_Continue;
++}
++
++public Action Rouge_TransmitAvatarL(int entity, int client)
++{
++    if (client < 1) return Plugin_Continue;
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_iRougeAvatarL[i] != 0 && EntRefToEntIndex(g_iRougeAvatarL[i]) == entity)
++        {
++            if (client == i) return Plugin_Continue;   // el dueno si
++            return Plugin_Handled;                     // nadie mas
++        }
++    }
++    return Plugin_Continue;
++}
++
++// FOLLOW PER-TICK (lecciones Tails/Sonic/Metal/Knuckles: yaw suave con
++// deadband 3 grados, contra-rotacion amortiguada, reloj vivo, copia L
++// contra los eye angles del dueno; la R por TP en modo tp). Agarrada a
++// la pared: el yaw objetivo es la NORMAL de la pared (mirar afuera).
++public void Rouge_AvatarFollow(int client)
++{
++    if (g_iRougeAvatar[client] == 0)
++    {
++        SDKUnhook(client, SDKHook_PostThink, Rouge_AvatarFollow);
++        return;
++    }
++    if (!IsPlayerAlive(client)) return;   // la FSM mata el avatar en <=0.1s
++
++    // ---- yaw objetivo: direccion REAL del movimiento ----
++    float yawObj = g_fRougeBodyYaw[client];
++    float vel[3];
++    GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++    if (vel[0] * vel[0] + vel[1] * vel[1] > 1600.0)   // > 40 u/s
++    {
++        float velYaw = RadToDeg(ArcTangent2(vel[1], vel[0]));
++        float dv = velYaw - g_fRougeBodyYaw[client];
++        while (dv > 180.0)  dv -= 360.0;
++        while (dv < -180.0) dv += 360.0;
++        if (dv > 3.0 || dv < -3.0)
++            yawObj = velYaw;
++    }
++
++    // agarrada a la pared: mira HACIA AFUERA (la normal, l.652 del lua)
++    if (g_bRougeLatched[client]) yawObj = g_fRougeLatchYaw[client];
++
++    // ---- giro suave hacia el objetivo (~900 grados/s) ----
++    float now = GetEngineTime();
++    float dt  = now - g_fRougeYawLastT[client];
++    g_fRougeYawLastT[client] = now;
++    if (dt <= 0.0 || dt > 0.3) dt = 0.033;
++
++    float d = yawObj - g_fRougeBodyYaw[client];
++    while (d > 180.0)  d -= 360.0;
++    while (d < -180.0) d += 360.0;
++    float step = 900.0 * dt;
++    if (d >  step) d =  step;
++    if (d < -step) d = -step;
++    g_fRougeBodyYaw[client] += d;
++
++    float par[3], loc[3];
++    bool snap = g_bRougeSmSnap[client];
++    GetClientAbsAngles(client, par);
++    float yawPuppet = g_fRougeBodyYaw[client];
++
++    // ---- copia R ----
++    int av = EntRefToEntIndex(g_iRougeAvatar[client]);
++    if (av > 0 && IsValidEntity(av))
++    {
++        if (Tails_AvatarTPOn())
++        {
++            // R POR TP: TeleportEntity por tick en pose mundo + reloj
++            // vivo, SIN EF_NOINTERP -> los clientes de los demas la
++            // INTERPOLAN = suave sin depender de la pausa
++            float posTP[3], angTP[3];
++            GetClientAbsOrigin(client, posTP);
++            angTP[0] = 0.0;                      // pitch NUNCA
++            angTP[1] = yawPuppet;
++            angTP[2] = 0.0;                      // roll NUNCA
++            TeleportEntity(av, posTP, angTP, NULL_VECTOR);
++            Tails_MarkInterp(av);
++        }
++        else
++        {
++            Tails_AvatarLocalAngles(par[0], par[1], yawPuppet, loc);
++            loc[1] = Tails_UnwrapYaw(g_fRougeSmLoc[client][1], loc[1]);
++            Tails_ExpDamp(loc, g_fRougeSmLoc[client], 0.05, dt, snap);
++            if (HasEntProp(av, Prop_Send, "m_angRotation"))
++                SetEntPropVector(av, Prop_Send, "m_angRotation", g_fRougeSmLoc[client]);
++            Tails_MarkInterp(av);
++        }
++    }
++
++    // ---- copia L: contra-rotada contra los EYE del dueno ----
++    if (g_iRougeAvatarL[client] != 0)
++    {
++        int avL = EntRefToEntIndex(g_iRougeAvatarL[client]);
++        if (avL > 0 && IsValidEntity(avL))
++        {
++            float eye[3], locL[3];
++            GetClientEyeAngles(client, eye);
++            Tails_AvatarLocalAngles(eye[0], eye[1], yawPuppet, locL);
++            locL[1] = Tails_UnwrapYaw(g_fRougeSmLocL[client][1], locL[1]);
++            Tails_ExpDamp(locL, g_fRougeSmLocL[client], 0.05, dt, snap);
++            if (HasEntProp(avL, Prop_Send, "m_angRotation"))
++                SetEntPropVector(avL, Prop_Send, "m_angRotation", g_fRougeSmLocL[client]);
++            Tails_MarkInterp(avL);
++        }
++    }
++    g_bRougeSmSnap[client] = false;
++}
++
++// FSM de 10 Hz: montaje / auto-reparacion / muerte del avatar (patron
++// T_KnuxAvatarThink / T_MetalAvatarThink)
++public Action T_RougeAvatarThink(Handle timer)
++{
++    float now = GetEngineTime();
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (!IsClientInGame(i)) { Rouge_KillAvatar(i); continue; }
++
++        bool esRougeViva = (g_iPlayerCharIdx[i] == ROUGE_INDEX
++                           && IsPlayerAlive(i) && GetClientTeam(i) == 2);
++
++        // incap = fuera (defensa anti terceros)
++        if (esRougeViva && GetEntProp(i, Prop_Send, "m_isIncapacitated") > 0)
++            esRougeViva = false;
++
++        // ---- montaje ----
++        if (g_iRougeAvatar[i] == 0)
++        {
++            if (esRougeViva && g_cvRougeAvatar != null && g_cvRougeAvatar.BoolValue
++                && g_bRougeModelOK)
++            {
++                Rouge_CreateAvatar(i);
++            }
++            continue;
++        }
++
++        // quitar avatar si dejo de ser una Rouge survivor viva de pie
++        if (!esRougeViva)
++        {
++            Rouge_KillAvatar(i);
++            continue;
++        }
++
++        int av = EntRefToEntIndex(g_iRougeAvatar[i]);
++        if (av <= 0 || !IsValidEntity(av))
++        {
++            g_iRougeAvatar[i] = 0;
++            g_iRougeAnimState[i] = -1;
++        }
++
++        // reafirmar el RENDER_NONE del cuerpo (el motor lo resetea al
++        // cambiar de capitulo/rescue: fix Tails v5.4)
++        if (g_iRougeBodyRender[i] != -1 && GetEntityRenderMode(i) != RENDER_NONE)
++            SetEntityRenderMode(i, RENDER_NONE);
++
++        // auto-reparacion de la copia L (montaje tardio: pulso tambien)
++        if (g_iRougeAvatarL[i] == 0 && g_iRougeAvatar[i] != 0)
++        {
++            Rouge_CreateAvatarL(i);
++            if (g_iRougeAvatarL[i] != 0)
++                Tails_PauseFix_Trigger(i);
++        }
++
++        // ---- FSM de animacion ----
++        av = EntRefToEntIndex(g_iRougeAvatar[i]);
++        if (g_iRougeAvatar[i] != 0 && av > 0 && IsValidEntity(av))
++            Rouge_AvatarUpdate(i, av, now);
++    }
++    return Plugin_Continue;
++}
++
++// =====================================================================
++// FSM DE ANIMACION — prioridades del lua GMod (ShouldAlternate):
++//   incap (DownedIdle/DownedWalk) -> agarrada de pared (latch) ->
++//   barrido en curso (SweepKick, lock) -> aire (jump subiendo / fall
++//   cayendo — el planeo del suite TAMBIEN es "fall": glide="fall") ->
++//   suelo (idle/walk/run con variantes lowhealth de HP<=60)
++// =====================================================================
++void Rouge_AvatarUpdate(int client, int av, float now)
++{
++    // lock de one-shot en curso (Flap/SweepKick/jump de pared)
++    if (now < g_fRougeAnimLock[client]) return;
++
++    int state;
++    float rate = 1.0;
++
++    if (GetEntProp(client, Prop_Send, "m_isIncapacitated") > 0)
++    {
++        // DownedIdle/DownedWalk del lua (Survivor_Downed_OM)
++        state = (Rouge_Speed2D(client) > 40.0) ? ROUGE_ST_DOWNED_WALK : ROUGE_ST_DOWNED_IDLE;
++    }
++    else if (g_bRougeLatched[client])
++    {
++        // agarrada de pared (ShouldAlternate -> 'latch')
++        state = ROUGE_ST_LATCH;
++    }
++    else if (g_iRougeKickPhase[client] == ROUGE_KICK_DASH
++             || g_iRougeKickPhase[client] == ROUGE_KICK_CHARGING)
++    {
++        // la embestida manda el frame (SweepKick del lua)
++        state = ROUGE_ST_KICK;
++    }
++    else if (!(GetEntityFlags(client) & FL_ONGROUND))
++    {
++        // AIRE: sube = jump; cae = fall (Y el planeo es "fall" en el
++        // lua: glide="fall") — con la ventana del jump sin cortarse
++        float vel[3];
++        GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++        if (vel[2] > 40.0)
++        {
++            state = ROUGE_ST_JUMP;
++        }
++        else
++        {
++            bool jumpLive = false;
++            if (g_iRougeAnimState[client] == ROUGE_ST_JUMP)
++            {
++                float jt = now - g_fRougeJumpStart[client];
++                if (jt < 0.5)      jumpLive = true;
++                else if (jt < 1.5 && !Rouge_JumpAnimDone(av)) jumpLive = true;
++            }
++            state = jumpLive ? ROUGE_ST_JUMP : ROUGE_ST_FALL;
++        }
++    }
++    else if (g_iRougeAnimState[client] == ROUGE_ST_JUMP && !Rouge_JumpAnimDone(av)
++             && now - g_fRougeJumpStart[client] < 0.5)
++    {
++        // FL_ONGROUND parpadea al saltar rozando escalones
++        state = ROUGE_ST_JUMP;
++    }
++    else
++    {
++        // SUELO: idle/walk/run (con lowhealth <= 60 del lua)
++        bool low = (GetClientHealth(client) <= 60);
++        float s = Rouge_Speed2D(client);
++        if (s < 40.0)
++            state = low ? ROUGE_ST_IDLE_LOW : ROUGE_ST_IDLE;
++        else if (s < 150.0 || (GetClientButtons(client) & IN_DUCK))
++        {
++            state = low ? ROUGE_ST_WALK_LOW : ROUGE_ST_WALK;
++            rate = 1.0;   // rate 1 constante del framework GMod
++        }
++        else
++        {
++            state = low ? ROUGE_ST_RUN_LOW : ROUGE_ST_RUN;
++            rate = 1.32 * (s / 450.0);
++            if (rate < 0.72) rate = 0.72;
++            if (rate > 3.6)  rate = 3.6;
++        }
++    }
++
++    if (state != g_iRougeAnimState[client])
++    {
++        // el t0 del jump para su ventana (receta Sonic/Metal/Knuckles)
++        if (state == ROUGE_ST_JUMP) g_fRougeJumpStart[client] = now;
++        SetVariantString(g_sRougeAnimSeq[state]);
++        AcceptEntityInput(av, "SetAnimation");
++        if (g_iRougeAvatarL[client] != 0)
++        {
++            int avLA = EntRefToEntIndex(g_iRougeAvatarL[client]);
++            if (avLA > 0 && IsValidEntity(avLA))
++            {
++                // el variant es de UN SOLO USO — re-armarlo
++                SetVariantString(g_sRougeAnimSeq[state]);
++                AcceptEntityInput(avLA, "SetAnimation");
++            }
++        }
++        g_iRougeAnimState[client] = state;
++    }
++
++    if (rate < 0.05) rate = 0.05;
++    if (HasEntProp(av, Prop_Data, "m_flPlaybackRate"))
++        SetEntPropFloat(av, Prop_Data, "m_flPlaybackRate", rate);
++    if (g_iRougeAvatarL[client] != 0)
++    {
++        int avLB = EntRefToEntIndex(g_iRougeAvatarL[client]);
++        if (avLB > 0 && IsValidEntity(avLB)
++            && HasEntProp(avLB, Prop_Data, "m_flPlaybackRate"))
++            SetEntPropFloat(avLB, Prop_Data, "m_flPlaybackRate", rate);
++    }
++}
++
++float Rouge_Speed2D(int client)
++{
++    float vel[3];
++    GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++    return SquareRoot(vel[0] * vel[0] + vel[1] * vel[1]);
++}
++
++// el one-shot del jump termino? (m_flCycle del prop — la misma sonda
++// del Sonic_JumpAnimDone / Knux_JumpAnimDone)
++bool Rouge_JumpAnimDone(int av)
++{
++    if (av <= 0 || !IsValidEntity(av)) return true;
++    if (HasEntProp(av, Prop_Data, "m_flCycle"))
++        return GetEntPropFloat(av, Prop_Data, "m_flCycle") >= 0.95;
++    return true;
++}
++
++// ONE-SHOT de habilidad sobre las DOS copias (los PillAnim del lua:
++// SweepKick/Flap/Jump2). Bloquea la FSM mientras corre.
++void Rouge_AvatarOneShot(int client, int stIdx, float lock)
++{
++    if (client < 1 || client > MaxClients) return;
++    if (g_iRougeAvatar[client] == 0) return;
++
++    int av = EntRefToEntIndex(g_iRougeAvatar[client]);
++    if (av > 0 && IsValidEntity(av))
++    {
++        SetVariantString(g_sRougeAnimSeq[stIdx]);
++        AcceptEntityInput(av, "SetAnimation");
++    }
++    if (g_iRougeAvatarL[client] != 0)
++    {
++        int avL = EntRefToEntIndex(g_iRougeAvatarL[client]);
++        if (avL > 0 && IsValidEntity(avL))
++        {
++            SetVariantString(g_sRougeAnimSeq[stIdx]);
++            AcceptEntityInput(avL, "SetAnimation");
++        }
++    }
++    g_iRougeAnimState[client] = stIdx;
++    g_fRougeAnimLock[client] = GetEngineTime() + lock;
++}
++
++// =====================================================================
++// TINTES DEL AVATAR (misma rampa simetrica del UI GMod: 0.25s con fade
++// 0.125 por lado). Aplica a las DOS copias; el cuerpo oculto no se toca.
++// =====================================================================
++void Rouge_AvatarSetColor(int client, int r, int g, int b, int a)
++{
++    int av = EntRefToEntIndex(g_iRougeAvatar[client]);
++    if (g_iRougeAvatar[client] != 0 && av > 0 && IsValidEntity(av))
++        SetEntityRenderColor(av, r, g, b, a);
++    int avL = EntRefToEntIndex(g_iRougeAvatarL[client]);
++    if (g_iRougeAvatarL[client] != 0 && avL > 0 && IsValidEntity(avL))
++        SetEntityRenderColor(avL, r, g, b, a);
++}
++
++void Rouge_AvatarTintReset(int client)
++{
++    Rouge_AvatarSetColor(client, 255, 255, 255, 255);
++}
++
++// arranca un pulso de color (0.25s con fade simetrico)
++void Rouge_AvatarTintPulse(int client, int r, int g, int b)
++{
++    if (g_iRougeAvatar[client] == 0) return;
++    g_iRougeTintR[client] = r;
++    g_iRougeTintG[client] = g;
++    g_iRougeTintB[client] = b;
++    g_fRougeTintEnd[client] = GetEngineTime() + ROUGE_TINT_DUR;
++}
++
++// animador por frame (lo llama el nucleo del PreThink): pulso activo
++// con la rampa simetrica; sin pulso, el CONTRAGOLPE tiñe magenta
++// (255,120,220); sin nada, color base.
++void Rouge_TintThink(int client)
++{
++    if (g_iRougeAvatar[client] == 0) return;
++    float now = GetEngineTime();
++
++    if (g_fRougeTintEnd[client] > 0.0)
++    {
++        float start = g_fRougeTintEnd[client] - ROUGE_TINT_DUR;
++        float a;
++        if (now <= start + ROUGE_TINT_FADE)
++            a = (now - start) / ROUGE_TINT_FADE;
++        else if (now >= g_fRougeTintEnd[client] - ROUGE_TINT_FADE)
++            a = (g_fRougeTintEnd[client] - now) / ROUGE_TINT_FADE;
++        else
++            a = 1.0;
++        if (a < 0.0) a = 0.0;
++        if (a > 1.0) a = 1.0;
++
++        Rouge_AvatarSetColor(client, g_iRougeTintR[client], g_iRougeTintG[client],
++                            g_iRougeTintB[client], RoundToNearest(255.0 * a));
++
++        if (now >= g_fRougeTintEnd[client]) g_fRougeTintEnd[client] = 0.0;
++        return;
++    }
++
++    if (g_bRougeCountering[client])
++        Rouge_AvatarSetColor(client, 255, 120, 220, 255);
++    else
++        Rouge_AvatarTintReset(client);
++}
++
++// =====================================================================
++// MUERTE DEL AVATAR — ragdoll rouge.mdl + filtro anti-corpse
++// (receta Knuckles v75 / Metal v5.0 / Sonic v3.76.2)
++// =====================================================================
++void Rouge_SpawnDeathRagdoll(int client)
++{
++    if (!g_bRougeModelOK) return;
++    if (!IsClientInGame(client)) return;
++
++    int rag = CreateEntityByName("prop_ragdoll");
++    if (rag <= 0 || !IsValidEntity(rag)) return;
++
++    DispatchKeyValue(rag, "model", ROUGE_OM_MODEL);
++    DispatchSpawn(rag);
++
++    float pos[3], ang[3], vel[3];
++    GetClientAbsOrigin(client, pos);
++    GetClientAbsAngles(client, ang);
++    GetEntPropVector(client, Prop_Data, "m_vecVelocity", vel);
++    TeleportEntity(rag, pos, ang, vel);
++
++    CreateTimer(15.0, T_RougeDeathRagdollCleanup, EntIndexToEntRef(rag), TIMER_FLAG_NO_MAPCHANGE);
++}
++
++public Action T_RougeDeathRagdollCleanup(Handle timer, any ref)
++{
++    int ent = EntRefToEntIndex(view_as<int>(ref));
++    if (ent > 0 && IsValidEntity(ent))
++        AcceptEntityInput(ent, "Kill");
++    return Plugin_Stop;
++}
++
++// Filtro anti-ragdoll (patron Sonic/Metal/Knuckles — enrutado por el
++// OnEntityCreated central de este mismo archivo)
++public void Rouge_CheckDeathRagdoll(any ref)
++{
++    int ent = EntRefToEntIndex(view_as<int>(ref));
++    if (ent <= 0 || !IsValidEntity(ent)) return;
++
++    char model[96];
++    GetEntPropString(ent, Prop_Data, "m_ModelName", model, sizeof(model));
++    if (strncmp(model, "models/survivors/", 17) != 0) return;
++
++    float now = GetEngineTime();
++    float o[3];
++    GetEntPropVector(ent, Prop_Data, "m_vecOrigin", o);
++
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_fRougeDeathHideUntil[i] == 0.0 || now >= g_fRougeDeathHideUntil[i])
++            continue;
++        if (GetVectorDistance(o, g_vRougeDeathOrigin[i]) < 200.0)
++        {
++            SetEntityRenderMode(ent, RENDER_NONE);
++            DispatchKeyValue(ent, "disableshadows", "1");
++            AcceptEntityInput(ent, "DisableShadow");
++            return;
++        }
++    }
++}

@@ -3,7 +3,7 @@ Age=1531471377
 [C:\Users\AM\Downloads\l4d2_berserk_mode.sp]
 Age=1531471377
 [C:\Program Files (x86)\Steam\steamapps\common\left 4 dead 2\left4dead2\addons\sourcemod\scripting\l4d_unrestrict_panic_battlefield.sp]
-Age=1531923445
+Age=1560175052
 [C:\Program Files (x86)\Steam\steamapps\common\left 4 dead 2\left4dead2\addons\sourcemod\scripting\l4d2_boss_spawn.sp]
 Age=1531923617
 [C:\Users\AM\Downloads\englishorspanish.sp]
@@ -47,7 +47,7 @@ Age=1532833609
 [C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\Jump_Sonic.sp]
 Age=1532640903
 [C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\Sonic_ability_manager.sp]
-Age=1557867688
+Age=1565632826
 [C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\sonicability.sp]
 Age=1532651058
 [C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\left4dragokas.sp]
@@ -81,7 +81,7 @@ Age=1534442694
 [C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d2_play_as_si\playable\hunter.sp]
 Age=1524846007
 [C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d2_play_as_si.sp]
-Age=1536799858
+Age=1562164804
 [C:\Users\AM\AppData\Local\Temp\Rar$DIa13072.36167.rartemp\hunter.sp]
 Age=1524846007
 [C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d2_adrenaline_snd_remove (1).sp]
@@ -91,7 +91,7 @@ Age=1531728088
 [C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d_explosive_cars.sp]
 Age=1536632680
 [C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d_grenades.sp]
-Age=1536648130
+Age=1560215927
 [C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\serverbind\scripting\sm_bind.sp]
 Age=1536662441
 [C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\sm_bind.sp]
@@ -114,3 +114,51 @@ Age=1536793441
 Age=1536720238
 [C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\timeout_fix.sp]
 Age=1557836349
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d2_auto_aim.sp]
+Age=1559765243
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d_path_to_goal.sp]
+Age=1559448661
+[C:\Users\AM\Downloads\l4d2_auto_aim (2).sp]
+Age=1559796099
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d2_objectives_guide.sp]
+Age=1559852084
+[C:\Users\AM\Downloads\l4d2_objectives_guide.sp]
+Age=1559824417
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\amy_vscript_bridge_test.sp]
+Age=1559917033
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d2_trigger_flow_fix.sp]
+Age=1560179015
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d_nuke_missile.sp]
+Age=1560249523
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d2_ac130.sp]
+Age=1533434984
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d2_companion.sp]
+Age=1562839944
+[C:\Users\AM\AppData\Local\Temp\Rar$DIa8372.31632.rartemp\hud.sp]
+Age=1529765334
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d2_pet_fusion.sp]
+Age=1562939085
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\bot_takeover.sp]
+Age=1562999716
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\amy_fall_fix.sp]
+Age=1564285545
+[C:\Users\AM\Downloads\l4d_silenced_infected.sp]
+Age=1564281536
+[C:\Users\AM\Downloads\amy_fall_fix.sp]
+Age=1564281181
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\smd_spritetrail_fix.sp]
+Age=1565004940
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d2_hud_display_manager.sp]
+Age=1565201432
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\cst_skinchange.sp]
+Age=1565295126
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\test_cstguard.sp]
+Age=1565295130
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\MusicDirector.sp]
+Age=1565333006
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\avatar_items_hide.sp]
+Age=1565368519
+[C:\Users\AM\AppData\Local\Temp\Rar$DIa10176.9482.rartemp\Anti caida.sp]
+Age=1565401565
+[C:\Program Files (x86)\Steam\steamapps\common\Left 4 Dead 2\left4dead2\addons\sourcemod\scripting\l4d2_om_survivors.sp]
+Age=1565635046

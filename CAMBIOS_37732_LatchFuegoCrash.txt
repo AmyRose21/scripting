@@ -1,0 +1,193 @@
+================================================================================
+ SUITE 3.77.32 — "KNUCKLES: LATCH ORIENTADO + FUEGO EN LOS PUÑOS + FIX CRASH DEL PARRY"
+================================================================================
+Pedido del owner (2026-10-10), textual y 1-a-1:
+
+  "1 fix el agarre de pared si vez el lua este cambia la orientacion de
+   knuckles al lado contrario a la pared (lo dice el lua)
+   2 el efecto de fuego de su 3 fase puedes colocarle 2 efectos de fuego
+   en los puños (lo dice el propio lua de gmod) y
+   3 cuando uso el counter sobre el bomito de la spiter en vez de
+   devolverse como hace en Vscript el juego se muere y se cierra. solo"
+
+Knuckles.inc v66-OM -> v67-OM | Manager 3.77.31 -> 3.77.32 | resto INTACTO.
+
+================================================================================
+(1) AGARRE DE PARED — ORIENTACION AL LADO CONTRARIO (lo dice el lua)
+================================================================================
+QUE DICE EL LUA (noodles_om_pills_survivors_knuckles.lua):
+  l.759-792: al engancharse lee tr.HitNormal (la NORMAL de la pared, el
+  vector que apunta HACIA AFUERA de la pared) y hace:
+      local ang = normal:Angle()
+      ent:SetNW2Angle("pill_assignedangle", angle)   (l.767-769 + 791-792)
+  El "assignedangle" es la pose BLOQUEADA del puppet mientras esta
+  agarrado (l.182/199: el controlador devuelve "assignedagnles" = el
+  muneco queda CLAVADO mirando a donde apunta la normal = MIRANDO AL
+  LADO CONTRARIO DE LA PARED, con la espalda pegada a ella).
+  Ademas l.761: solo agarra si |normal.z| < 0.5 (paredes de verdad —
+  suelo y techo no son agarrables en el GMod).
+
+QUE SE HIZO (v67):
+  * Knux_IsNearWall -> Knux_FindWall: el trace ahora DEVUELVE la normal
+    de la pared y aplica el gate del lua (|z| < 0.5) — si apuntas a un
+    suelo/techo estando en el aire, YA no cuenta como agarre (como en
+    el GMod).
+  * Al agarrarse: se guarda la normal + g_fKnuxLatchYaw = yaw de la
+    normal. En Knux_AvatarFollow, mientras estas colgado el yaw objetivo
+    del avatar es ESE — el avatar GIRA (suave, 900 grados/s como siempre)
+    hasta quedar MIRANDO AL LADO CONTRARIO de la pared, espalda contra
+    ella. Exactamente el pill_assignedangle del lua.
+  * SALTO DE SALIDA: antes el impulso salia por la CAMARA — si mirabas la
+    pared (lo natural despues de volar hacia ella), saltar te lanzaba
+    CONTRA la propia pared. Ahora sale por la NORMAL (lua l.700: el
+    impulso del planeo es Normals_latch:Forward()*glideg) — saltas
+    SIEMPRE alejandote de la pared, hacia donde esta mirando el avatar.
+    Mantengo el empuje vertical de siempre (450) para conservar el
+    "salto pared" con su arco.
+
+================================================================================
+(2) FUEGO REAL EN LOS PUÑOS DE LA FASE 3 (lo dice el propio lua de gmod)
+================================================================================
+QUE DICE EL LUA:
+  l.1123-1150: a (chargetime2 - 0.6)s — es decir 0.6s ANTES de llenar —
+  dispara el efecto "Knuckles_FireOrb" en la posicion del hueso
+  LeftHand y despues en el RightHand (2 efectos de fuego, uno por
+  puño). El efecto (om_noodles_effects_knuckles.lua l.319-484) es una
+  ESPIRAL de llama: material particles/flamelet5, radio 35 -> 0, 2
+  vueltas, vida 0.9s, onda sin(t*18)*4, color fuego 255/120+i*5/30,
+  25 segmentos de trail (l.372-407).
+  l.1152-1190: al LLENAR el nivel 3 dispara el "Knuckles_firering"
+  (otro efecto de anillo de fuego, l.95-183) en AMBAS manos + el glow
+  del puppet + phase3.wav.
+
+QUE SE HIZO (v67) — los 2 efectos de fuego EN los puños:
+  * MATERIAL NUEVO om_knux_flame: el sprite "blaze flame" del propio
+    pack OM (el que me pasaste de materials), renombrado. 2 archivos
+    NUEVOS en materials/icons/: om_knux_flame.vmt + om_knux_flame.vtf
+    (87 KB). **INSTALALOS igual que los otros materials** (a
+    left4dead2/materials/icons/ o a tu VPK de siempre) — si no estan,
+    el fuego cae al glow01 naranja de la v66 y NADA se rompe (gate
+    PrecacheModel, el mismo patron del om_bluesmoke).
+  * ESPIRAL CONTINUA por puño mientras estas en la ventana de nivel 3
+    (desde 0.6s antes de llenar hasta soltar/cancelar): la geometria
+    EXACTA del effects lua (radio 35->0, 2 vueltas, ciclo 0.9s con
+    reinicio de angulo/sentido aleatorios como el math.Rand del lua,
+    onda ~18 Hz de amplitud 4, color 255/130/40 con alpha que se apaga
+    al cerrar el ciclo) dibujada con beams TE encadenados (el punto
+    anterior -> el actual, vida 0.3s: quedan ~6 segmentos vivos por
+    mano y el puño queda envuelto en llama). A 20 Hz, mismo canal TE
+    que las estrellas del OM_Stun: CERO entidades para la espiral.
+  * NUCLEO por mano: un env_sprite de llama (om_knux_flame aditivo,
+    255/165/70) que viaja con la mano a 20 Hz — el "corazon" del fuego
+    (reemplaza la orbe glow01 de la v66).
+  * ANILLO al LLENAR el nivel 3: Knux_FireRing — un anillo CONTRAYENDO
+    (65u -> 10u) de material de fuego en CADA puño, justo con el
+    phase3.wav y el pulso rojo (el firering del lua l.1179-1189).
+  * Palanca NUEVA: knux_fist_fire 1 (0 = apaga TODO el fuego de los
+    puños y quedan las fases solo con sonidos y pulsos, como quieras).
+
+================================================================================
+(3) FIX DEL CRASH — counter sobre el spit de la Spitter
+================================================================================
+EL SINTOMA: "en vez de devolverse como hace en Vscript el juego se
+muere y se cierra" — crash duro al hacer counter sobre el escupitajo.
+
+LA CAUSA (divergencia mia contra el VScript original): el
+ChCh_parrying.nut NUNCA toca el ciclo de vida del spitter_projectile —
+lo devuelve (velocidad + m_hThrower + marca por context) y PUNTO: el
+juego lo revienta solo cuando cae y el nut le suma la explosion ARRIBA
+del evento "spit_burst" (OnGameEvent_spit_burst l.617-627: busca el
+spitter_projectile a <=16u del subject del evento y si tiene la marca
+-> SpawnExplosionAtFrom 150/250). Mi v66 en cambio le ponia al spit un
+SDKHook_Touch + un watchdog que lo mataba con "Kill": el
+spitter_projectile se AUTO-DESTRUYE por dentro de su propio touch (ahi
+nace el charco) y el doble-manejo (mi hook + mi Kill contra la
+autodestruccion del motor) era el crash.
+
+EL FIX (nut-faithful al 100% en el camino del spit):
+  * El spit devuelto SOLO recibe: velocidad hacia tu mira (piso 900
+    uu/s, x1 — igual que el ParryGrenade del nut), m_hThrower (credito
+    para ti) y UNA ENTRADA en una lista interna de refs (el
+    "ChCh_WasParried" del nut, hecho a mi manera). CERO hooks, CERO
+    watchdog, CERO Kill sobre el proyectil.
+  * La explosion la pone el EVENTO spit_burst DEL JUEGO: cuando el spit
+    devuelto revienta donde apuntaste (su splat normal con su charco),
+    la explosion del parry le cae ENCIMA — 250 de dano / 150u, SOLO a
+    infectados (SI jugador + comunes + witch + props), JAMAS al equipo.
+    Numeros exactos del nut.
+  * LAS ROCAS tambien pierden el touch hook (el nut no lo usa en ninguna):
+    quedan con el watchdog de velocidad del original
+    (CheckParriedTankRocks: vel <= 100 o 5s -> explosion 500/250u +
+    Kill). Una roca que devuelve y pega en una pared/uff explota con el
+    watchdog — sin doble-manejo.
+  * SONIDO de las explosiones del parry: ahora el explode_1-3 del nut
+    (ambient/explosions/explode_X.wav, aleatorio) — antes usaba el boom
+    del Meteoro.
+
+================================================================================
+PLAN DE PRUEBAS (A-H)
+================================================================================
+  A. CRASH (el punto 3): Spitter bot, espera el escupitajo, POSTURA (V)
+     y dejalo entrar al radio/cono -> debe VOLVERSE hacia donde apuntas
+     + flash cian + "DEVUELTO!", y al caer/revientar: explosion 250 con
+     su splat normal. REPITELO 5-6 VECES seguidas (incluido apuntandole
+     directo a la Spitter y a la pared) — el juego NO debe caerse NI
+     una vez.
+  B. ROCAS: Tank bot, devuelve la roca con la postura -> vuela a tu
+     mira, al pegar/aterrizar: explosion 500/250u + la roca muere. Sin
+     crash. (El boom ahora suena a explosion ambiental 1-3, no al boom
+     del Meteoro.)
+  C. PARED (el punto 1): vuela hacia una pared y engancha -> el avatar
+     debe QUEDAR MIRANDO AL LADO CONTRARIO (espalda contra la pared),
+     girando suave hasta ahi. Apuntar al SUELO en el aire NO debe
+     engancharte (gate del lua).
+  D. SALTO DE PARED: una vez colgado, salta -> sales disparado POR la
+     espalda (alejandote de la pared) aunque la camara siga mirando la
+     pared. El arco alto de siempre se mantiene.
+  E. FUEGO (el punto 2): carga el puño 8.4s+ (0.6s antes de llenar) ->
+    los 2 puños con fuego en espiral continuo + nucleos de llama.
+     A los 9s: ANILLO de fuego en ambas manos + phase3.wav + pulso
+     rojo. Suelta: el fuego se apaga al instante.
+  F. MATERIAL: si ves los puños con glow naranja en vez de fuego, es
+     que el om_knux_flame no esta instalado — revisa materials/icons/.
+  G. REGRESION carga: nivel 2 (phase1 + pulso), escalado de dano/estatua
+     /lanzon/quema nivel 3, Slam1-4 al click, cancel [R] barato — todo
+     como en la .31.
+  H. REGRESION counter: bloqueo multi-golpe, anims counter/counter_hit
+     mirando al frente, knockback al que golpea la postura — como .31.
+
+================================================================================
+RECETAS / PALANCAS (1 linea cada una)
+================================================================================
+  * Apagar el fuego de los puños:        sm_cvar knux_fist_fire 0
+  * EsPIRAL mas gorda (grosor del beam): KNUX_FLAME_BEAMW 9.0 -> 12.0
+  * Espiral mas larga (mas segmentos):   KNUX_FLAME_BEAMLIFE 0.30 -> 0.45
+  * Espiral mas ancha:                   KNUX_FLAME_RADIUS 35.0 -> 50.0
+  * Si la orientacion del latch se viera al reves (deberia ser espalda
+    contra la pared): es yaw = ArcTangent2(normal[1], normal[0]) —
+    sumarle 180.0 en la linea de g_fKnuxLatchYaw (1 linea, te la mando).
+  * Salto de pared menos vertical:       fwd[2] = 450.0 -> 200.0
+  * Explosion del spit/roca mas fuerte:  KNUX_PARRY_SPIT_DAMAGE /
+    KNUX_PARRY_ROCK_DAMAGE (defines, recompiilar).
+  * El charco del spit devuelto SIGUE naciendo donde revienta (como en
+    el VScript) — si algun dia lo quisieras sin charco me dices (no
+    hace falta tocar nada del fix).
+
+================================================================================
+CONTENIDO DEL PAQUETE
+================================================================================
+  Sonic_ability_manager.smx          <- el plugin (3.77.32)
+  Sonic_ability_manager.sp           <- fuente manager (version + changelog)
+  include/Knuckles.inc               <- v67-OM (TODO lo nuevo vive aqui)
+  include/*.inc                      <- los otros 14, byte-identicos a la .31
+  materials/icons/om_knux_flame.vmt  <- NUEVO (fuego de los puños)
+  materials/icons/om_knux_flame.vtf  <- NUEVO (blaze flame del pack OM)
+  materials/icons/*                  <- los 8 de siempre
+  diff_37732_knuckles_v67.txt        <- diff v66 -> v67 (completo)
+  diff_37732_sp.txt                  <- diff del manager
+  VERIFICACION_37732.txt             <- build + forense + empaquetado
+  worklog.md                         <- historial completo de tareas
+
+  INSTALACION: smx a addons/sourcemod/plugins/ (reemplaza), LOS 2
+  MATERIALES NUEVOS a left4dead2/materials/icons/ (o tu VPK), reinicio
+  de mapa. Nada mas cambia.

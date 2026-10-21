@@ -1,0 +1,79 @@
+================================================================================
+ VERIFICACION TECNICA — SUITE 3.77.24 "STUN UNIFICADO"
+================================================================================
+Fecha: 2026-10-09 (UTC-4 Caracas)
+Arbol canonico: /home/z/my-project/builds/OM37722 (scripting3 34dfec + overlay
+SM 1.11 oficial + suite .23 + edits de esta iteracion)
+
+--------------------------------------------------------------------------------
+ 1) COMPILACION (spcomp64 1.11.0.6970)
+--------------------------------------------------------------------------------
+28 warnings = LINEA BASE EXACTA (misma cifra que .21/.22/.23):
+  - Doll_System.inc x3 (DollSys_IsDoll/HasPower/SetPower)          [baseline]
+  - Metal.inc x2 (g_iMetalFxElec / g_iMetalFxImpact)               [baseline]
+  - Sally.inc x14 (sets de doll/tarot sin usar)                    [baseline]
+  - OM_Stun.inc x1 (g_iOMStunStar — el de siempre, ahora L546)     [baseline]
+  - Sonic_ability_manager.sp x8 tag mismatch L3025-3028            [baseline,
+    corridas desde L2998-3001 por el bloque de changelog v3.77.24]
+  - sonic.inc: CERO warnings (v6.30-OM sin cambios, byte-identico)
+
+smx: 376,750 B
+sha256: 816d65b15ea56ca9cde298f1f085250ef2f3ecbf3a14a25cd7933bb2be3b8aee
+(notar: 1,194 B MAS CHICO que la .23 377,944 B — la fusion elimina el
+codigo paralelo del Tails_SIFreeze pese a sumar la fisica al OM_Stun)
+
+--------------------------------------------------------------------------------
+ 2) FORENSE BINARIA (payload zlib FFPS, scripts/forense_37724.py)
+--------------------------------------------------------------------------------
+Control: smx .23 = sha 6550312e... (coincide con el entregado, Task 41)
+Payload: .23 1,926,095 B -> .24 1,920,084 B
+
+FUNCIONES (publics + nombres): 639 -> 637
+  NUEVAS (+3): OM_Stun_Push, OM_Stun_PushTick, OM_Stun_WorldOnly
+  BORRADAS (-5 heuristica, -6 reales): Tails_SIFreezeStart,
+    Tails_SIFreezePush, Tails_SIFrzRelease, Tails_SIFrzClearSlot,
+    Tails_SIFreezeClearAll, T_TailsSIFreezeTick (el ticker public
+    sale en el chequeo explicito: estaba en .23, FUERA en .24)
+
+CVARS: 94 -> 94 (cero nuevos, cero borrados — la unificacion no toca cfg)
+
+MARCADORES .24 PRESENTES (16/16): 3.77.24, v5.27-B, OM_Stun_Push,
+  OM_Stun_WorldOnly, OM_Stun_AnimPause/Tick/Resume, "DESCONGELADO:
+  STAGGER!", "INFECTADO CONGELADO!", om_stun_effects, om_stun_iframes,
+  tails_sifreeze_duration, tails_sifreeze, m_flPlaybackRate, m_flFrozen,
+  m_vecAbsOrigin
+
+MARCADORES VIEJOS FUERA (2/2): 3.77.23, v5.26-B (como current)
+SISTEMA PARALELO FUERA (6/6): los 6 simbolos Tails_SIFreeze* presentes
+  en la .23 y AUSENTES en la .24
+CONTROLES DE LA .23 QUE SIGUEN (11/12): Sonic_TankKnockImmune,
+  Sonic_FlingGuard, Sonic_DodgeGraceActive, sonicom_spin_grabguard,
+  tails_avatar_tp, sonicom_peel_nube, om_stun_maxduration, T_OM_StunFX,
+  SIStagger, sonicom_ball_z, Sonic_PropSequence
+  (el 12no "FALTA" = KNOCKDOWN_TANK: falso negativo CONOCIDO — es un
+   enum del left4dhooks, se compila a entero, nunca es string; igual
+   que en la forense de la .23, Task 41)
+
+--------------------------------------------------------------------------------
+ 3) PAQUETE (scripts/package_37724.sh)
+--------------------------------------------------------------------------------
+- 7 includes NO tocados verificados BYTE-IDENTICOS a la .23:
+  sonic (v6.30-OM) / Amy / Metal / Sally / Cream / Eggman / Speed_sonic
+- 2 includes cambiados (esperado): OM_Stun.inc (31,971 -> 45,579 B,
+  +13.6 KB de v2.0) y Tails.inc (230,059 -> 216,235 B, -13.8 KB: el
+  sistema paralelo fuera) — la fisica se MUDO de documento, no se duplio
+- materials/icons: 8/8 byte-identicos a la .23
+- diffs incluidos: omstun 444 lineas / tails 602 / sp 54
+
+--------------------------------------------------------------------------------
+ 4) NOTAS DEL COMPILADO
+--------------------------------------------------------------------------------
+- OM_Stun v2.0 incluye <SI_Stagger> el solo (guarded) para el stagger
+  al liberar: el manager no reordena nada — su #include <SI_Stagger>
+  de la L1830 queda en no-op por el guard (verificado: cero simbolos
+  duplicados, 28 warnings identicos).
+- El filtro de trace del arrastre (OM_Stun_WorldOnly) es una copia
+  self-contained del WitchFlight_WorldOnly: el OM_Stun NO depende del
+  Witch_Flight.inc para nada.
+- Cero cvars nuevos: la 3.77.24 no toca el Sonic_Suite.cfg.
+- Evidencia del upload + re-descarga: worklog Task 42.

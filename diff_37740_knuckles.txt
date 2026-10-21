@@ -1,0 +1,115 @@
+--- suite_37739_rock_avatar_fix/include/Knuckles.inc	2026-10-10 06:16:24.624360979 +0000
++++ suite_37740_adopcion_avatar/include/Knuckles.inc	2026-10-10 07:30:18.123095921 +0000
+@@ -369,7 +369,7 @@
+ #define _Knuckles_included
+ 
+ // v63: sonda de version (sm_sjsver del manager)
+-#define KNUCKLES_INC_VERSION "v71-OM"
++#define KNUCKLES_INC_VERSION "v72-OM"  // v72: ADOPCION EN EL MONTAJE + reemplazo limpio (manager 3.77.40: fin del barrido en caliente)
+ 
+ #if !defined _sourcemod_included
+     #include <sourcemod>
+@@ -3226,6 +3226,68 @@
+     return av;
+ }
+ 
++// =====================================================================
++// v72-OM (manager 3.77.40): ADOPCION EN EL MONTAJE — el reemplazo del
++// barrido en caliente (orden del owner 2026-10-10: "tu barrido de
++// avatares esta haciendo reiniciar mi avatar a cada rato... BUSCA OTRA
++// MANERA"). Esta FSM es la UNICA creadora de props con los nombres de
++// abajo: un prop asi que ELLA no rastrea es un huerfano por definicion
++// (lo fabrico una vida anterior, un montaje doble del pasado o una
++// version vieja del suite) y muere en el instante exacto del montaje.
++// Un avatar rastreado es INTOCABLE: no existe ningun timer que lo mire.
++// =====================================================================
++bool Knux_IsMyAvatarRef(int ref)
++{
++    // v3.77.40: el 0 es "sin avatar"; un ref NEGATIVO puede ser
++    // perfectamente legitimo (bit alto del serial del handle).
++    if (ref == 0 || ref == INVALID_ENT_REFERENCE) return false;
++    for (int i = 1; i <= MaxClients; i++)
++    {
++        if (g_iKnuxAvatar[i] == ref) return true;
++        if (g_iKnuxAvatarL[i] == ref) return true;
++    }
++    return false;
++}
++
++void Knux_KillGhostAvatarProps()
++{
++    static const char sGhostNames[][] = { "knuckles_avatar_om", "knuckles_avatar_om_l", "knux_avatar" };
++    static const char sClasses[][] = { "prop_dynamic_override", "prop_dynamic" };
++    int ghosts[8];
++    int ng = 0;
++    char nameBuf[64];
++
++    // primero se recolecta, luego se mata — el FindEntityByClassname
++    // tras un Kill a mitad de loop es tierra de nadie en L4D2
++    for (int c = 0; c < sizeof(sClasses); c++)
++    {
++        int ent = -1;
++        while ((ent = FindEntityByClassname(ent, sClasses[c])) != -1)
++        {
++            if (!IsValidEntity(ent)) continue;
++            GetEntPropString(ent, Prop_Data, "m_iName", nameBuf, sizeof(nameBuf));
++            if (nameBuf[0] == '\0') continue;
++
++            for (int n = 0; n < sizeof(sGhostNames); n++)
++            {
++                if (!StrEqual(nameBuf, sGhostNames[n], false)) continue;
++                if (Knux_IsMyAvatarRef(EntIndexToEntRef(ent))) break;
++                if (ng < sizeof(ghosts)) ghosts[ng++] = EntIndexToEntRef(ent);
++                break;
++            }
++        }
++    }
++
++    for (int g = 0; g < ng; g++)
++    {
++        int e = EntRefToEntIndex(ghosts[g]);
++        if (e > 0 && IsValidEntity(e)) AcceptEntityInput(e, "Kill");
++    }
++
++    if (ng > 0)
++        PrintToServer("[Knuckles v72-OM] Adopcion del montaje: %d huerfano(s) del avatar eliminado(s).", ng);
++}
++
+ // Monta el avatar completo (R + L + cuerpo oculto). pulsePause SOLO para
+ // montajes de ciclo de vida (spawn/seleccion/reparacion tardia de la FSM).
+ void Knux_CreateAvatar(int client, bool pulsePause = true)
+@@ -3236,6 +3298,34 @@
+ 
+     // la copia R nace en modo TP si tails_avatar_tp (la que ven los
+     // DEMAS viaja por teleport por tick + interpolacion de red)
++    // v72-OM (manager 3.77.40): REEMPLAZO LIMPIO — orden del owner
++    // 2026-10-10: en caliente YA NO EXISTE barrido. Si este cliente ya
++    // tenia un R o L vivo (montaje doble por orden raro de eventos),
++    // muere AQUI enterito: jamas vuelve a quedar un prop sin dueno (la
++    // fabrica de huerfanos del "= 0" sin Kill queda cerrada).
++    {
++        int oldR = EntRefToEntIndex(g_iKnuxAvatar[client]);
++        if (g_iKnuxAvatar[client] != 0 && oldR > 0 && IsValidEntity(oldR))
++        {
++            SDKUnhook(oldR, SDKHook_SetTransmit, Knux_TransmitAvatarR);
++            AcceptEntityInput(oldR, "Kill");
++        }
++        g_iKnuxAvatar[client] = 0;
++
++        int oldL = EntRefToEntIndex(g_iKnuxAvatarL[client]);
++        if (g_iKnuxAvatarL[client] != 0 && oldL > 0 && IsValidEntity(oldL))
++        {
++            SDKUnhook(oldL, SDKHook_SetTransmit, Knux_TransmitAvatarL);
++            AcceptEntityInput(oldL, "Kill");
++        }
++        g_iKnuxAvatarL[client] = 0;
++    }
++
++    // v72-OM: ADOPCION — todo prop de ESTE modulo que la FSM no rastrea
++    // es un huerfano: muere en este instante del montaje, no en un
++    // timer a ciegas.
++    Knux_KillGhostAvatarProps();
++
+     int av = Knux_CreateAvatarProp(client, KNUX_OM_MODEL, KNUX_AVATAR_NAME, Tails_AvatarTPOn());
+     if (av == 0) return;
+ 

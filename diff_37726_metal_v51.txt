@@ -1,0 +1,237 @@
+--- /home/z/my-project/download/suite_37725_metal_avatar/include/Metal.inc	2026-10-09 03:54:55.633350392 +0000
++++ /home/z/my-project/builds/OM37726/scripting/include/Metal.inc	2026-10-09 04:32:06.345158750 +0000
+@@ -1,6 +1,33 @@
+ /*
+  * ======================================================
+- *  [MODULO] Metal Sonic - The Ultimate Machine (v5.0-OM - AVATAR + TRIO GMOD)
++ *  [MODULO] Metal Sonic - The Ultimate Machine (v5.1-OM - FX DEL SELF REPAIR)
++ *
++ *  v5.1 (suite 3.77.26 — revision del owner 8.5/10, ajuste 1: "el
++ *   efecto de cura revisaste bn el efecto que usa metal en Gmod? el
++ *   original"):
++ *   - FX DEL TICK DE CURA = EL ORIGINAL DEL LUA DE VERDAD. El v5.0 solo
++ *     ponia un sprite glow01 verde flotante — NO era el efecto del mod.
++ *     Cada tick (+7 HP cada 2s) reproduce las DOS senales del lua
++ *     (l.987-988, ambas con ventana 0.5*0.5 = 0.25s):
++ *     (1) MetalSonicHeal_highlight -> TINTE VERDE del avatar con el fade
++ *         EXACTO del UI (l.94-112: 0->1 en 0.125s + 1->0 en 0.125s,
++ *         Color(0,255,0, 255*alpha)) aplicado sobre las DOS copias R/L
++ *         cada FRAME (Metal_PreThink = la misma granularidad por frame
++ *         del hook de cliente del GMod) + DLIGHT VERDE de verdad
++ *         (l.1583-1596: r=0 g=255 b=0, brightness 3, Size 200, Decay
++ *         1000 — luz que ilumina la ESCENA alrededor): light_dynamic
++ *         "0 255 0" brightness 3 distance 200 parentado al player
++ *         (receta Sonic_MakeBlueLight v6.20, probada en el server),
++ *         nace OFF y TurnOn SOLO durante la ventana del destello.
++ *     (2) metalsonic_ability_outline -> halo BLANCO fino del om_halo
++ *         (UI l.135-148, blur 1, Color(255,255,255)): el outline por
++ *         shader no es portable a L4D2 — sustituto documentado: anillo
++ *         TE fino blanco 8->48u a la altura del pecho, vida 0.25s (el
++ *         mismo pulso blanco por tick).
++ *     FUERA el sprite glow01 verde (el original NO lo tiene). Limpieza
++ *     total de la luz: muere en Metal_StopHeal (natural/dano/stun) Y en
++ *     Metal_ResetState (muerte/desconexion/cambio de personaje en plena
++ *     cura — nunca queda huerfana encendida tras el parent roto).
+  *
+  *  v5.0 (suite 3.77.25 — pedido del owner: "Es tiempo del avatar de
+  *   metal Sonic. Ya sabes que hacer... mover la habilidad que tiene
+@@ -364,6 +391,8 @@
+ #define METAL_HEAL_HP_CAP           150   // para sola si HP pasa de 150
+ #define METAL_HEAL_FREEZE           6.7   // OM_NoMovement 6.7s refrescado por tick
+ #define METAL_HEAL_EXIT_FREEZE      0.5   // NoMovement 0.5s al cerrar (si curo >= 1 tick)
++#define METAL_HEAL_FX               0.25  // v5.1: ventana del destello (0.5*0.5 del lua)
++#define METAL_HEAL_FX_FADE          0.125 // v5.1: rampa simetrica (0.25*0.5, UI l.99)
+ 
+ // =======================
+ // v5.0: AVATAR (models/Noodles/OM/metal.mdl — lua l.51, modelScale '1')
+@@ -472,6 +501,10 @@
+ float g_fMetalHealFreezeEnd[MAXPLAYERS + 1]; // NoMovement vigente (6.7s/tick)
+ float g_fMetalHealExitEnd[MAXPLAYERS + 1];  // 0.5s de salida al terminar
+ float g_fMetalHealAnimEnd[MAXPLAYERS + 1];  // ventana del anim "heal" en la FSM
++int   g_iMetalHealLight[MAXPLAYERS + 1];    // v5.1: EntRef del light_dynamic verde
++bool  g_bMetalHealLightOn[MAXPLAYERS + 1];  // v5.1: TurnOn/TurnOff por ventana
++float g_fMetalHealFxStart[MAXPLAYERS + 1];  // v5.1: inicio del destello (para el fade)
++float g_fMetalHealFxEnd[MAXPLAYERS + 1];    // v5.1: fin del destello (0 = inactivo)
+ 
+ // v5.0: sonidos del heal (gates del VPK om_; fallback stock si faltan)
+ bool  g_bMetalSndHealAct = false;           // om/metal/Metal self repair activation (2).wav
+@@ -659,6 +692,9 @@
+     g_fMetalHealFreezeEnd[client] = 0.0;
+     g_fMetalHealExitEnd[client]   = 0.0;
+     g_fMetalHealAnimEnd[client]   = 0.0;
++    g_fMetalHealFxStart[client]   = 0.0;    // v5.1
++    g_fMetalHealFxEnd[client]     = 0.0;    // v5.1
++    Metal_KillHealLight(client);            // v5.1: la luz verde nunca queda huerfana
+ 
+     // v3.1 FIX ESTADO RESIDUAL: restaurar el estado visual/movimiento del
+     // propio Metal. Antes, si moria o se desconectaba durante WALL_SLAM /
+@@ -2069,6 +2105,12 @@
+     g_fMetalHealNextTick[client] = now + METAL_HEAL_TICK;   // primer +7 a los 2s
+     g_fMetalHealFreezeEnd[client] = now + METAL_HEAL_FREEZE;
+ 
++    // v5.1: la LUZ VERDE del repair nace aqui (OFF: enciende solo en la
++    // ventana de 0.25s de cada tick, como el dlight del GMod)
++    Metal_KillHealLight(client);   // defensivo: nunca dos
++    g_iMetalHealLight[client] = Metal_MakeHealLight(client);
++    g_bMetalHealLightOn[client] = false;
++
+     // lua l.1635-1643: "Metal self repair activation (2).wav"
+     if (g_bMetalSndHealAct)
+         EmitSoundToAll("om/metal/Metal self repair activation (2).wav", client);
+@@ -2079,6 +2121,54 @@
+     return Plugin_Handled;
+ }
+ 
++// =======================
++// v5.1: LA LUZ VERDE DEL SELF REPAIR — el dlight del GMod
++// (noodles_om_pills_survivors_metalsonic.lua l.1583-1596: r=0 g=255
++// b=0, brightness 3, Size 200, Decay 1000, refrescado cada frame
++// mientras MetalSonicHeal_highlight vive — luz CONSTANTE que ilumina
++// la escena alrededor). Receta Sonic_MakeBlueLight v6.20 (light_dynamic
++// de verdad, ya probado en este server con la bola de Sonic). Nace
++// APAGADA: TurnOn solo en la ventana del destello de cada tick.
++// =======================
++int Metal_MakeHealLight(int client)
++{
++    int l = CreateEntityByName("light_dynamic");
++    if (l <= 0 || !IsValidEntity(l)) return 0;
++    DispatchKeyValue(l, "_light", "0 255 0 200");   // verde puro del lua
++    DispatchKeyValue(l, "brightness", "3");          // brightness 3 (l.1591)
++    DispatchKeyValue(l, "distance", "200");          // Size 200 (l.1593)
++    DispatchKeyValue(l, "style", "0");               // constante, sin flicker
++    float pos[3];
++    GetClientAbsOrigin(client, pos);                 // el origin del puppet
++    DispatchSpawn(l);
++    TeleportEntity(l, pos, NULL_VECTOR, NULL_VECTOR);
++    AcceptEntityInput(l, "TurnOff");                 // off hasta el 1er tick
++    SetVariantString("!activator");
++    AcceptEntityInput(l, "SetParent", client);
++    return EntIndexToEntRef(l);
++}
++
++// Apaga la luz si estaba encendida (idempotente, sin spam de inputs)
++void Metal_HealLightOff(int client)
++{
++    if (!g_bMetalHealLightOn[client]) return;
++    g_bMetalHealLightOn[client] = false;
++    int l = EntRefToEntIndex(g_iMetalHealLight[client]);
++    if (l > 0 && IsValidEntity(l))
++        AcceptEntityInput(l, "TurnOff");
++}
++
++// Mata la luz SIEMPRE (StopHeal y ResetState: la entidad parentada a un
++// player que desaparece quedaria encendida en el ultimo lugar = fuga)
++void Metal_KillHealLight(int client)
++{
++    g_bMetalHealLightOn[client] = false;
++    int l = EntRefToEntIndex(g_iMetalHealLight[client]);
++    if (l > 0 && IsValidEntity(l))
++        AcceptEntityInput(l, "Kill");
++    g_iMetalHealLight[client] = 0;
++}
++
+ // El ciclo del heal (lo llama Metal_PreThink cada frame mientras vive)
+ void Metal_HealThink(int client, float now)
+ {
+@@ -2088,6 +2178,47 @@
+     g_fMetalHealFreezeEnd[client] = now + METAL_HEAL_FREEZE;
+     g_fMetalHealAnimEnd[client]   = now + 0.25;
+ 
++    // v5.1: EL FLASH DEL TICK — tinte VERDE del avatar con el fade
++    // EXACTO del original (UI l.94-112: rampa 0->1 en 0.125s, 1->0 en
++    // 0.125s, Color(0,255,0, 255*alpha)). Cada FRAME (PreThink) = la
++    // granularidad del hook de cliente del GMod. Solo el AVATAR: el
++    // cuerpo del survivor esta RENDER_NONE (lecciones del v5.0).
++    if (g_fMetalHealFxEnd[client] > 0.0)
++    {
++        if (now >= g_fMetalHealFxEnd[client])
++        {
++            // fin del destello: tinte fuera + luz OFF
++            g_fMetalHealFxEnd[client] = 0.0;
++            Metal_AvatarTintReset(client);
++            Metal_HealLightOff(client);
++        }
++        else
++        {
++            float t = now - g_fMetalHealFxStart[client];
++            float alpha;
++            if (t < METAL_HEAL_FX_FADE)
++                alpha = t / METAL_HEAL_FX_FADE;
++            else
++                alpha = (METAL_HEAL_FX - t) / METAL_HEAL_FX_FADE;
++            if (alpha < 0.0) alpha = 0.0;
++            if (alpha > 1.0) alpha = 1.0;
++            int a = RoundToNearest(alpha * 255.0);
++
++            int avR = EntRefToEntIndex(g_iMetalAvatar[client]);
++            if (avR > 0 && IsValidEntity(avR))
++            {
++                SetEntityRenderMode(avR, RENDER_TRANSCOLOR);
++                SetEntityRenderColor(avR, 0, 255, 0, a);
++            }
++            int avL = EntRefToEntIndex(g_iMetalAvatarL[client]);
++            if (avL > 0 && IsValidEntity(avL))
++            {
++                SetEntityRenderMode(avL, RENDER_TRANSCOLOR);
++                SetEntityRenderColor(avL, 0, 255, 0, a);
++            }
++        }
++    }
++
+     if (now < g_fMetalHealNextTick[client]) return;
+     g_fMetalHealNextTick[client] = now + METAL_HEAL_TICK;
+ 
+@@ -2104,15 +2235,30 @@
+     int newHp = hp + METAL_HEAL_AMOUNT;
+     SetEntityHealth(client, newHp);
+ 
+-    // lua l.987-988 + UI l.96-109: highlight VERDE del puppet + dlight
+-    // verde (0,255,0, brillo 3, radio 200) — aqui: glow verde alrededor
+-    // del cuerpo por 0.5s (el dlight de GMod es procedural del cliente)
++    // v5.1: EL EFECTO ORIGINAL DEL TICK (lua l.987-988, ventana 0.5*0.5):
++    // (1) MetalSonicHeal_highlight -> abre el flash del TINTE VERDE (el
++    //     bloque de arriba lo anima frame a frame) + DLIGHT VERDE ON
++    //     (light_dynamic parentada, la luz de escena del GMod)
++    // (2) metalsonic_ability_outline -> halo BLANCO fino (UI l.135-148,
++    //     om_halo blur 1): outline por shader no portable — anillo TE
++    //     fino blanco en el pecho, vida 0.25s (el pulso blanco por tick)
++    g_fMetalHealFxStart[client] = now;
++    g_fMetalHealFxEnd[client]   = now + METAL_HEAL_FX;
++
++    int luz = EntRefToEntIndex(g_iMetalHealLight[client]);
++    if (luz > 0 && IsValidEntity(luz) && !g_bMetalHealLightOn[client])
++    {
++        AcceptEntityInput(luz, "TurnOn");
++        g_bMetalHealLightOn[client] = true;
++    }
++
+     float pos[3];
+     GetClientAbsOrigin(client, pos);
+-    pos[2] += 40.0;
+-    int glow = Metal_SpawnSprite(pos, "materials/sprites/glow01.vmt", "0 255 0", 1.2);
+-    if (glow != INVALID_ENT_REFERENCE)
+-        CreateTimer(0.5, T_Metal_FxKill, glow);
++    pos[2] += 40.0;   // pecho (donde va el halo del GMod)
++    int haloColor[4] = {255, 255, 255, 220};
++    TE_SetupBeamRingPoint(pos, 8.0, 48.0, g_iMetalSpriteGlow, g_iMetalSpriteGlow,
++                          0, 15, METAL_HEAL_FX, 2.0, 0.0, haloColor, 0, 0);
++    TE_SendToAll();
+ 
+     // lua l.997-1005: Heal.wav por tick
+     if (g_bMetalSndHeal)
+@@ -2136,6 +2282,15 @@
+     g_fMetalHealAnimEnd[client] = 0.0;
+     g_fMetalHealCD[client] = GetEngineTime() + METAL_HEAL_COOLDOWN;
+ 
++    // v5.1: el destello y la LUZ VERDE fuera SIEMPRE al cerrar (natural,
++    // dano que cancela, stun — por cualquier via)
++    if (g_fMetalHealFxEnd[client] > 0.0)
++    {
++        g_fMetalHealFxEnd[client] = 0.0;
++        Metal_AvatarTintReset(client);
++    }
++    Metal_KillHealLight(client);
++
+     SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
+ 
+     if (g_bMetalSndHealFin)

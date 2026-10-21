@@ -1,0 +1,157 @@
+================================================================================
+ SUITE 3.77.37 — "EL PARRY DE PROYECTILES DE KNUCKLES SE DELEGA AL VSCRIPT
+ chch_parrying.nut v2.2 (EL SMX AVISA, EL .NUT PARREA)"
+ (Knuckles.inc v69-OM -> v70-OM | Manager 3.77.34 -> 3.77.37 | Parry v2.1)
+ Fecha: 2026-10-10
+================================================================================
+
+PEDIDO DEL OWNER (1-a-1):
+  "aplicale los cambios los fix que le faltaban al parry que le hiciste
+   en la ultima version, le quites el parry toggle pues la idea era como
+   te plantee delegar el parry al vscript. solo el SMX le avisara que
+   esta activo *su shove parry*. la ventana quedara abierta hasta que
+   el smx le diga que *knux termino parry*"
+
+HECHO EXACTAMENTE ESO (base = tu scripting3.zip actualizado hasta la
+37734 + el Parry.sp v2.1 que ya integraste — va byte a byte igual):
+
+================================================================================
+ LA ARQUITECTURA (el SMX avisa, el .nut parrea)
+================================================================================
+
+  [Knuckles hace SHOVE (V)]                                      .
+        |                                                        .
+        v                                                        .
+  [Parry.smx v2.1]  detecta el shove (m_flNextShoveTime)          .
+        |                                                         .
+        |- 1) parry INSTANTANEO de siempre (cono, tu v1.4 intacta)
+        |                                                         .
+        |- 2) AVISA al .nut:  ChCh_KnxNotify(idx, 1, dur)
+        |     = "Knuckles esta en parry"                          .
+        v                                                         .
+  [chch_parrying.nut v2.2]  LA VENTANA SE ABRE                    .
+        |                                                         .
+        |- escanea a 30 Hz TODO el tiempo que dura el parry:       .
+        |    rocas del tank, escupitajos del spitter, granadas     .
+        |    (molotov/pipe/bile/lanzagranadas), proyectiles        .
+        |    custom y props (universal) + ENEMIGOS (charger,      .
+        |    witch, especiales) con cooldown de 1 s por enemigo   .
+        |                                                         .
+        v                                                         .
+  [Parry.smx]  termina el parry (expira uk_parry_window, muere,    .
+        cambia de equipo, desconecta) -> ChCh_KnxNotify(idx, 0, 0)
+        = "knux termino parry" -> LA VENTANA SE CIERRA            .
+
+  Sin dobles: mientras el .nut v2.2 esta vivo (handshake
+  uk_parry_knx_api = 1), el smx NO ejecuta su propia ventana nativa
+  (solo administra el estado y avisa). Si el .nut NO esta: el smx cae
+  a su ejecutor nativo v2.0 (todo sigue funcionando igual).
+
+================================================================================
+ LO QUE SE ELIMINO DEL MANAGER (el parry toggle y TODO su maquinaria)
+================================================================================
+
+  Knuckles.inc v69-OM -> v70-OM (-17.3 KB de codigo):
+    - Knux_ParryScan (el escaneo de la postura cada 0.05s)      FUERA
+    - Knux_ParryReflect (devolver proyectil + m_hThrower)       FUERA
+    - Knux_ParryWatchRock + T_KnuxParryWatch (watchdog rocas)   FUERA
+    - Knux_FindParriedSpit / Knux_MarkParriedSpit (lista)       FUERA
+    - Knux_Event_SpitBurst + T_KnuxSpitBurstBoom (boom)         FUERA
+    - Knux_ParryExplosion + T_KnuxKillEnt (explosion)           FUERA
+    - Knux_ParryConeOK (cono)                                    FUERA
+    - knux_parry_projectiles / knux_parry_spit /                FUERA
+      knux_parry_rocks / knux_parry_radius (las 4 convars)
+    - Los 12 defines KNUX_PARRY_* y el hook del evento spit_burst
+
+  => EL CAMINO DEL CRASH DEL CHARCO ACIDO MUERE DE RAIZ: el manager
+     queda a CERO contacto con proyectiles. La postura
+     (sm_knux_counter) vuelve a ser SOLO el counter de golpes
+     fisicos como siempre (v65 y anteriores) — intacta al 100%.
+
+================================================================================
+ LOS ARCHIVOS DEL PAQUETE (que va donde)
+================================================================================
+
+  addons/sourcemod/plugins/Sonic_ability_manager.smx   <- REEMPLAZAR
+  addons/sourcemod/plugins/Parry.smx                   <- REEMPLAZAR/INSTALAR (v2.1)
+  left4dead2/scripts/vscripts/chch_parrying.nut        <- INSTALAR (el ejecutor v2.2)
+  left4dead2/scripts/vscripts/knuckles_parry_state.nut <- INSTALAR (API opcional)
+
+  (Los .sp/include/ van solo si quieres recompilar; los materials/
+   son identicos a los que ya tienes — cero cambios de recursos.)
+
+  NOTA INSTALACION .NUT: el Parry.smx v2.1 AUTO-CARGA el
+  chch_parrying.nut al empezar el mapa si lo encuentra en
+  scripts/vscripts/ (no necesitas logic_script en el mapa).
+  El chch_parrying.nut v2.2 escribe uk_parry_knx_api 1 al cargar
+  (handshake) y desde ese momento el smx le delega la ventana.
+
+  Si ya tenias un chch_parrying.nut viejo (v2.1 de referencia):
+  REEMPLAZALO por el v2.2 de este paquete — el viejo NO conoce
+  ChCh_KnxNotify y el aviso del smx no encuentra a nadie.
+
+================================================================================
+ PALANCAS (el nut tiene las suyas — editables sin recompilar nada)
+================================================================================
+
+  SMX (consola del server, se auto-agregan al Sonic_Suite.cfg):
+    uk_parry_window      2.0   duracion de la ventana que abre el shove
+                               (la ventana del .nut dura EXACTAMENTE
+                               esto: el smx manda el apagado al expirar)
+    uk_parry_smx_instant 1     0 = apaga el parry instantaneo del shove
+                               si solo quieres el de la ventana del .nut
+    uk_parry_radius      200   radio del parry instantaneo (smx)
+    sm_ukparry / knxparry_state     comandos manuales de prueba
+
+  .NUT (seccion Settings dentro del chch_parrying.nut v2.2):
+    Knx_Window              2.0   duracion por defecto (la del aviso manda)
+    Knx_Window_Max       3600.0   tope anti-olvido
+    Knx_Window_IncomingOnly  1    solo lo que viene HACIA ti (receta Amy)
+    Knx_Window_Enemies       1    enemigos parreables durante la ventana
+    Knx_Window_Sound         "player/tank/hit/hulk_punch_1.wav"
+                                  sonido al devolver (1 linea editable)
+
+================================================================================
+ PRUEBA EN 3 MINUTOS
+================================================================================
+
+  a) sm_sjsver  ->  "Manager 3.77.37 ... Knuckles v70-OM (parry de
+     proyectiles DELEGADO AL VSCRIPT...)"
+  b) Consola: script print(Convars.GetStr("uk_parry_knx_api"))
+     -> debe decir 1 (el .nut v2.2 cargo y el puente esta armado).
+     (Si dice 0 o error: el .nut no cargo — revisa la ruta
+     scripts/vscripts/chch_parrying.nut.)
+  c) Tank tirandote una roca: haz SHOVE (V) hacia la roca ->
+     SALE DEVUELTA (parry instantaneo del smx) y durante los 2s
+     siguientes TODO lo que te lancen se devuelve solo (la ventana
+     del .nut): spit, granadas, otra roca, incluso enemigos que te
+     peguen salen rebotados.
+  d) La ventana se CIERRA sola a los 2s (uk_parry_window): lo que
+     pase de largo despues ya no se devuelve — hasta el proximo shove.
+  e) La postura (la tecla del counter de siempre): SOLO counter de
+     golpes fisicos — ni escupe ni devuelve rocas (eso ya no existe
+     en el manager; el parry de proyectiles es del shove/V).
+
+================================================================================
+ ARCHIVOS DEL PAQUETE
+================================================================================
+
+  Sonic_ability_manager.smx    manager 3.77.37 (Knuckles v70-OM)
+  Parry.smx                    el puente v2.1 (detection shove + aviso)
+  chch_parrying.nut            EL EJECUTOR v2.2 (va a scripts/vscripts/)
+  knuckles_parry_state.nut     API VScript opcional (KnucklesParryWindow/End)
+  Sonic_ability_manager.sp     fuente manager 3.77.37
+  Parry.sp                     fuente del puente v2.1
+  include/ (16)                Knuckles.inc v70-OM nuevo; los otros 15
+                               byte-identicos a tu scripting3.zip
+  REFERENCIA_chch_parrying.nut el v2.1 original de referencia (intacto)
+  materials/icons/ (10)        identicos a los que ya tienes
+  diff_37737_knuckles_v70.txt  diff exacto v69-OM -> v70-OM (564 lineas)
+  diff_37737_sp.txt            diff exacto manager .34 -> .37 (52 lineas)
+  VERIFICACION_37737.txt       forense completo del build
+  worklog.md                   registro de la tarea
+
+  sha256:
+    Sonic_ability_manager.smx  414c0cfac8889a4cc7c637a56fa309c5d0abbc2697216691fe33beb102c38c79
+    Parry.smx                  f932ec0a298fadca6d20f23c0c8ccacd5300eb9f9660af9b79d052f47c6d1d43
+    chch_parrying.nut          dec637f288bd1fea36b50092c1dc0a303f11369be5bc9bf869bc6345b1586b94

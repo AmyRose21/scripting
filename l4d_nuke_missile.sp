@@ -27,7 +27,7 @@ int iWaveSpeed[LIMIT_NUKE];
 #define MOLO  "models/w_models/weapons/w_eq_molotov.mdl"
 
 #define SMOKE_PARTICLE "rpg_smoke"
-#define NUKE_PARTICLE "nuke_core"
+#define NUKE_PARTICLE "explosion_huge"
 
 #define CHAT_TAG			"\x04[\x03NUKE\x04]"
 #define NUKE_CONFIG		"data/holocaust.cfg"
@@ -127,6 +127,7 @@ void NukeConfig()
 public void OnMapStart()
 {
 	PrecacheModel(amg65, true);
+	
 	
 	PrecacheParticle(SMOKE_PARTICLE);
 	PrecacheParticle(NUKE_PARTICLE);
@@ -696,14 +697,8 @@ void Fade(int target, int red, int green, int blue, int alpha, int duration, int
 
 void Shake(int target, float intensity)
 {
-	Handle msg;
-	msg = StartMessageOne("Shake", target);
-	
-	BfWriteByte(msg, 0);
-	BfWriteFloat(msg, intensity);
-	BfWriteFloat(msg, 15.0);
-	BfWriteFloat(msg, 12.0);
-	EndMessage();
+	// DESACTIVADO: temblor eliminado por peticion del usuario.
+	return;
 }
 
 void StaggerClient(int iUserID, const float fPos[3])
@@ -807,7 +802,7 @@ bool IsAliveParticle()
 	{
 		char particlename[64];
 		GetEntPropString(particle, Prop_Data, "m_iszEffectName", particlename, sizeof(particlename));
-		if (StrEqual(particlename, "nuke_core"))
+		if (StrEqual(particlename, "explosion_huge"))
 		{
 			if(IsValidEntity(particle))
 				return true;
