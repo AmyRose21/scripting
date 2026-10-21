@@ -7,6 +7,172 @@
  *  noodles_om_pills_killer_kolossos.lua" (by noodles) — el killer
  *  colosal del pack OM pills, traido a L4D2 como personaje jugable.
  *
+ *  v1.8 (manager 3.77.103) — LA VICTIMA PEGADA AL BRAZO. Reporte
+ *  del owner con la v1.7.1 en vivo (el compilo el .mdl y el grab se
+ *  ve): "la animacion de grab esta bn no te negare eso PERO el cuerpo
+ *  del enemigo deberia estar pegado al brazo en si, no en donde la
+ *  camara este viendo, y deberia estar orientado mas que todo a donde
+ *  mire kolossos no el survivor invisible... el brazo espina que
+ *  tiene, o sea el derecho, este mas ubicado, no este tan separado:
+ *  el original se veia mejor, solo que se veia el mirando hacia
+ *  arriba — lo unico que debias hacer era bajar la orientacion hacia
+ *  abajo... el resto de la animacion podia seguir igual xq ya era
+ *  perfecta asi (solo añadiendo la animacion de correr obviamente)" +
+ *  "el Grab el agarre inicial no esta funcionando, sigue aun haciendo
+ *  la animacion de correr pero no de agarrar".
+ *  FORENSE FINAL DEL MATERIAL DEL GRAB (Scripts, hueso por hueso,
+ *  raw + deltas + fusionados): TODO esta a <=1.6 grados de la pose de
+ *  referencia — los clips del grab del .mdl original NO traen pose
+ *  (ni brazos ni torso: los deltas del addlayer estan vacios a ±1.5
+ *  grados y traian el mismo Root volteado). CONSECUENCIA: el look del
+ *  GMod NUNCA fue animacion de brazo — era la VICTIMA parentada a la
+ *  mano por el Lua ("ragdoll pegado a la mano derecha"), tal como el
+ *  owner lo describio sin saberlo ("el brazo como en si no se puede
+ *  mover"). El "agarre inicial" que faltaba era el SNAP de la victima
+ *  al brazo, no un clip.
+ *  FIX: [1] modelo v1.5.2 — $attachment "grabhand" hueso RightHand
+ *  (la unica linea nueva del QC; los 56 SMD intactos); [2] plugin —
+ *  Kolossos_GrabVictimGlue: SetParent al avatar (la copia R = verdad
+ *  de mundo, NO el survivor invisible) + SetParentAttachment
+ *  "grabhand" (snap a la mano animada) + tilt afinable en vivo
+ *  (kolossos_grab_tilt, default -35 = "bajar la orientacion hacia
+ *  abajo"); [3] GrabHoldThink — pegada al brazo re-assert por tick
+ *  (sobrevive re-montajes), fallback al offset v1.7 si no hay parent;
+ *  [4] GrabRelease — despegarla ANTES del fling (con parent el avatar
+ *  la clavaria y no volaria). Cadena: attachment (mdl v1.5.2) >
+ *  parent-follow (mdl viejo: sigue a Kolossos) > offset v1.7.
+ *
+ *  v1.7 (manager 3.77.102) — VEREDICTO FINAL DE LAS CAPAS + FIX DEL
+ *  VOLTEO DEL AGARRE. Reporte del owner con la v1.6.1 en vivo:
+ *  "host commentary_dummy pero sigue sin hacer las animaciones
+ *  correctamente... cuando agarra el cuerpo de kolossos queda
+ *  volteado al lado inverso, la mitad del cuerpo que deberia
+ *  controlar el overlay... al caminar no aparecen las 2 animaciones
+ *  a la vez".
+ *  [1] VEREDICTO DE LAS CAPAS (definitivo, en vivo): la sonda
+ *  multi-forma de la v1.6.1 consiguio el host perfecto
+ *  (commentary_dummy vivo + nuestro modelo) y el canal NO EXISTE:
+ *  m_AnimOverlay=no m_animLayers=no en TODAS las formas — L4D2 NO
+ *  networka el array de capas de NINGUNA entidad tipo prop (a
+ *  diferencia de TF2/CS:GO/GMod). El dummy hereda la CLASE overlay
+ *  pero sin send table no hay nada que el cliente pueda ver: ni
+ *  netprops ni SDKCall lo arreglan. El motor de capas queda RETIRADO
+ *  del camino de ejecucion (LayersActive() siempre false; la sonda
+ *  vive como diagnostico y ahora SIEMPRE pruebea el player para
+ *  completar la matriz de sm_kolossos). LA VIA REAL DEL PORT ES Y
+ *  ERA LA FUSION: las 12 compuestas del pack v1.5.
+ *  [2] FIX DEL VOLTEO (forense SMD hueso por hueso): los 4 gestures
+ *  del grab (Grab/GrabIdle/GrabPunch/GrabThrow) traen el hueso Root
+ *  con un roll extra de -90 grados en TODOS los frames (euler
+ *  (90,0,-90) vs referencia (90,0,0)). En GMod eran capas con
+ *  weightlist (Root peso 0 = enmascarado, invisible); como
+ *  secuencia MAIN el Root SE APLICA y el cuerpo entero gira de lado
+ *  — el "volteado al lado inverso". FIX DOBLE: (a) pack v1.5.1 con
+ *  el Root neutralizado en los 4 SMD + la carpeta de compilacion
+ *  COMPLETA (cuerpo + fisica + 56 SMD: nada que mezclar con archivos
+ *  locales del usuario); (b) el plugin JAMAS pone un gesture crudo
+ *  como main: sin fusion el agarre queda en LOCOMOCION PURA (la
+ *  victima en vilo delante es la senal) y los one-shots solo
+ *  disparan compuestas nativas. Las 12 compuestas ya estaban
+ *  limpias (su Root viene de la locomocion) — verificado hueso por
+ *  hueso. El Kill sigue igual (su Root ya venia limpio).
+ *  [3] LA VICTIMA DONDE LA MANO: forense del GrabIdle — la mano
+ *  derecha sujeta a 38u delante y 72 de alto (model space); el agarre
+ *  viejo la ponia a 55u delante y 12 de alto = arrastrada a la altura
+ *  de las rodillas ("el agarre se comporta raro"). KOL_GRAB_HOLD
+ *  38/62: cuelga justo debajo de la mano que la sostiene.
+ *  Cadena final: FUSION v1.5.1 (12 compuestas) > locomocion pura
+ *  (sin modelo recompilado NUNCA mas gestures crudos como main).
+ *  CERO FX tocados.
+ *
+ *  v1.6.1 (manager 3.77.101) — FIX DEL HOST: EL DUMMY NUNCA LLEGO A
+ *  SER HOST PORQUE LO MATAMOS NOSOTROS. Reporte del owner con la v1.6
+ *  en vivo: "Capas: no disponibles | host prop_dynamic_override | 0
+ *  slots" — caia al prop SIEMPRE. AUTOPSIA: la verificacion v1.6 del
+ *  host exigia resolver el canal de capas con UNA sola forma de
+ *  nombrarlo ("m_animLayers.m_nSequence" / "m_AnimOverlay.m_nSequence")
+ *  y esa forma NO es como el nucleo de SourceMod direcciona un array
+ *  de datatables: leido el fuente del core (HalfLife2.cpp,
+ *  UTIL_FindInSendTable) — las props "inside array" (los elementos
+ *  crudos del array) las SALTA, y la unica ruta es la punteada con el
+ *  indice del elemento DENTRO del nombre
+ *  ("m_AnimOverlay.001.m_nSequence", el formato del sm_dump_netprops).
+ *  La forma v1.6 no existia para NADIE: el dummy perfecto spawnneaba,
+ *  pasaba vivo y con nuestro modelo... y lo killabamos por un check
+ *  imposible. FIXES: [1] el host ya NO depende del canal — dummy si
+ *  spawnnea vivo y con NUESTRO modelo (las capas las decide la sonda
+ *  aparte) + reason codes granulares (clase no registrada / murio al
+ *  spawnear / rechazo el modelo y cual quedo) reportados en sm_kolossos;
+ *  [2] SONDA MULTI-FORMA: 2 tablas (m_AnimOverlay / m_animLayers) x 3
+ *  formas (%03d punteada / sin pad / element con test de bounds) — gana
+ *  la primera que resuelva Y se deje escribir el slot 2 (write/read/
+ *  restore de m_nSequence + m_flCycle); [3] matriz de descubrimiento en
+ *  sm_kolossos ("CanalCapas: host ... | player ...") — el oraculo del
+ *  debug: si el player resuelve y el host no, el host no networka
+ *  overlay; si ninguno, es la version del SM; [4] ActivateEntity tras
+ *  el spawn (receta de los clones de emotes). Mismo fallback (fusion
+ *  v1.5 > monocapa v1.3) y CERO FX tocados.
+ *
+ *  v1.6 (manager 3.77.100) — LAS CAPAS REALES POR COMMENTARY_DUMMY.
+ *  El owner remato la investigacion (hilo de AlliedMods + pagina
+ *  oficial de Valve): en L4D2 NINGUN prop soporta m_AnimOverlay
+ *  (prop_dynamic/physics/static heredan de CBaseAnimating a secas),
+ *  PERO commentary_dummy — el muneco del modo comentario — SI hereda
+ *  de CBaseAnimatingOverlay: CCommentaryDummy -> CBaseCombatCharacter
+ *  -> CBaseFlex -> CBaseAnimatingOverlay -> CBaseAnimating ->
+ *  CBaseEntity. Es la UNICA entidad "spawnable como un prop" de L4D2
+ *  con el array de capas networkado (m_animLayers[15]) y ademas trae
+ *  keyvalue "model", input "SetAnimation" por nombre, "StartingAnim"
+ *  y hasta "StartingWeapons" (documentacion oficial de Valve).
+ *  EL TRUCO: el avatar espejo se monta en un COMMENTARY_DUMMY en vez
+ *  de un prop_dynamic_override (auto-verificado tras el spawn: modelo
+ *  propio puesto + canal de capas presente; si la fabrica lo rechaza
+ *  o se rompe solo, cae al prop clasico SIN romper nada). El motor de
+ *  capas de la v1.4 VUELVE COMPLETO y ahora tiene donde vivir: pose
+ *  GrabIdle sostenida en la CAPA 1 (el ACT_HOVER del GMod) + reach /
+ *  puno / lanzamiento como one-shots en la CAPA 2 (ciclo empujado por
+ *  el server per-tick), mientras el main queda en PURA locomocion —
+ *  brazos y piernas INDEPENDIENTES, el sistema exacto del GMod y de
+ *  los survivors al cambiar arma. La sonda probea AMBOS nombres de
+ *  tabla (m_animLayers / m_AnimOverlay) y sm_kolossos reporta host +
+ *  slots + tabla encontrada. Cadena de fallback completa: CAPAS
+ *  REALES > fusion v1.5 (12 compuestas) > monocapa v1.3 — misma
+ *  duracion y prioridad en los tres mundos. El .mdl NO cambia: las
+ *  capas usan las secuencias Grab* ORIGINALES del modelo actual (ya
+ *  autoradas como gestures: weightlist weights_swing, brazos=1 y lo
+ *  demas=0). CERO FX tocados.
+ *
+ *  v1.5 (manager 3.77.99) — LA SERIE GRAB FUSIONADA: "hay que resolver
+ *  el tema de las capas". Reporte del owner con la v1.4 en vivo:
+ *  "Capas: NO DISPONIBLES (fallback monocapa) (slots 0)" — la sonda de
+ *  m_AnimOverlay por netprop NO pasa en L4D2. VEREDICTO TECNICO (probado
+ *  contra el engine y confirmado por la sonda en vivo): en L4D2 la
+ *  animacion de entidades la computa el CLIENTE (CSkeletonInstance) y
+ *  m_AnimOverlay NO viaja en la tabla de red de un prop (a diferencia de
+ *  TF2/GMod) — NO existe canal por el que un plugin le diga al cliente
+ *  "pon esta seq en un layer de ese prop". Las capas que cita Google
+ *  existen de verdad, pero para PLAYERS (el engine las computa
+ *  client-side: el Tank lanza rocas con los brazos mientras camina) y
+ *  para models de Valve compilados con $gesture. La via REAL de L4D2
+ *  (la que usan los mods con models animados): SECUENCIAS COMPUESTAS
+ *  pre-fusionadas en el .mdl — piernas de la locomocion + brazos de la
+ *  serie grab en UNA sola secuencia, generadas con el weightlist
+ *  "weights_swing" del kolossos.qc (el modelo SI estaba bien compilado
+ *  para capas: huesos de brazo a 1, todo lo demas a 0 — lo que faltaba
+ *  era el canal, y ese no existe en L4D2 para props). El pack v1.5 trae
+ *  los 12 SMD fusionados (idle/walk/run x hold/reach/punch/throw,
+ *  generados por scripts/fusion_smd_kolossos.py del repo) + el
+ *  kolossos.qc listo para recompilar con Crowbar (misma $modelname:
+ *  drop-in). El plugin los usa por SONDA: si el .mdl los trae, la FSM
+ *  con victima en vilo pasa a *_hold (PIERNAS ANDANDO con los brazos
+ *  sujetando — exactamente lo que pedia el owner) y los one-shots
+ *  eligen *_reach, *_punch o *_throw segun la locomocion del instante (el
+ *  LANZAMIENTO sigue siendo KOL_SHOT_MAX de duracion completa); si el
+ *  modelo es el viejo, la cadena de fallbacks cae a la monocapa v1.3
+ *  SIN ROMPER NADA. El motor m_AnimOverlay de la v1.4 sale completo
+ *  (0 slots en la realidad = codigo muerto fuera) y el convar
+ *  kolossos_grab_layers queda como el switch de la fusion.
+ *
  *  v1.4 (manager 3.77.98) — LAS CAPAS DEL GRAB + AGARRAR ESPECIALES
  *  (reporte del owner tras probar la v1.3: "la animacion grab nunca se
  *  logra apresiar es pisoteada por la animacion de caminar" y "No agarra
@@ -154,7 +320,7 @@
  * =====================================================================
  */
 
-#define KOLOSSOS_INC_VERSION "1.4-OM"
+#define KOLOSSOS_INC_VERSION "1.8-OM"
 
 // ------------------------- CONSTANTES KIT ---------------------------
 // (defaults = registro oficial GMod om_survivors_register_noodles_kolossos;
@@ -171,8 +337,8 @@
 #define KOL_CHG_STUCK_MINVEL       80.0
 #define KOL_CHG_FLING_FWD          500.0   // lanzamiento de victimas al final
 #define KOL_CHG_FLING_UP           300.0
-#define KOL_GRAB_HOLD_DIST         55.0    // la victima viaja a 55u delante
-#define KOL_GRAB_HOLD_Z            12.0
+#define KOL_GRAB_HOLD_DIST         38.0    // v1.7: la mano del GrabIdle sujeta a 38u delante (forense SMD)
+#define KOL_GRAB_HOLD_Z            62.0    // v1.7: y a ~72 de alto — la victima cuelga debajo de la mano
 #define KOL_GRAB_FLING_FWD         500.0
 #define KOL_GRAB_FLING_UP          300.0
 #define KOL_GRAB_FLING_DELAY       0.3     // v1.3: GMod l.2154 — la victima vuela a +0.3s del arranque del throw
@@ -191,13 +357,36 @@
 #define KOL_DUR_GRABPUNCH          0.85    // GrabPunch.smd 51 frames @ 60fps
 #define KOL_DUR_GRABTHROW          1.02    // GrabThrow.smd 61 frames @ 60fps
 
-// v1.4: slots del MOTOR DE CAPAS (m_AnimOverlay) en el avatar — L4D2
-// lleva el sistema de overlays en CBaseAnimating (los props lo tienen):
-// slot 1 = pose GrabIdle sostenida mientras se sujeta, slot 2 = los
-// one-shots de la serie (reach / puño / lanzamiento). El 0 queda libre.
+// v1.6: slots del MOTOR DE CAPAS REALES (m_animLayers) — el avatar se
+// monta en commentary_dummy, la UNICA entidad "tipo prop" de L4D2 cuya
+// clase hereda de CBaseAnimatingOverlay (jerarquia oficial de Valve:
+// CCommentaryDummy -> CBaseCombatCharacter -> CBaseFlex ->
+// CBaseAnimatingOverlay -> CBaseAnimating). Slot 1 = pose GrabIdle
+// sostenida (el ACT_HOVER del GMod), slot 2 = los one-shots de la serie
+// (reach / puno / lanzamiento). El 0 queda libre.
 #define KOL_LAYER_HOLD             1       // pose de sujetar (ACT_HOVER)
 #define KOL_LAYER_SHOT             2       // one-shots de la serie grab
 #define KOL_LAYER_MIN_SIZE         3       // hacen falta >= 3 slots
+#define KOL_EF_NOSHADOW            (1<<10) // EF_NOSHADOW del SDK (no esta en los includes SM)
+
+// v1.6.1: formas de direccionar un elemento del array de capas. En la
+// tabla de red el overlay viaja como m_AnimOverlay[15] (array de
+// datatables CAnimationLayer) y el nucleo de SM SALTA las props "inside
+// array" — la ruta viable es la PUNTEADA con el indice del elemento
+// dentro del nombre (el formato del sm_dump_netprops). La sonda prueba
+// las 3 formas y gana la primera que resuelva y se deje escribir el
+// slot 2. La forma ELEMENT (la unica que conocia la v1.6) queda de
+// ultimo candidato: si el path baja por el primer elemento, el leaf
+// ve solo 1 elemento y el parametro no alcanza los slots 1/2.
+#define KOL_LAY_FORM_PAD3          0       // "m_AnimOverlay.001.m_nSequence" (%03d — la del dump)
+#define KOL_LAY_FORM_PLAIN         1       // "m_AnimOverlay.1.m_nSequence"   (sin pad)
+#define KOL_LAY_FORM_ELEMENT       2       // "m_AnimOverlay.m_nSequence" + parametro element
+
+// v1.5: LA SERIE FUSIONADA — el fallback intermedio cuando no hay canal
+// de capas (avatar en prop_dynamic): las 12 secuencias compuestas del
+// .mdl v1.5 (piernas de locomocion + brazos del grab en una sola seq,
+// generadas del weightlist weights_swing del kolossos.qc). Sin
+// recompilar el modelo todo cae a la monocapa v1.3 sin romper nada.
 #define KOL_IND_PING_EVERY         1.0     // heartbeat del indicator
 #define KOL_ROCK_LIFETIME          3.0     // la roca muere sola si no toca nada
 #define KOL_ROCK_ARC_TIME          0.5     // GMod: travelTime 0.5
@@ -236,7 +425,22 @@
 #define KOL_ST_GRABHOLD            16   // v1.3: plantado sujetando (pose GrabIdle)
 #define KOL_ST_GRABPUNCH           17   // v1.3: puo al agarrado (one-shot)
 #define KOL_ST_GRABTHROW           18   // v1.3: EL LANZAMIENTO (one-shot prioridad maxima)
-#define KOL_ST_COUNT               19
+// v1.5: LA SERIE FUSIONADA — piernas Y brazos en una sola secuencia (el
+// .mdl v1.5 recompilado las trae; sin ellas la cadena de fallbacks cae
+// a la monocapa de arriba y el kit funciona igual)
+#define KOL_ST_HOLD_WALK           19   // sujetando mientras camina (walk_hold, loop)
+#define KOL_ST_HOLD_RUN            20   // sujetando mientras corre  (run_hold, loop)
+#define KOL_ST_HOLD_IDLE           21   // sujetando plantado        (idle_hold, loop)
+#define KOL_ST_REACH_WALK          22   // el reach enganchando mientras camina
+#define KOL_ST_REACH_RUN           23   // el reach enganchando mientras corre
+#define KOL_ST_REACH_IDLE          24   // el reach plantado
+#define KOL_ST_PUNCH_WALK          25   // el puño mientras camina
+#define KOL_ST_PUNCH_RUN           26   // el puño mientras corre
+#define KOL_ST_PUNCH_IDLE          27   // el puño plantado
+#define KOL_ST_THROW_WALK          28   // EL LANZAMIENTO mientras camina
+#define KOL_ST_THROW_RUN           29   // EL LANZAMIENTO mientras corre
+#define KOL_ST_THROW_IDLE          30   // EL LANZAMIENTO plantado
+#define KOL_ST_COUNT               31
 
 // ------------------------- CONVARS ----------------------------------
 ConVar g_cvKolEnabled;
@@ -258,6 +462,7 @@ ConVar g_cvKolGrabPunches;
 ConVar g_cvKolGrabPunchDmg;
 ConVar g_cvKolGrabCancel;
 ConVar g_cvKolGrabLayers;                       // v1.4: motor de capas del grab
+ConVar g_cvKolGrabTilt;                        // v1.8: pitch de la victima pegada a la mano (el "bajar la orientacion")
 ConVar g_cvKolGrabTank;                         // v1.4: agarrar al tank
 ConVar g_cvKolGrabWitch;                        // v1.4: agarrar a la witch
 ConVar g_cvKolIndCd;
@@ -305,16 +510,27 @@ float  g_fKolGrabThrowAt[MAXPLAYERS + 1];    // v1.3: lanzamiento encadenado tra
 int    g_iKolGrabFlingRef[MAXPLAYERS + 1];   // v1.3: victima del fling demorado (+0.3s, EntRef)
 float  g_fKolSeqDur[KOL_ST_COUNT];           // v1.3: duraciones REALES medidas al .mdl (0 = fallback)
 
-// v1.4: MOTOR DE CAPAS — los one-shots de la serie grab viajan en
-// m_AnimOverlay (brazos) mientras el main sigue en locomocion (piernas)
-int    g_iKolSeqIdx[KOL_ST_COUNT];             // v1.4: INDICE de secuencia (lo da la sonda — las capas usan indice, no nombre)
-bool   g_bKolLayersOK = false;                 // v1.4: el prop soporta m_AnimOverlay (sonda por mapa)
-int    g_iKolLayerSize = 0;                    // v1.4: slots disponibles
-int    g_iKolLayShotState[MAXPLAYERS + 1];     // v1.4: one-shot de capa activo (-1 = ninguno)
-float  g_fKolLayShotStart[MAXPLAYERS + 1];     // v1.4: arranque del one-shot de capa
-float  g_fKolLayShotDur[MAXPLAYERS + 1];       // v1.4: duracion del one-shot de capa
-bool   g_bKolLayHoldOn[MAXPLAYERS + 1];        // v1.4: pose GrabIdle sostenida en slot 1
-Handle g_hKolLayThink = null;                  // v1.4: driver per-tick del ciclo de la capa
+bool   g_bKolFusionOK = false;                // v1.5: el .mdl trae la serie fusionada (sonda por mapa)
+bool   g_bKolFusedNative[KOL_ST_COUNT];       // v1.5: cada compuesta vino NATIVA en el .mdl (pre-fallback)
+
+// ------------------------- v1.6: MOTOR DE CAPAS ---------------------
+// El avatar commentary_dummy networka m_animLayers[15]: brazos del grab
+// en CAPAS (slot 1 pose / slot 2 one-shots) con el main en locomocion.
+int    g_iKolSeqIdx[KOL_ST_COUNT];            // INDICE de cada seq (las capas usan indice, no nombre)
+bool   g_bKolLayersOK = false;                // la sonda paso: la tabla existe y se deja escribir
+int    g_iKolLayerSize = 0;                   // slots disponibles (15 esperados)
+bool   g_bKolDummyHost = false;                // el avatar de este mapa es commentary_dummy
+char   g_sKolLayPrefix[20] = "m_AnimOverlay";  // tabla ganadora de la sonda (m_AnimOverlay / m_animLayers)
+int    g_iKolLayForm = -1;                     // v1.6.1: forma ganadora (-1 = ninguna resolvio)
+int    g_iKolDummyFail = 0;                    // v1.6.1: 0 = dummy OK o sin intentar; 1 clase, 2 murio, 3 modelo
+char   g_sKolDummyFailInfo[PLATFORM_MAX_PATH]; // v1.6.1: detalle del fallo (p.ej. el modelo que quedo)
+char   g_sKolLayDiagDummy[96];                 // v1.6.1: matriz de descubrimiento del canal (host)
+char   g_sKolLayDiagPlayer[96];                // v1.6.1: idem en un player vivo (el oraculo)
+int    g_iKolLayShotState[MAXPLAYERS + 1];    // one-shot de capa activo (-1 = ninguno)
+float  g_fKolLayShotStart[MAXPLAYERS + 1];
+float  g_fKolLayShotDur[MAXPLAYERS + 1];
+bool   g_bKolLayHoldOn[MAXPLAYERS + 1];       // la pose de sujetar esta encendida
+Handle g_hKolLayThink = null;                 // driver per-tick del m_flCycle de capas
 bool   g_bKolCalibDone = false;              // v1.3: el calibrador ya corrio en este mapa
 int    g_iKolCalibProp = INVALID_ENT_REFERENCE; // v1.3: prop desechable del calibrador
 int    g_iKolCalibStage = 0;                 // v1.3: 0=reach 1=punch 2=throw
@@ -339,7 +555,12 @@ char   g_sKolSeqName[KOL_ST_COUNT][24] = { "idle", "walk", "run", "jump", "fall"
                                             "idle", "idle", "run", "run", "idle",
                                             "idle", "idle", "idle", "idle", "idle",
                                             // v1.3: la serie del grab (defaults = nombres de los SMD)
-                                            "Grab", "GrabIdle", "GrabPunch", "GrabThrow" };
+                                            "Grab", "GrabIdle", "GrabPunch", "GrabThrow",
+                                            // v1.5: la SERIE FUSIONADA (defaults = nombres del .qc v1.5)
+                                            "walk_hold", "run_hold", "idle_hold",
+                                            "walk_reach", "run_reach", "idle_reach",
+                                            "walk_punch", "run_punch", "idle_punch",
+                                            "walk_throw", "run_throw", "idle_throw" };
 
 // sonidos del killer (sound/om/kolossos/) — fallback nativo si falta
 bool   g_bKolSndSigh, g_bKolSndRumble, g_bKolSndRoar, g_bKolSndStartup;
@@ -424,10 +645,13 @@ public void Kolossos_OnPluginStart()
     g_cvKolGrabPunches = CreateConVar("kolossos_grab_punches", "3", "Kolossos [X] Grab: puos antes del lanzamiento (GMod 3)", 0, true, 1.0, true, 10.0);
     g_cvKolGrabPunchDmg= CreateConVar("kolossos_grab_punchdamage", "15", "Kolossos [X] Grab: dano por puo (GMod slamDamage 15)", 0, true, 1.0);
     g_cvKolGrabCancel  = CreateConVar("kolossos_grab_cancel", "0", "Kolossos [X] Grab: X de nuevo suelta a la victima (GMod CanCancelGrab=0)", 0, true, 0.0, true, 1.0);
-    // v1.4: el motor de capas (m_AnimOverlay) — brazos de la serie grab
-    // SOBRE la locomocion (piernas andando, como los survivors al cambiar
-    // arma). 1 = auto (capas si el prop las soporta); 0 = monocapa v1.3
-    g_cvKolGrabLayers  = CreateConVar("kolossos_grab_layers", "1", "Kolossos [X] Grab: 1 = serie grab por CAPAS m_AnimOverlay (piernas vivas), 0 = monocapa", 0, true, 0.0, true, 1.0);
+    // v1.6: el switch de la SERIE GRAB por CAPAS REALES — el avatar se
+    // monta en commentary_dummy (la unica entidad tipo prop que hereda
+    // de CBaseAnimatingOverlay): pose de sujetar en capa 1 + one-shots
+    // en capa 2, piernas vivas en el main (el sistema del GMod). Si el
+    // host cae a prop_dynamic: fusion v1.5; modelo viejo: monocapa v1.3.
+    g_cvKolGrabLayers  = CreateConVar("kolossos_grab_layers", "1", "Kolossos [X] Grab: 1 = fusion v1.5 (12 compuestas del .mdl recompilado; sin ellas el agarre queda en locomocion pura — los gestures crudos traen el Root volteado y jamas van como main), 0 = locomocion pura siempre", 0, true, 0.0, true, 1.0);
+    g_cvKolGrabTilt    = CreateConVar("kolossos_grab_tilt", "-35", "Kolossos [X] Grab: pitch en grados de la victima PEGADA a la mano (relativo al frame de la mano; -35 = mirando hacia abajo como el original que la llevaba mirando arriba; 0 = frame de la mano tal cual)", 0, true, -90.0, true, 90.0);
     g_cvKolGrabTank    = CreateConVar("kolossos_grab_tank", "1", "Kolossos [X] Grab: 1 = TAMBIEN agarra al tank (v1.4: el veto de la v1.0 fuera)", 0, true, 0.0, true, 1.0);
     g_cvKolGrabWitch   = CreateConVar("kolossos_grab_witch", "1", "Kolossos [X] Grab: 1 = tambien agarra a la witch", 0, true, 0.0, true, 1.0);
 
@@ -453,21 +677,23 @@ public void Kolossos_OnPluginStart()
         g_iKolAnimState[i]     = -1;
         g_iKolAnimShotState[i] = -1;
         g_fKolAnimShotUntil[i] = 0.0;
-        g_iKolLayShotState[i]  = -1;   // v1.4: sin one-shot de capa
-        g_fKolLayShotStart[i]  = 0.0;
-        g_fKolLayShotDur[i]    = 0.0;
-        g_bKolLayHoldOn[i]     = false;
         g_iKolGrabMoveType[i]  = -1;
         g_iKolGrabVictim[i]    = 0;
         g_hKolHitList[i]       = null;
+        g_iKolLayShotState[i]  = -1;    // v1.6: sin one-shot de capa
+        g_fKolLayShotStart[i]  = 0.0;
+        g_fKolLayShotDur[i]    = 0.2;
+        g_bKolLayHoldOn[i]     = false;
     }
     for (int e = 0; e <= KOL_MAXENT; e++) g_iKolIndSprite[e] = 0;
+    for (int s = 0; s < KOL_ST_COUNT; s++) g_iKolSeqIdx[s] = -1;   // v1.6
 
     delete g_hKolThink;
     g_hKolThink = CreateTimer(0.1, T_KolossosThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 
-    // v1.4: driver per-tick del ciclo de las capas (m_flCycle del slot 2
-    // — el cliente NO avanza los overlays de un prop: lo empuja el server)
+    // v1.6: el driver per-tick de las capas — empuja el m_flCycle del
+    // one-shot y re-afirma la pose de sujetar (el cliente NO avanza
+    // overlays de entidades no-player: sin esto la capa quedaria clavada)
     delete g_hKolLayThink;
     g_hKolLayThink = CreateTimer(0.0, T_Kol_LayerThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 }
@@ -483,7 +709,8 @@ public void Kolossos_OnMapStart()
     delete g_hKolThink;
     g_hKolThink = CreateTimer(0.1, T_KolossosThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 
-    // v1.4: el driver de capas tambien renace en cada mapa (leccion v1.2)
+    // v1.6: idem el driver de capas (misma receta v1.2: re-crear en CADA
+    // arranque de mapa o muere para siempre)
     delete g_hKolLayThink;
     g_hKolLayThink = CreateTimer(0.0, T_Kol_LayerThink, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
 
@@ -496,12 +723,20 @@ public void Kolossos_OnMapStart()
         PrecacheModel(mdl, true);
         g_bKolSeqsOK = false;   // se resuelven al nacer el primer avatar
         g_bKolCalibDone = false;   // v1.3: las duraciones se miden de nuevo (prop nuevo)
-        g_bKolLayersOK = false;    // v1.4: la sonda de capas corre de nuevo
+        g_bKolFusionOK = false;    // v1.5: la sonda de fusion corre de nuevo
+        g_bKolLayersOK = false;    // v1.6: la sonda de capas corre de nuevo
         g_iKolLayerSize = 0;
+        g_bKolDummyHost = false;
+        g_sKolLayPrefix[0] = '\0';
+        g_iKolLayForm = -1;        // v1.6.1: la sonda multi-forma corre de nuevo
+        g_iKolDummyFail = 0;       // v1.6.1: el veredicto del dummy se re-abre por mapa
+        g_sKolDummyFailInfo[0] = '\0';
+        g_sKolLayDiagDummy[0] = '\0';
+        g_sKolLayDiagPlayer[0] = '\0';
         for (int s = 0; s < KOL_ST_COUNT; s++)
         {
             g_fKolSeqDur[s] = 0.0;
-            g_iKolSeqIdx[s] = -1;   // v1.4: indices reales al re-sondear
+            g_iKolSeqIdx[s] = -1;   // v1.6: indices re-resueltos contra el .mdl
         }
     }
     else if (!g_bKolWarnedModel)
@@ -576,7 +811,18 @@ public void Kolossos_OnMapStart()
 public void Kolossos_OnMapEnd()
 {
     delete g_hKolThink;
-    delete g_hKolLayThink;   // v1.4: driver de capas fuera con el mapa
+    delete g_hKolLayThink;   // v1.6: idem el driver de capas
+
+    // v1.6: el canal de capas se re-sonda en el mapa nuevo (host nuevo)
+    g_bKolLayersOK  = false;
+    g_iKolLayerSize = 0;
+    g_bKolDummyHost = false;
+    g_sKolLayPrefix[0] = '\0';
+    g_iKolLayForm = -1;           // v1.6.1: sonda multi-forma de nuevo en el mapa nuevo
+    g_iKolDummyFail = 0;
+    g_sKolDummyFailInfo[0] = '\0';
+    g_sKolLayDiagDummy[0] = '\0';
+    g_sKolLayDiagPlayer[0] = '\0';
 
     // v1.3: el prop del calibrador y sus medidas mueren con el mapa
     int cp = EntRefToEntIndex(g_iKolCalibProp);
@@ -599,6 +845,9 @@ public void Kolossos_OnMapEnd()
         g_iKolAnimShotTier[i]  = KOL_SHOT_ACT;
         g_fKolGrabThrowAt[i]   = 0.0;
         g_iKolGrabFlingRef[i]  = 0;
+        g_iKolLayShotState[i]  = -1;    // v1.6: las capas mueren con el mapa
+        g_fKolLayShotStart[i]  = 0.0;
+        g_bKolLayHoldOn[i]     = false;
         g_iKolBodyRender[i]    = -1;
         g_bKolSmSnap[i]        = false;
 
@@ -713,8 +962,8 @@ void Kolossos_ResetState(int client)
     g_iKolAnimShotState[client] = -1;   // v1.1: sin one-shot
     g_fKolAnimShotUntil[client] = 0.0;
     g_iKolAnimShotTier[client]  = KOL_SHOT_ACT;   // v1.3
-    Kolossos_LayerHold(client, false);            // v1.4: pose de sujetar fuera
-    Kolossos_LayerClearShot(client);              // v1.4: one-shot de capa fuera
+    Kolossos_LayerHold(client, false);            // v1.6: pose de capa fuera (idempotente)
+    Kolossos_LayerClearShot(client);              // v1.6: one-shot de capa fuera (idempotente)
     g_fKolGrabThrowAt[client]   = 0.0;            // v1.3: sin lanzamiento pendiente
     g_iKolGrabFlingRef[client]  = 0;              // v1.3 (anula el fling demorado si habia)
     g_fKolIndUntil[client]     = 0.0;
@@ -743,8 +992,6 @@ void Kolossos_CleanupState(int client)
     g_iKolAnimShotState[client] = -1;
     g_fKolAnimShotUntil[client] = 0.0;
     g_iKolAnimShotTier[client]  = KOL_SHOT_ACT;   // v1.3
-    g_iKolLayShotState[client] = -1;              // v1.4: capas fuera
-    g_bKolLayHoldOn[client]    = false;
     g_fKolGrabThrowAt[client]   = 0.0;            // v1.3
     g_iKolGrabFlingRef[client]  = 0;              // v1.3
 }
@@ -798,14 +1045,114 @@ void Kolossos_RestoreMaxHealth(int client)
 
 int Kolossos_CreateAvatarProp(int client, const char[] model, const char[] targetname, bool tpMode = false)
 {
-    int av = CreateEntityByName("prop_dynamic_override");
-    if (av <= 0 || !IsValidEntity(av)) return 0;
+    // v1.6: COMMENTARY_DUMMY PRIMERO — el owner encontro la pieza que
+    // faltaba del rompecabezas de las capas: en L4D2 la UNICA entidad
+    // "spawnable como un prop" cuya clase hereda de CBaseAnimatingOverlay
+    // es commentary_dummy (pagina oficial de Valve: CCommentaryDummy ->
+    // CBaseCombatCharacter -> CBaseFlex -> CBaseAnimatingOverlay ->
+    // CBaseAnimating -> CBaseEntity). Los props de verdad (prop_dynamic,
+    // prop_physics, prop_static) son CBaseAnimating puro: SIN overlay. El
+    // dummy trae keyvalue "model" e input "SetAnimation" por nombre.
+    // v1.7 VEREDICTO (sonda en vivo de la v1.6.1 en el server del owner):
+    // la clase overlay existe pero L4D2 NO networka el array —
+    // m_AnimOverlay=no m_animLayers=no en todas las formas de la sonda.
+    // El dummy queda como host (spawnnea vivo, toma el modelo, ya esta
+    // whitelisteado en los plugins de limpieza) PERO sin capas: la via
+    // del grab es la FUSION v1.5. Si la
+    // fabrica no lo da o se rompe solo (p.ej. sin el modo comentario),
+    // se cae al prop_dynamic_override clasico (fusion v1.5 / monocapa).
+    bool dummy = false;
+    int av = CreateEntityByName("commentary_dummy");
+    if (av <= 0 || !IsValidEntity(av))
+    {
+        // v1.6.1: diagnostico granular — la fabrica no conoce la clase
+        // en este servidor (build raro / entidad retirada)
+        g_iKolDummyFail = 1;
+        strcopy(g_sKolDummyFailInfo, sizeof(g_sKolDummyFailInfo),
+                "CreateEntityByName no la dio");
+        av = -1;
+    }
+    else
+    {
+        DispatchKeyValue(av, "model", model);
+        DispatchKeyValue(av, "targetname", targetname);
+        DispatchKeyValue(av, "LookAtPlayers", "0");   // no mira a nadie
+        DispatchSpawn(av);
+        ActivateEntity(av);   // v1.6.1: receta de los clones de emotes
 
-    DispatchKeyValue(av, "model", model);
-    DispatchKeyValue(av, "targetname", targetname);
-    DispatchKeyValue(av, "solid", "0");
-    DispatchKeyValue(av, "disableshadows", "1");
-    DispatchSpawn(av);
+        // v1.6.1: EL HOST YA NO DEPENDE DEL CANAL DE CAPAS — la
+        // verificacion v1.6 exigia resolver "m_animLayers.m_nSequence",
+        // una forma que el nucleo de SM NO resuelve para un array de
+        // datatables (los elementos viajan como "m_AnimOverlay.000"...
+        // ".014" y las props "inside array" se saltan), asi que el dummy
+        // perfecto era muerto en cada mapa y caiamos SIEMPRE al prop.
+        // Host = vivo + NUESTRO modelo; las capas las decide la sonda
+        // multi-forma (Kolossos_LayerProbe). Si algo fallo queda
+        // registrado el POR QUE para sm_kolossos.
+        char got[PLATFORM_MAX_PATH];
+        if (!IsValidEntity(av))
+        {
+            g_iKolDummyFail = 2;   // se destruyo solo al spawnear
+            strcopy(g_sKolDummyFailInfo, sizeof(g_sKolDummyFailInfo),
+                    "invalido tras DispatchSpawn");
+        }
+        else if (!HasEntProp(av, Prop_Data, "m_ModelName"))
+        {
+            g_iKolDummyFail = 3;
+            strcopy(g_sKolDummyFailInfo, sizeof(g_sKolDummyFailInfo),
+                    "sin m_ModelName");
+        }
+        else
+        {
+            GetEntPropString(av, Prop_Data, "m_ModelName", got, sizeof(got));
+            if (got[0] != '\0' && StrEqual(got, model, false))
+            {
+                dummy = true;
+                g_iKolDummyFail = 0;
+                g_sKolDummyFailInfo[0] = '\0';
+
+                // blindaje del combat character (no dano, no solido, no sombra):
+                // es un CBaseCombatCharacter y por defecto podria recibir
+                // dano/sangrar — colgado del player e intocable queda igual
+                // que un prop
+                if (HasEntProp(av, Prop_Data, "m_takedamage"))
+                    SetEntProp(av, Prop_Data, "m_takedamage", 0);
+                if (HasEntProp(av, Prop_Data, "m_CollisionGroup"))
+                    SetEntProp(av, Prop_Data, "m_CollisionGroup", 0);
+                if (HasEntProp(av, Prop_Send, "m_nSolidType"))
+                    SetEntProp(av, Prop_Send, "m_nSolidType", 0);
+                if (HasEntProp(av, Prop_Send, "m_fEffects"))
+                    SetEntProp(av, Prop_Send, "m_fEffects",
+                               GetEntProp(av, Prop_Send, "m_fEffects") | KOL_EF_NOSHADOW);
+            }
+            else
+            {
+                g_iKolDummyFail = 3;   // rechazo el modelo — registrar cual quedo
+                Format(g_sKolDummyFailInfo, sizeof(g_sKolDummyFailInfo),
+                       "modelo quedo '%s'", got);
+            }
+        }
+
+        if (!dummy && IsValidEntity(av))
+        {
+            AcceptEntityInput(av, "Kill");   // host invalido: fuera
+            av = -1;
+        }
+    }
+
+    if (!dummy)
+    {
+        av = CreateEntityByName("prop_dynamic_override");
+        if (av <= 0 || !IsValidEntity(av)) return 0;
+
+        DispatchKeyValue(av, "model", model);
+        DispatchKeyValue(av, "targetname", targetname);
+        DispatchKeyValue(av, "solid", "0");
+        DispatchKeyValue(av, "disableshadows", "1");
+        DispatchSpawn(av);
+    }
+
+    g_bKolDummyHost = dummy;   // telemetria de sm_kolossos (host del mapa)
 
     float pos[3], ang[3];
     GetClientAbsOrigin(client, pos);
@@ -855,7 +1202,7 @@ void Kolossos_ResolveTry(int av, int state, const char[] name)
     {
         strcopy(g_sKolSeqName[state], 24, name);
         g_bKolSeqOK[state] = true;
-        g_iKolSeqIdx[state] = after;   // v1.4: el INDICE — las capas (m_AnimOverlay) usan indice, no nombre
+        g_iKolSeqIdx[state] = after;   // v1.6: el INDICE — las capas usan indice, no nombre
     }
 }
 
@@ -863,9 +1210,6 @@ void Kolossos_ResolveSeqs(int av)
 {
     if (g_bKolSeqsOK) return;
     g_bKolSeqsOK = true;
-
-    // v1.4: indices de secuencia frescos (la sonda los rellena)
-    for (int s = 0; s < KOL_ST_COUNT; s++) g_iKolSeqIdx[s] = -1;
 
     // candidatos por estado: nombres literales del registro anims del
     // killer Lua + variantes comunes por si el .mdl difiere
@@ -890,6 +1234,20 @@ void Kolossos_ResolveSeqs(int av)
     char grabHdCands[][22] = { "GrabIdle", "grabidle", "Grab_Idle", "grab_idle", "IdleGrab" };
     char grabPnCands[][22] = { "GrabPunch", "grabpunch", "Grab_Punch", "Punch" };
     char grabThCands[][22] = { "GrabThrow", "grabthrow", "Grab_Throw", "Throw" };
+    // v1.5: la SERIE FUSIONADA — las 12 compuestas del .mdl recompilado
+    // con el pack v1.5 (nombres literales del kolossos.qc v1.5 + variantes)
+    char holdWC[][24] = { "walk_hold", "WalkHold", "walkhold" };
+    char holdRC[][24] = { "run_hold", "RunHold", "runhold" };
+    char holdIC[][24] = { "idle_hold", "IdleHold", "idlehold" };
+    char rchWC[][24]  = { "walk_reach", "WalkReach", "walkreach" };
+    char rchRC[][24]  = { "run_reach", "RunReach", "runreach" };
+    char rchIC[][24]  = { "idle_reach", "IdleReach", "idlereach" };
+    char pchWC[][24]  = { "walk_punch", "WalkPunch", "walkpunch" };
+    char pchRC[][24]  = { "run_punch", "RunPunch", "runpunch" };
+    char pchIC[][24]  = { "idle_punch", "IdlePunch", "idlepunch" };
+    char thrWC[][24]  = { "walk_throw", "WalkThrow", "walkthrow" };
+    char thrRC[][24]  = { "run_throw", "RunThrow", "runthrow" };
+    char thrIC[][24]  = { "idle_throw", "IdleThrow", "idlethrow" };
 
     for (int c = 0; c < sizeof(idleCands); c++) { Kolossos_ResolveTry(av, KOL_ST_IDLE, idleCands[c]); if (g_bKolSeqOK[KOL_ST_IDLE]) break; }
     for (int c = 0; c < sizeof(walkCands); c++) { Kolossos_ResolveTry(av, KOL_ST_WALK, walkCands[c]); if (g_bKolSeqOK[KOL_ST_WALK]) break; }
@@ -910,6 +1268,34 @@ void Kolossos_ResolveSeqs(int av)
     for (int c = 0; c < sizeof(grabHdCands); c++) { Kolossos_ResolveTry(av, KOL_ST_GRABHOLD, grabHdCands[c]);  if (g_bKolSeqOK[KOL_ST_GRABHOLD]) break; }
     for (int c = 0; c < sizeof(grabPnCands); c++) { Kolossos_ResolveTry(av, KOL_ST_GRABPUNCH, grabPnCands[c]); if (g_bKolSeqOK[KOL_ST_GRABPUNCH]) break; }
     for (int c = 0; c < sizeof(grabThCands); c++) { Kolossos_ResolveTry(av, KOL_ST_GRABTHROW, grabThCands[c]); if (g_bKolSeqOK[KOL_ST_GRABTHROW]) break; }
+    // v1.5: la serie fusionada
+    for (int c = 0; c < sizeof(holdWC); c++) { Kolossos_ResolveTry(av, KOL_ST_HOLD_WALK, holdWC[c]);  if (g_bKolSeqOK[KOL_ST_HOLD_WALK]) break; }
+    for (int c = 0; c < sizeof(holdRC); c++) { Kolossos_ResolveTry(av, KOL_ST_HOLD_RUN, holdRC[c]);   if (g_bKolSeqOK[KOL_ST_HOLD_RUN]) break; }
+    for (int c = 0; c < sizeof(holdIC); c++) { Kolossos_ResolveTry(av, KOL_ST_HOLD_IDLE, holdIC[c]);  if (g_bKolSeqOK[KOL_ST_HOLD_IDLE]) break; }
+    for (int c = 0; c < sizeof(rchWC); c++)  { Kolossos_ResolveTry(av, KOL_ST_REACH_WALK, rchWC[c]); if (g_bKolSeqOK[KOL_ST_REACH_WALK]) break; }
+    for (int c = 0; c < sizeof(rchRC); c++)  { Kolossos_ResolveTry(av, KOL_ST_REACH_RUN, rchRC[c]);  if (g_bKolSeqOK[KOL_ST_REACH_RUN]) break; }
+    for (int c = 0; c < sizeof(rchIC); c++)  { Kolossos_ResolveTry(av, KOL_ST_REACH_IDLE, rchIC[c]); if (g_bKolSeqOK[KOL_ST_REACH_IDLE]) break; }
+    for (int c = 0; c < sizeof(pchWC); c++)  { Kolossos_ResolveTry(av, KOL_ST_PUNCH_WALK, pchWC[c]); if (g_bKolSeqOK[KOL_ST_PUNCH_WALK]) break; }
+    for (int c = 0; c < sizeof(pchRC); c++)  { Kolossos_ResolveTry(av, KOL_ST_PUNCH_RUN, pchRC[c]);  if (g_bKolSeqOK[KOL_ST_PUNCH_RUN]) break; }
+    for (int c = 0; c < sizeof(pchIC); c++)  { Kolossos_ResolveTry(av, KOL_ST_PUNCH_IDLE, pchIC[c]); if (g_bKolSeqOK[KOL_ST_PUNCH_IDLE]) break; }
+    for (int c = 0; c < sizeof(thrWC); c++)  { Kolossos_ResolveTry(av, KOL_ST_THROW_WALK, thrWC[c]); if (g_bKolSeqOK[KOL_ST_THROW_WALK]) break; }
+    for (int c = 0; c < sizeof(thrRC); c++)  { Kolossos_ResolveTry(av, KOL_ST_THROW_RUN, thrRC[c]);  if (g_bKolSeqOK[KOL_ST_THROW_RUN]) break; }
+    for (int c = 0; c < sizeof(thrIC); c++)  { Kolossos_ResolveTry(av, KOL_ST_THROW_IDLE, thrIC[c]); if (g_bKolSeqOK[KOL_ST_THROW_IDLE]) break; }
+
+    // v1.5: LA SONDA DE FUSION — walk_hold & co solo existen en el .mdl
+    // recompilado con el pack v1.5. Se captura ANTES de la cadena de
+    // fallbacks (que despues rellena los huecos con nombres base y ya
+    // no se podria distinguir). Si falta una pieza clave: fusion OFF y
+    // todo cae a la monocapa (consistencia total)
+    g_bKolFusionOK = (g_bKolSeqOK[KOL_ST_HOLD_WALK] && g_bKolSeqOK[KOL_ST_HOLD_RUN]
+                   && g_bKolSeqOK[KOL_ST_HOLD_IDLE] && g_bKolSeqOK[KOL_ST_REACH_WALK]
+                   && g_bKolSeqOK[KOL_ST_PUNCH_WALK] && g_bKolSeqOK[KOL_ST_THROW_WALK]);
+
+    // v1.5: se recuerda cuales compuestas vinieron NATIVAS (antes de
+    // que la cadena de fallbacks rellene los huecos): el dispatcher
+    // solo dispara la fusion si ESA pieza existe de verdad en el .mdl
+    for (int s = KOL_ST_HOLD_WALK; s <= KOL_ST_THROW_IDLE; s++)
+        g_bKolFusedNative[s] = g_bKolSeqOK[s];
 
     // cadena de fallbacks (nunca T-pose; cada hueco cae a su par visual
     // mas cercano: la avalancha sin anim dedicada corre, el bloqueo sin
@@ -946,6 +1332,24 @@ void Kolossos_ResolveSeqs(int av)
         Kolossos_FallbackTo(KOL_ST_GRABPUNCH, g_bKolSeqOK[KOL_ST_GRABREACH] ? KOL_ST_GRABREACH : KOL_ST_IDLE);
     if (!g_bKolSeqOK[KOL_ST_GRABTHROW])
         Kolossos_FallbackTo(KOL_ST_GRABTHROW, g_bKolSeqOK[KOL_ST_GRABPUNCH] ? KOL_ST_GRABPUNCH : (g_bKolSeqOK[KOL_ST_GRABREACH] ? KOL_ST_GRABREACH : KOL_ST_IDLE));
+
+    // v1.5: la serie fusionada — sin el .mdl recompilado cada compuesta
+    // cae a SU LOCOMOCION (v1.7: nunca a los gestures crudos): el
+    // plugin funciona IGUAL con el modelo viejo, solo sin la fusion
+    if (!g_bKolSeqOK[KOL_ST_HOLD_WALK])  Kolossos_FallbackTo(KOL_ST_HOLD_WALK,  KOL_ST_WALK);
+    if (!g_bKolSeqOK[KOL_ST_HOLD_RUN])   Kolossos_FallbackTo(KOL_ST_HOLD_RUN,   KOL_ST_RUN);
+    // v1.7: los huecos de las compuestas caen a SU LOCO (nunca a los
+    // gestures crudos: traen el Root volteado y jamas van como main)
+    if (!g_bKolSeqOK[KOL_ST_HOLD_IDLE])  Kolossos_FallbackTo(KOL_ST_HOLD_IDLE,  KOL_ST_IDLE);
+    if (!g_bKolSeqOK[KOL_ST_REACH_WALK]) Kolossos_FallbackTo(KOL_ST_REACH_WALK, KOL_ST_WALK);
+    if (!g_bKolSeqOK[KOL_ST_REACH_RUN])  Kolossos_FallbackTo(KOL_ST_REACH_RUN,  KOL_ST_RUN);
+    if (!g_bKolSeqOK[KOL_ST_REACH_IDLE]) Kolossos_FallbackTo(KOL_ST_REACH_IDLE, KOL_ST_IDLE);
+    if (!g_bKolSeqOK[KOL_ST_PUNCH_WALK]) Kolossos_FallbackTo(KOL_ST_PUNCH_WALK, KOL_ST_WALK);
+    if (!g_bKolSeqOK[KOL_ST_PUNCH_RUN])  Kolossos_FallbackTo(KOL_ST_PUNCH_RUN,  KOL_ST_RUN);
+    if (!g_bKolSeqOK[KOL_ST_PUNCH_IDLE]) Kolossos_FallbackTo(KOL_ST_PUNCH_IDLE, KOL_ST_IDLE);
+    if (!g_bKolSeqOK[KOL_ST_THROW_WALK]) Kolossos_FallbackTo(KOL_ST_THROW_WALK, KOL_ST_WALK);
+    if (!g_bKolSeqOK[KOL_ST_THROW_RUN])  Kolossos_FallbackTo(KOL_ST_THROW_RUN,  KOL_ST_RUN);
+    if (!g_bKolSeqOK[KOL_ST_THROW_IDLE]) Kolossos_FallbackTo(KOL_ST_THROW_IDLE, KOL_ST_IDLE);
 
     // locomocion base: lo que falte cae a idle (regla v1.0)
     for (int s = 1; s <= KOL_ST_FALL; s++)
@@ -1125,65 +1529,256 @@ Action Kolossos_CalibFinish(int cp)
 }
 
 // =====================================================================
-//  v1.4: MOTOR DE CAPAS — m_AnimOverlay sobre el avatar (ambas copias).
-//  Es EL sistema que pedia el owner: "la animacion por capas si es
-//  compatible con l4d2, por que no se le esta aplicando?" — L4D2 lleva
-//  el sistema de overlays dentro de CBaseAnimating (los props tambien
-//  lo networkan). Las secuencias grab del .mdl estan autoradas como
-//  gestures (weightlist weights_swing = SOLO brazos + addlayer delta
-//  de torso): en una CAPA solo contribuyen sus huesos con peso > 0,
-//  asi que los BRAZOS agarran mientras las PIERNAS siguen andando en
-//  el main (walk/run/idle) — el mismo sistema de los survivors al
-//  cambiar arma. El cliente no avanza el ciclo de un overlay de prop:
-//  el SERVER lo empuja (driver per-tick T_Kol_LayerThink).
+//  v1.6: MOTOR DE CAPAS REALES — m_animLayers sobre el avatar ESPEJO
+//  (commentary_dummy), resucitado de la v1.4 ahora que tiene host.
+//  Es EL sistema que pedia el owner desde la v1.3: "las grab son de
+//  solo torso y las piernas tienen que seguir andando, como los
+//  survivors cuando cambian arma". Las secuencias grab del .mdl estan
+//  autoradas como gestures (weightlist weights_swing = SOLO brazos +
+//  addlayer delta de torso): en una CAPA solo contribuyen sus huesos
+//  con peso > 0, asi que los BRAZOS agarran mientras las PIERNAS
+//  siguen andando en el main (idle/walk/run) — el mismo sistema de los
+//  survivors al cambiar arma. El cliente no avanza el ciclo de un
+//  overlay de entidad no-player: el SERVER lo empuja (driver per-tick
+//  T_Kol_LayerThink).
 // =====================================================================
 
-// la sonda: ¿este prop networka m_AnimOverlay y con cuantos slots?
+// la sonda v1.6.1: MULTI-FORMA. La tabla de capas viaja en la red como
+// un ARRAY de datatables (m_AnimOverlay[15] de CAnimationLayer, la
+// herencia CBaseAnimatingOverlay del dummy) y cada elemento se nombra
+// "m_AnimOverlay.000" ... ".014" — el formato del sm_dump_netprops.
+// El nucleo de SourceMod SALTA las props "inside array" (los elementos
+// crudos), asi que la unica ruta viable es la PUNTEADA con el indice
+// del elemento DENTRO del nombre; la forma v1.6 ("<tabla>.m_nSequence"
+// + parametro element) no existia para nadie y mataba el dummy perfecto
+// en cada mapa. La sonda probea 2 nombres de tabla x 3 formas, valida
+// que el slot 2 se deje escribir de verdad (write/read/restore) y
+// construye la MATRIZ de descubrimiento (host + player vivo) para
+// sm_kolossos — el oraculo del debug remoto.
+static const char g_sKolLayTables[][] = { "m_AnimOverlay", "m_animLayers" };
+
+// construye el nombre completo de un campo de capa con la forma ganadora
+void Kolossos_LayPath(char[] out, int maxlen, int slot, const char[] field)
+{
+    if (g_iKolLayForm == KOL_LAY_FORM_PAD3)
+        Format(out, maxlen, "%s.%03d.%s", g_sKolLayPrefix, slot, field);
+    else if (g_iKolLayForm == KOL_LAY_FORM_PLAIN)
+        Format(out, maxlen, "%s.%d.%s", g_sKolLayPrefix, slot, field);
+    else
+        Format(out, maxlen, "%s.%s", g_sKolLayPrefix, field);
+}
+
+// el parametro element: SOLO la forma v1.6 lo usa (en las punteadas el
+// indice ya va DENTRO del nombre)
+int Kolossos_LayElem(int slot)
+{
+    return (g_iKolLayForm == KOL_LAY_FORM_ELEMENT) ? slot : 0;
+}
+
+// descubre que resuelve un host: devuelve la forma ganadora (-1 = nada),
+// deja en tableOut el nombre ganador y en diag la matriz compacta
+// "m_AnimOverlay=si(.001) m_animLayers=no" (solo HasEntProp: en players
+// JAMAS se escribe)
+int Kolossos_LayDiscover(int ent, char[] tableOut, int tableLen, char[] diag, int diagLen)
+{
+    diag[0] = '\0';
+    tableOut[0] = '\0';
+    int winner = -1;
+
+    char prop[56], hit[8];
+    for (int t = 0; t < 2; t++)
+    {
+        bool any = false;
+        hit[0] = '\0';
+
+        // forma A: %03d — la del dump ("m_AnimOverlay.001.m_nSequence")
+        Format(prop, sizeof(prop), "%s.001.m_nSequence", g_sKolLayTables[t]);
+        if (HasEntProp(ent, Prop_Send, prop))
+        {
+            any = true;
+            strcopy(hit, sizeof(hit), ".001");
+            if (winner < 0)
+            {
+                winner = KOL_LAY_FORM_PAD3;
+                strcopy(tableOut, tableLen, g_sKolLayTables[t]);
+            }
+        }
+
+        // forma B: sin pad ("m_AnimOverlay.1.m_nSequence")
+        if (!any)
+        {
+            Format(prop, sizeof(prop), "%s.1.m_nSequence", g_sKolLayTables[t]);
+            if (HasEntProp(ent, Prop_Send, prop))
+            {
+                any = true;
+                strcopy(hit, sizeof(hit), ".1");
+                if (winner < 0)
+                {
+                    winner = KOL_LAY_FORM_PLAIN;
+                    strcopy(tableOut, tableLen, g_sKolLayTables[t]);
+                }
+            }
+        }
+
+        // forma C: la v1.6 ("<tabla>.m_nSequence" + parametro element)
+        if (!any)
+        {
+            Format(prop, sizeof(prop), "%s.m_nSequence", g_sKolLayTables[t]);
+            if (HasEntProp(ent, Prop_Send, prop))
+            {
+                any = true;
+                strcopy(hit, sizeof(hit), "elem");
+                if (winner < 0)
+                {
+                    winner = KOL_LAY_FORM_ELEMENT;
+                    strcopy(tableOut, tableLen, g_sKolLayTables[t]);
+                }
+            }
+        }
+
+        if (diag[0] != '\0') StrCat(diag, diagLen, " ");
+        StrCat(diag, diagLen, g_sKolLayTables[t]);
+        StrCat(diag, diagLen, any ? "=si(" : "=no");
+        if (any)
+        {
+            StrCat(diag, diagLen, hit);
+            StrCat(diag, diagLen, ")");
+        }
+    }
+
+    return winner;
+}
+
+// v1.6.1: el POR QUE cayo el dummy (linea Capas: de sm_kolossos)
+void Kolossos_DummyFailText(char[] out, int maxlen)
+{
+    switch (g_iKolDummyFail)
+    {
+        case 1:  Format(out, maxlen, "clase no registrada — %s", g_sKolDummyFailInfo);
+        case 2:  Format(out, maxlen, "murio al spawnear — %s", g_sKolDummyFailInfo);
+        case 3:  Format(out, maxlen, "rechazo el modelo — %s", g_sKolDummyFailInfo);
+        default: strcopy(out, maxlen, "-");
+    }
+}
+
 void Kolossos_LayerProbe(int av)
 {
-    g_bKolLayersOK = false;
+    g_bKolLayersOK  = false;
     g_iKolLayerSize = 0;
+    g_sKolLayPrefix[0] = '\0';
+    g_iKolLayForm = -1;
 
-    if (!HasEntProp(av, Prop_Send, "m_AnimOverlay.m_nSequence")) return;
+    if (av <= 0 || !IsValidEntity(av)) return;
 
-    int size = GetEntPropArraySize(av, Prop_Send, "m_AnimOverlay.m_nSequence");
-    if (size < KOL_LAYER_MIN_SIZE) return;   // hacen falta los slots 1 y 2
+    // v1.7: el player SIEMPRE se pruebea (la v1.6.1 volvia antes si el
+    // host fallaba y la matriz quedaba coja — "player sin sonda"):
+    // asi el veredicto queda completo en sm_kolossos (host=no player=no
+    // = L4D2 no networka capas para nadie; host=no player=si = el host
+    // en concreto no las lleva)
+    g_sKolLayDiagPlayer[0] = '\0';
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (!IsClientInGame(i)) continue;
+        char tblP[16];
+        Kolossos_LayDiscover(i, tblP, sizeof(tblP),
+                             g_sKolLayDiagPlayer, sizeof(g_sKolLayDiagPlayer));
+        break;
+    }
 
-    // verificacion de escritura: el slot 2 acepta y devuelve el valor
-    int before = GetEntProp(av, Prop_Send, "m_AnimOverlay.m_nSequence", _, KOL_LAYER_SHOT);
-    SetEntProp(av, Prop_Send, "m_AnimOverlay.m_nSequence", 0, _, KOL_LAYER_SHOT);
-    int readBack = GetEntProp(av, Prop_Send, "m_AnimOverlay.m_nSequence", _, KOL_LAYER_SHOT);
-    SetEntProp(av, Prop_Send, "m_AnimOverlay.m_nSequence", before, _, KOL_LAYER_SHOT);
+    // el host...
+    char table[16];
+    int form = Kolossos_LayDiscover(av, table, sizeof(table),
+                                    g_sKolLayDiagDummy, sizeof(g_sKolLayDiagDummy));
+    if (form < 0) return;   // sin canal de capas: fusion (veredicto v1.7)
+    if (g_sKolLayDiagPlayer[0] == '\0')
+        strcopy(g_sKolLayDiagPlayer, sizeof(g_sKolLayDiagPlayer), "sin player conectado");
+
+    strcopy(g_sKolLayPrefix, sizeof(g_sKolLayPrefix), table);
+    g_iKolLayForm = form;
+
+    // los slots: el tamano real si la tabla lo expone; si no, se asume
+    // MAX_OVERLAYS del engine (15 — se valida abajo con el write test)
+    char prop[56];
+    int size = 0;
+    if (form == KOL_LAY_FORM_ELEMENT)
+    {
+        Format(prop, sizeof(prop), "%s.m_nSequence", g_sKolLayPrefix);
+        size = GetEntPropArraySize(av, Prop_Send, prop);
+    }
+    else if (HasEntProp(av, Prop_Send, g_sKolLayPrefix))
+    {
+        size = GetEntPropArraySize(av, Prop_Send, g_sKolLayPrefix);
+    }
+    if (size < KOL_LAYER_MIN_SIZE) size = 15;
+
+    // verificacion de escritura en el slot 2: el canal acepta, devuelve
+    // y restaura (m_nSequence + m_flCycle — los dos campos que el motor
+    // escribe sin guarda)
+    int elem = Kolossos_LayElem(KOL_LAYER_SHOT);
+
+    Kolossos_LayPath(prop, sizeof(prop), KOL_LAYER_SHOT, "m_nSequence");
+    int before   = GetEntProp(av, Prop_Send, prop, _, elem);
+    SetEntProp(av, Prop_Send, prop, 0, _, elem);
+    int readBack = GetEntProp(av, Prop_Send, prop, _, elem);
+    SetEntProp(av, Prop_Send, prop, before, _, elem);
     if (readBack != 0) return;               // el slot no se deja escribir
 
+    Kolossos_LayPath(prop, sizeof(prop), KOL_LAYER_SHOT, "m_flCycle");
+    if (!HasEntProp(av, Prop_Send, prop)) return;
+    float cBefore = GetEntPropFloat(av, Prop_Send, prop, elem);
+    SetEntPropFloat(av, Prop_Send, prop, 0.0, elem);
+    float cBack   = GetEntPropFloat(av, Prop_Send, prop, elem);
+    SetEntPropFloat(av, Prop_Send, prop, cBefore, elem);
+    if (cBack != 0.0) return;
+
     g_iKolLayerSize = size;
-    g_bKolLayersOK = true;
+    g_bKolLayersOK  = true;
 }
 
-// ¿el motor de capas esta operativo? (convar + sonda del mapa)
+// ¿el motor de capas esta operativo? v1.7: VEREDICTO FINAL — NUNCA.
+// La sonda en vivo de la v1.6.1 lo confirmo en el server del owner:
+// commentary_dummy hereda la CLASE overlay pero L4D2 no networka el
+// array (m_AnimOverlay=no m_animLayers=no en las 6 formas de la
+// sonda) — sin send table no hay canal: ni netprops ni SDKCall
+// hacen visible una capa para el cliente. El motor queda retirado
+// del camino de ejecucion; la sonda vive solo como diagnostico (la
+// matriz CanalCapas de sm_kolossos documenta el veredicto por mapa).
 bool Kolossos_LayersActive()
 {
-    return g_cvKolGrabLayers != null && g_cvKolGrabLayers.BoolValue
-        && g_bKolLayersOK && g_iKolLayerSize >= KOL_LAYER_MIN_SIZE;
+    return false;
 }
 
-// escribe un slot de capa en UN prop (todo con guarda: si el .mdl o el
-// prop no soporta un campo, se escribe lo que haya)
+// escribe un slot de capa en UN host (todo con guarda: si el .mdl o el
+// host no soporta un campo, se escribe lo que haya). v1.6.1: el nombre
+// de cada campo se arma con la forma que gano la sonda (en las formas
+// punteadas el indice del slot va DENTRO del nombre — la leccion del
+// "host prop_dynamic_override")
 void Kolossos_LayerWrite(int av, int slot, int seqIdx, float cycle, float weight, int order)
 {
     if (av <= 0 || !IsValidEntity(av)) return;
 
-    SetEntProp(av, Prop_Send, "m_AnimOverlay.m_nSequence", seqIdx, _, slot);
-    SetEntPropFloat(av, Prop_Send, "m_AnimOverlay.m_flCycle", cycle, slot);
-    if (HasEntProp(av, Prop_Send, "m_AnimOverlay.m_flPrevCycle"))
-        SetEntPropFloat(av, Prop_Send, "m_AnimOverlay.m_flPrevCycle", cycle, slot);
-    if (HasEntProp(av, Prop_Send, "m_AnimOverlay.m_flPlaybackRate"))
-        SetEntPropFloat(av, Prop_Send, "m_AnimOverlay.m_flPlaybackRate", 1.0, slot);
-    SetEntPropFloat(av, Prop_Send, "m_AnimOverlay.m_flWeight", weight, slot);
-    if (HasEntProp(av, Prop_Send, "m_AnimOverlay.m_flWeightDeltaRate"))
-        SetEntPropFloat(av, Prop_Send, "m_AnimOverlay.m_flWeightDeltaRate", 0.0, slot);
-    if (HasEntProp(av, Prop_Send, "m_AnimOverlay.m_nOrder"))
-        SetEntProp(av, Prop_Send, "m_AnimOverlay.m_nOrder", order, _, slot);
+    char prop[56];
+    int elem = Kolossos_LayElem(slot);
+
+    Kolossos_LayPath(prop, sizeof(prop), slot, "m_nSequence");
+    SetEntProp(av, Prop_Send, prop, seqIdx, _, elem);
+    Kolossos_LayPath(prop, sizeof(prop), slot, "m_flCycle");
+    SetEntPropFloat(av, Prop_Send, prop, cycle, elem);
+    Kolossos_LayPath(prop, sizeof(prop), slot, "m_flPrevCycle");
+    if (HasEntProp(av, Prop_Send, prop))
+        SetEntPropFloat(av, Prop_Send, prop, cycle, elem);
+    Kolossos_LayPath(prop, sizeof(prop), slot, "m_flPlaybackRate");
+    if (HasEntProp(av, Prop_Send, prop))
+        SetEntPropFloat(av, Prop_Send, prop, 1.0, elem);
+    Kolossos_LayPath(prop, sizeof(prop), slot, "m_flWeight");
+    if (HasEntProp(av, Prop_Send, prop))
+        SetEntPropFloat(av, Prop_Send, prop, weight, elem);
+    Kolossos_LayPath(prop, sizeof(prop), slot, "m_flWeightDeltaRate");
+    if (HasEntProp(av, Prop_Send, prop))
+        SetEntPropFloat(av, Prop_Send, prop, 0.0, elem);   // sin auto-fade del cliente
+    Kolossos_LayPath(prop, sizeof(prop), slot, "m_nOrder");
+    if (HasEntProp(av, Prop_Send, prop))
+        SetEntProp(av, Prop_Send, prop, order, _, elem);
 }
 
 // escribe el mismo slot en las DOS copias del avatar (R + L)
@@ -1200,12 +1795,13 @@ void Kolossos_LayerWriteBoth(int client, int slot, int seqIdx, float cycle, floa
     }
 }
 
-// lanza un ONE-SHOT de la serie grab en la capa 2 (brazos) — el main
-// sigue en locomocion (piernas). Devuelve false si hay que caer al
-// motor monocapa (sin capas / secuencia sin resolver)
+// lanza un ONE-SHOT de la serie grab en la CAPA 2 (brazos) — el main
+// sigue en locomocion (piernas). Devuelve false si hay que caer a la
+// fusion v1.5 / monocapa (sin capas / secuencia sin resolver)
 bool Kolossos_LayerShot(int client, int state, float dur)
 {
     if (!Kolossos_LayersActive()) return false;
+    if (state < 0 || state >= KOL_ST_COUNT) return false;
     if (g_iKolSeqIdx[state] < 0) return false;   // la sonda no la resolvio
 
     Kolossos_LayerWriteBoth(client, KOL_LAYER_SHOT, g_iKolSeqIdx[state], 0.0, 1.0, 2);
@@ -1218,16 +1814,18 @@ bool Kolossos_LayerShot(int client, int state, float dur)
 // apaga la capa del one-shot
 void Kolossos_LayerClearShot(int client)
 {
+    if (client < 1 || client > MaxClients) return;
     if (g_iKolLayShotState[client] < 0) return;
     g_iKolLayShotState[client] = -1;
     Kolossos_LayerWriteBoth(client, KOL_LAYER_SHOT, 0, 0.0, 0.0, 0);
 }
 
-// la POSE de sujetar (GrabIdle, el ACT_HOVER del GMod) en la capa 1:
+// la POSE de sujetar (GrabIdle, el ACT_HOVER del GMod) en la CAPA 1:
 // 1 frame congelado — brazos sujetando mientras el main camina/corre.
 // Sin resolver GrabIdle: se queda en locomocion pura (degradacion fina)
 void Kolossos_LayerHold(int client, bool on)
 {
+    if (client < 1 || client > MaxClients) return;
     if (on == g_bKolLayHoldOn[client]) return;
     if (!on)
     {
@@ -1242,22 +1840,22 @@ void Kolossos_LayerHold(int client, bool on)
     Kolossos_LayerWriteBoth(client, KOL_LAYER_HOLD, g_iKolSeqIdx[KOL_ST_GRABHOLD], 0.0, 1.0, 1);
 }
 
-// el dispatcher de la serie grab: CAPAS si se puede (piernas vivas),
-// monocapa v1.3 si no — MISMA prioridad en ambos mundos
-void Kolossos_GrabShot(int client, int state, float dur, int tier)
-{
-    if (Kolossos_LayerShot(client, state, dur)) return;
-    Kolossos_AnimShot(client, state, dur, tier);   // fallback monocapa
-}
-
 // driver per-tick: empuja el m_flCycle de la capa one-shot (el cliente
-// NO avanza overlays de props — sin esto la capa quedaria clavada en 0)
+// NO avanza overlays de entidades no-player — sin esto la capa quedaria
+// clavada en 0) y re-afirma la pose de sujetar (sobrevive a la
+// reparacion de la copia L y a cualquier re-montaje del avatar R)
 public Action T_Kol_LayerThink(Handle timer)
 {
+    if (!Kolossos_LayersActive()) return Plugin_Continue;
+
     float now = GetEngineTime();
 
     for (int i = 1; i <= MaxClients; i++)
     {
+        // la pose de sujetar se re-afirma cada tick mientras este activa
+        if (g_bKolLayHoldOn[i] && g_iKolSeqIdx[KOL_ST_GRABHOLD] >= 0)
+            Kolossos_LayerWriteBoth(i, KOL_LAYER_HOLD, g_iKolSeqIdx[KOL_ST_GRABHOLD], 0.0, 1.0, 1);
+
         if (g_iKolLayShotState[i] < 0) continue;
 
         int av = EntRefToEntIndex(g_iKolAvatar[i]);
@@ -1283,6 +1881,92 @@ public Action T_Kol_LayerThink(Handle timer)
     }
 
     return Plugin_Continue;
+}
+
+// =====================================================================
+//  v1.5: LA SERIE FUSIONADA — el fallback INTERMEDIO del grab cuando
+//  no hay canal de capas (avatar en prop_dynamic_override): la sonda
+//  en vivo del owner reporto
+//  "Capas: NO DISPONIBLES (slots 0)" — un prop_dynamic de L4D2 NO
+//  lleva overlay (CDynamicProp no hereda de CBaseAnimatingOverlay:
+//  solo players/NPCs networkan m_AnimOverlay, por eso el Tank lanza
+//  rocas con los brazos mientras camina). Y la pagina oficial de
+//  VScript que paso el owner lo sella: la API de entidades trae
+//  SetSequence / ResetSequence / LookupSequence / GetSequenceDuration
+//  y NI UNA funcion de capas o gestos — no existe canal de layers
+//  para un prop, ni por netprops ni por Squirrel. LA VIA REAL del
+//  port: las 12 secuencias COMPUESTAS del .mdl recompilado con el
+//  pack v1.5 (piernas de la locomocion + brazos del grab fundidos en
+//  UNA sola seq, mismas fps 60 y mismos frames que la serie base —
+//  las duraciones que mide el calibrador aplican igual).
+// =====================================================================
+
+// ¿la fusion esta operativa? (convar + las 12 compuestas del .mdl)
+bool Kolossos_FusionActive()
+{
+    return g_cvKolGrabLayers != null && g_cvKolGrabLayers.BoolValue && g_bKolFusionOK;
+}
+
+// la locomocion del instante — la misma regla de la FSM (branch [7]):
+// plantado < 40 | camina < 150 o en duck | corre por encima
+int Kolossos_LocoNow(int client)
+{
+    float s = Kolossos_Speed2D(client);
+    if (s < 40.0)  return KOL_ST_IDLE;
+    if (s < 150.0 || (GetClientButtons(client) & IN_DUCK)) return KOL_ST_WALK;
+    return KOL_ST_RUN;
+}
+
+// un one-shot de la serie grab elige su variante FUSIONADA segun la
+// locomocion del instante: el reach / puo / lanzamiento CAMINANDO,
+// CORRIENDO o PLANTADO (piernas y brazos en la MISMA seq). Si esa
+// pieza en particular no vino nativa en el .mdl, cae al one-shot base
+// de la v1.3 — la degradacion es solo visual, la FSM no se entera
+int Kolossos_FusedVariant(int client, int state)
+{
+    if (!Kolossos_FusionActive()) return state;
+
+    int loco = Kolossos_LocoNow(client);
+    int fused = state;
+
+    switch (state)
+    {
+        case KOL_ST_GRABREACH:
+            fused = (loco == KOL_ST_RUN)  ? KOL_ST_REACH_RUN
+                  : ((loco == KOL_ST_WALK) ? KOL_ST_REACH_WALK : KOL_ST_REACH_IDLE);
+        case KOL_ST_GRABPUNCH:
+            fused = (loco == KOL_ST_RUN)  ? KOL_ST_PUNCH_RUN
+                  : ((loco == KOL_ST_WALK) ? KOL_ST_PUNCH_WALK : KOL_ST_PUNCH_IDLE);
+        case KOL_ST_GRABTHROW:
+            fused = (loco == KOL_ST_RUN)  ? KOL_ST_THROW_RUN
+                  : ((loco == KOL_ST_WALK) ? KOL_ST_THROW_WALK : KOL_ST_THROW_IDLE);
+        default:
+            return state;   // no es de la serie: tal cual
+    }
+
+    return g_bKolFusedNative[fused] ? fused : state;
+}
+
+// el dispatcher de la serie grab (v1.7: SOLO COMPUESTAS — sin fusion
+// el agarre queda en locomocion pura, los gestures crudos jamas van
+// como main por el Root volteado). La DURACION que llega es la de la
+// serie BASE y aplica igual: las compuestas traen los mismos frames
+// del grab (31/51/61 @ 60fps del .qc v1.5)
+void Kolossos_GrabShot(int client, int state, float dur, int tier)
+{
+    // v1.7: SOLO COMPUESTAS. Los gestures crudos del grab traen el Root
+    // volteado (-90 de roll en todos los frames: en GMod vivian en una
+    // capa con weightlist que lo enmascaraba) — puestos como main el
+    // cuerpo entero gira de lado ("volteado al lado inverso"). Sin
+    // fusion no se dispara ningun one-shot: el agarre queda en
+    // locomocion pura y la victima en vilo delante es la senal visual
+    if (Kolossos_LayerShot(client, state, dur)) return;   // inerte (veredicto v1.7)
+    if (!Kolossos_FusionActive()) return;
+
+    int fused = Kolossos_FusedVariant(client, state);
+    if (fused == state) return;   // la compuesta de esta loco no vino nativa: NADA crudo
+
+    Kolossos_AnimShot(client, fused, dur, tier);
 }
 
 // transmit: R la ven TODOS menos el dueno; L solo el dueno
@@ -1377,10 +2061,16 @@ void Kolossos_CreateAvatar(int client)
     if (av == 0) return;
 
     Kolossos_ResolveSeqs(av);
+    // (v1.5: la sonda de fusion ya corrio dentro de ResolveSeqs —
+    // walk_hold & co solo existen si el .mdl fue recompilado con el
+    // pack v1.5; sin ellas todo cae a la monocapa sin romper nada)
 
-    // v1.4: sonda de capas (m_AnimOverlay) — una vez por mapa, con el
-    // mismo prop de la sonda de nombres
-    Kolossos_LayerProbe(av);
+    // v1.6: la sonda de CAPAS — una vez por mapa, antes de animar nada
+    // (v1.6.1: MULTI-FORMA — el indice del elemento del array va DENTRO
+    // del nombre de la prop "m_AnimOverlay.001.m_nSequence", la leccion
+    // del "host prop_dynamic_override")
+    if (!g_bKolLayersOK)
+        Kolossos_LayerProbe(av);
 
     // v1.3: medir las duraciones reales de la serie del grab contra el
     // .mdl ("debe durar lo que debe durar") — una vez por mapa
@@ -1439,16 +2129,22 @@ bool Kolossos_IsMyAvatarRef(int ref)
 
 void Kolossos_KillGhostAvatarProps()
 {
-    int ent = -1;
+    // v1.6: se barren AMBOS hosts — el avatar puede ser commentary_dummy
+    // (nuevo) o prop_dynamic_override (fallback); un huerfano de cualquiera
+    // de las dos clases con nuestro targetname va a la basura
     char name[32];
-    while ((ent = FindEntityByClassname(ent, "prop_dynamic_override")) != -1)
+    for (int cls = 0; cls < 2; cls++)
     {
-        if (!IsValidEntity(ent)) continue;
-        GetEntPropString(ent, Prop_Data, "m_iName", name, sizeof(name));
-        if (StrEqual(name, KOL_AVATAR_NAME) || StrEqual(name, KOL_AVATAR_NAME_L))
+        int ent = -1;
+        while ((ent = FindEntityByClassname(ent, cls == 0 ? "prop_dynamic_override" : "commentary_dummy")) != -1)
         {
-            if (!Kolossos_IsMyAvatarRef(EntIndexToEntRef(ent)))
-                AcceptEntityInput(ent, "Kill");   // huerfano
+            if (!IsValidEntity(ent)) continue;
+            GetEntPropString(ent, Prop_Data, "m_iName", name, sizeof(name));
+            if (StrEqual(name, KOL_AVATAR_NAME) || StrEqual(name, KOL_AVATAR_NAME_L))
+            {
+                if (!Kolossos_IsMyAvatarRef(EntIndexToEntRef(ent)))
+                    AcceptEntityInput(ent, "Kill");   // huerfano
+            }
         }
     }
 }
@@ -1604,27 +2300,47 @@ void Kolossos_AvatarUpdate(int client, int av, float now)
         {
             state = KOL_ST_STUN;
         }
-        // ---- [3] victima en vilo — v1.4 LA SERIE DEL GRAB POR CAPAS ----
-        //      Con capas (kolossos_grab_layers 1): el main es SIEMPRE
-        //      locomocion (idle/walk/jump/fall) — la pose de sujetar
-        //      vive en la capa 1 y reach/puo/lanzamiento en la capa 2:
-        //      las PIERNAS SIGUEN ANDANDO mientras los brazos agarran,
-        //      como los survivors al cambiar arma (lo que pedia el
-        //      owner). Sin capas: la regla monocapa v1.3 (walk en
-        //      movimiento, pose GrabIdle SOLO plantado).
+        // ---- [3] victima en vilo — v1.6 CAPAS REALES / v1.5 FUSION ----
+        //      Con el avatar en commentary_dummy (kolossos_grab_layers
+        //      1): el main es SOLO locomocion y la pose de sujetar vive
+        //      en la CAPA 1 — brazos y piernas INDEPENDIENTES, el
+        //      sistema exacto del GMod (AddGesture ACT_HOVER sobre la
+        //      locomocion). Si no hay canal de capas: la fusion v1.5
+        //      (walk_hold / run_hold / idle_hold, piernas y brazos en
+        //      la MISMA seq). En el aire: jump/fall (regla "piernas
+        //      nunca se congelan"). Con el modelo viejo: monocapa v1.3.
         else if (g_iKolGrabVictim[client] != 0)
         {
-            bool lay = Kolossos_LayersActive();
             if (!(GetEntityFlags(client) & FL_ONGROUND))
             {
                 float hvel[3];
                 GetEntPropVector(client, Prop_Data, "m_vecVelocity", hvel);
                 state = (hvel[2] > 40.0) ? KOL_ST_JUMP : KOL_ST_FALL;
             }
-            else if (lay)
-                state = (Kolossos_Speed2D(client) > 40.0) ? KOL_ST_WALK : KOL_ST_IDLE;
+            else if (Kolossos_LayersActive())
+            {
+                // v1.6: el main queda en PURA locomocion — la pose de
+                // sujetar esta en la capa 1 (LayerHold) y los one-shots
+                // en la capa 2 (LayerShot): PIERNAS VIVAS siempre
+                int loco = Kolossos_LocoNow(client);
+                state = (loco == KOL_ST_RUN)  ? KOL_ST_RUN
+                      : ((loco == KOL_ST_WALK) ? KOL_ST_WALK : KOL_ST_IDLE);
+            }
+            else if (Kolossos_FusionActive())
+            {
+                int loco = Kolossos_LocoNow(client);
+                state = (loco == KOL_ST_RUN)  ? KOL_ST_HOLD_RUN
+                      : ((loco == KOL_ST_WALK) ? KOL_ST_HOLD_WALK : KOL_ST_HOLD_IDLE);
+            }
             else
-                state = (Kolossos_Speed2D(client) > 40.0) ? KOL_ST_WALK : KOL_ST_GRABHOLD;
+            {
+                // v1.7: sin fusion = LOCOMOCION PURA. El GrabIdle crudo
+                // como main trae el Root volteado (forense SMD: -90 de
+                // roll en todos los frames del gesture) — JAMAS un
+                // gesture crudo como secuencia principal; la victima en
+                // vilo delante es la senal del agarre
+                state = (Kolossos_Speed2D(client) > 40.0) ? KOL_ST_WALK : KOL_ST_IDLE;
+            }
         }
         // ---- [4] bloqueo en pie (ShouldAlternate: "BlockPos") ----
         else if (g_fKolBlockUntil[client] > now)
@@ -2252,6 +2968,64 @@ void Kolossos_GrabLungeThink(int client, float now)
 }
 
 // la victima queda en vilo delante del coloso
+// v1.8: LA VICTIMA PEGADA AL BRAZO — el fix literal del owner: "el
+// cuerpo del enemigo deberia estar pegado al brazo EN SI, no en donde
+// la camara este viendo, y orientado mas que todo a donde mire
+// KOLOSSOS, no el survivor invisible". El truco del GMod original (su
+// Lua: ragdoll pegado a la mano derecha) a la engine de L4D2:
+//   [1] SetParent al avatar R (la copia que ve el mundo — el survivor
+//       invisible queda fuera del circuito para siempre);
+//   [2] SetParentAttachment "grabhand" — snap a la MANO animada: pos
+//       Y angulos del hueso RightHand del .mdl v1.5.2 ($attachment);
+//   [3] tilt afinable (kolossos_grab_tilt) — el original la llevaba
+//       "mirando hacia arriba" y el owner pidio bajarla: pitch
+//       relativo al frame de la mano, default -35.
+// Retorna true si quedo pegada (a este avatar o antes). Con el .mdl
+// viejo (sin $attachment) el snap falla pero el SetParent vive: queda
+// parent-follow (sigue a KOLOSSOS, no a la camara); si tampoco hay
+// parent, GrabHoldThink cae al offset v1.7 como siempre.
+bool Kolossos_GrabVictimGlue(int client, int victim)
+{
+    if (victim <= 0 || !IsValidEntity(victim)) return false;
+    int av = EntRefToEntIndex(g_iKolAvatar[client]);
+    if (av <= 0 || !IsValidEntity(av)) return false;
+
+    // ya esta pegada a ESTE avatar: el parent hace todo el trabajo
+    if (GetEntPropEnt(victim, Prop_Data, "m_hMoveParent") == av) return true;
+
+    // pegarla al avatar (activator = av — la receta del montaje v1.0)
+    SetVariantString("!activator");
+    AcceptEntityInput(victim, "SetParent", av, av);
+
+    // y de la MANO: el snap al attachment la clava al hueso RightHand
+    SetVariantString("grabhand");
+    AcceptEntityInput(victim, "SetParentAttachment", av, av);
+
+    // el tilt del owner: pitch relativo al frame de la mano (una sola
+    // vez por pegado — el convar se lee al enganchar, re-grabar para
+    // cambiarlo en vivo)
+    if (g_cvKolGrabTilt != null && g_cvKolGrabTilt.FloatValue != 0.0
+        && HasEntProp(victim, Prop_Send, "m_angRotation"))
+    {
+        float ang[3];
+        GetEntPropVector(victim, Prop_Send, "m_angRotation", ang);
+        ang[0] += g_cvKolGrabTilt.FloatValue;
+        TeleportEntity(victim, NULL_VECTOR, ang, NULL_VECTOR);
+    }
+    return true;
+}
+
+// v1.8: despegar (unparent) — GrabRelease lo llama ANTES de soltarla:
+// con el parent puesto el avatar la clavaria en el aire y el fling del
+// +0.3s no volaria nunca
+void Kolossos_GrabVictimUnGlue(int victim)
+{
+    if (victim <= 0 || !IsValidEntity(victim)) return;
+    if (GetEntPropEnt(victim, Prop_Data, "m_hMoveParent") == -1) return;
+    SetVariantString("");
+    AcceptEntityInput(victim, "SetParent", victim, victim);
+}
+
 void Kolossos_GrabBegin(int client, int victim)
 {
     g_fKolLungeUntil[client] = 0.0;
@@ -2271,20 +3045,27 @@ void Kolossos_GrabBegin(int client, int victim)
         SetEntProp(victim, Prop_Data, "movetype", MOVETYPE_NONE);
     }
 
+    // v1.8: LA VICTIMA PEGADA AL BRAZO DESDE EL INSTANTE DEL AGARRE — el
+    // snap al attachment ES el "agarre inicial" visible que faltaba (el
+    // material del grab del .mdl esta vacio: el pegado a la mano era
+    // TODO el look del original, tal cual el Lua de GMod)
+    Kolossos_GrabVictimGlue(client, victim);
+
     Kolossos_Emit(client, g_bKolSndImpale, "om/kolossos/Kol impales.wav",
                   "physics/flesh/flesh_break3.wav");
 
-    // v1.4: la POSE de sujetar (GrabIdle = el ACT_HOVER del GMod) vive en
-    // la CAPA 1 desde el enganche — brazos sujetando mientras el main
-    // sigue en locomocion (piernas andando, el sistema del owner)
+    // v1.6: la POSE de sujetar a la CAPA 1 (el ACT_HOVER del GMod) —
+    // brazos sujetando mientras el main SIGUE SIENDO locomocion pura
+    // (piernas vivas). Sin capas disponibles no hace nada y la FSM usa
+    // la fusion v1.5 o la monocapa v1.3 como antes
     Kolossos_LayerHold(client, true);
 
     // v1.3: el REACH — la serie del grab arranca con el enganche (el
     // "Grab" 31f de los SMD; en GMod el reach es el gesture del lunge
     // MELEE_ATTACK1, pero aca el lunge va a 3x con las piernas vivas:
-    // el lugar monocapa natural del reach es JUSTO al enganchar)
-    // v1.4: por CAPAS — brazos del reach sobre las piernas corriendo;
-    // si no hay capas cae al one-shot monocapa de la v1.3
+    // el lugar natural del reach es JUSTO al enganchar)
+    // v1.5: fusionado — el reach CAMINANDO / CORRIENDO / PLANTADO segun
+    // la locomocion del enganche; modelo viejo = one-shot base v1.3
     Kolossos_GrabShot(client, KOL_ST_GRABREACH,
                       Kolossos_ShotDur(KOL_ST_GRABREACH, KOL_DUR_GRABREACH),
                       KOL_SHOT_GRAB);
@@ -2313,14 +3094,21 @@ void Kolossos_GrabHoldThink(int client, float now)
         return;
     }
 
-    // en vilo delante del coloso (GMod: ragdoll pegado a la mano derecha)
-    float pos[3], dir[3];
-    GetClientAbsOrigin(client, pos);
-    Kolossos_GetMoveDir(client, dir);
-    pos[0] += dir[0] * KOL_GRAB_HOLD_DIST;
-    pos[1] += dir[1] * KOL_GRAB_HOLD_DIST;
-    pos[2] += KOL_GRAB_HOLD_Z;
-    TeleportEntity(victim, pos, NULL_VECTOR, NULL_VECTOR);
+    // v1.8: PEGADA AL BRAZO — el parent la sigue a la MANO animada y
+    // orientada a donde mira KOLOSSOS (re-assert por tick: sobrevive
+    // re-montajes del avatar al cambiar de survivor). Si no se puede
+    // pegar (mdl sin attachment / parent fallado), cae al offset v1.7
+    // (el viejo "en vilo delante del survivor invisible")
+    if (!Kolossos_GrabVictimGlue(client, victim))
+    {
+        float pos[3], dir[3];
+        GetClientAbsOrigin(client, pos);
+        Kolossos_GetMoveDir(client, dir);
+        pos[0] += dir[0] * KOL_GRAB_HOLD_DIST;
+        pos[1] += dir[1] * KOL_GRAB_HOLD_DIST;
+        pos[2] += KOL_GRAB_HOLD_Z;
+        TeleportEntity(victim, pos, NULL_VECTOR, NULL_VECTOR);
+    }
 
     // v1.3: lanzamiento encadenado tras el 3er puo (GMod l.2617-2623:
     // duration+1.75 — el throw sale DESPUES de la anim del puo, no
@@ -2376,8 +3164,8 @@ void Kolossos_GrabPunch(int client)
     // v1.3: el puo tiene su animacion (el gesture MELEE_ATTACK2 del GMod
     // = GrabPunch 51f de los SMD) — prioridad GRAB: la locomocion no la
     // corta, solo el lanzamiento/ejecucion
-    // v1.4: por CAPAS — el puo va en la capa 2 sobre la pose de sujetar
-    // (capa 1) y las piernas siguen en el main (walk si te mueves)
+    // v1.5: fusionado — el puo CAMINANDO / CORRIENDO / PLANTADO segun la
+    // locomocion (piernas y brazo en la MISMA seq)
     Kolossos_GrabShot(client, KOL_ST_GRABPUNCH,
                       Kolossos_ShotDur(KOL_ST_GRABPUNCH, KOL_DUR_GRABPUNCH),
                       KOL_SHOT_GRAB);
@@ -2440,9 +3228,16 @@ void Kolossos_GrabRelease(int client, bool fling, bool victimDied)
     g_fKolGrabThrowAt[client] = 0.0;    // v1.3: sin lanzamiento pendiente
     g_iKolGrabFlingRef[client] = 0;     // v1.3: anula un fling demorado previo
 
-    // v1.4: la pose de sujetar se apaga SIEMPRE al soltar (con o sin
-    // lanzamiento — el ACT_HOVER del GMod se remueve al liberar)
+    // v1.8: despegarla del brazo ANTES de restaurarla — con el parent
+    // puesto el avatar la clavaria y el fling del +0.3s no volaria
+    Kolossos_GrabVictimUnGlue(victim);
+
+    // v1.6: capas fuera — la pose de sujetar se apaga y, si NO hay
+    // lanzamiento, tambien el one-shot en vuelo (con fling, el GrabShot
+    // de abajo re-arma la capa 2 con el lanzamiento de duracion completa)
     Kolossos_LayerHold(client, false);
+    if (!fling)
+        Kolossos_LayerClearShot(client);
 
     if (victim > 0 && IsValidEntity(victim))
     {
@@ -2461,8 +3256,8 @@ void Kolossos_GrabRelease(int client, bool fling, bool victimDied)
         // manda sobre todo: KOL_SHOT_MAX nadie la corta y la duracion la
         // midio el calibrador contra el .mdl real) + la victima vuela a
         // +0.3s del arranque (GMod l.2154)
-        // v1.4: por CAPAS — el lanzamiento viaja en la capa 2 su ciclo
-        // COMPLETO (0->1.0: nadie lo corta) con las piernas en el main
+        // v1.5: fusionado — el lanzamiento CAMINANDO / CORRIENDO /
+        // PLANTADO segun la locomocion, ciclo COMPLETO, nadie lo corta
         if (fling && IsClientInGame(client) && IsPlayerAlive(client))
         {
             Kolossos_GrabShot(client, KOL_ST_GRABTHROW,
@@ -3120,17 +3915,68 @@ public Action Kolossos_CmdDebug(int client, int args)
                    (g_iKolAnimShotState[client] >= 0 && now < g_fKolAnimShotUntil[client])
                        ? g_sKolSeqName[g_iKolAnimShotState[client]] : "-",
                    g_iKolAnimShotTier[client]);
-    // v1.4: el estado del MOTOR DE CAPAS — si el avatar del prop
-    // networka m_AnimOverlay (slots) y que hay sonando ahora
-    char layShot[24];
-    if (g_iKolLayShotState[client] >= 0) strcopy(layShot, 24, g_sKolSeqName[g_iKolLayShotState[client]]);
-    else strcopy(layShot, 24, "-");
-    PrintToConsole(client, "Capas: %s (slots %d) | sujetar %s | one-shot %s | convar kolossos_grab_layers %d",
-                   Kolossos_LayersActive() ? "ACTIVAS" : (g_bKolLayersOK ? "sondadas pero convar OFF" : "NO DISPONIBLES (fallback monocapa)"),
+    // v1.6: el motor de CAPAS REALES — el avatar commentary_dummy es el
+    // unico host de L4D2 que networka el overlay (jerarquia oficial de
+    // Valve: CCommentaryDummy -> ... -> CBaseAnimatingOverlay). Si esta
+    // ACTIVO, la linea de abajo del Fusion es solo informativa (fallback)
+    // v1.6.1: el host ahora reporta POR QUE cayo el dummy (si cayo) y la
+    // tabla con la forma que gano la sonda (.000 punteada / [] element)
+    char kolTabla[32];
+    if (g_sKolLayPrefix[0] == '\0')                strcopy(kolTabla, sizeof(kolTabla), "-");
+    else if (g_iKolLayForm == KOL_LAY_FORM_PAD3)    Format(kolTabla, sizeof(kolTabla), "%s.000", g_sKolLayPrefix);
+    else if (g_iKolLayForm == KOL_LAY_FORM_PLAIN)   Format(kolTabla, sizeof(kolTabla), "%s.0", g_sKolLayPrefix);
+    else                                            Format(kolTabla, sizeof(kolTabla), "%s[]", g_sKolLayPrefix);
+
+    char kolHost[PLATFORM_MAX_PATH];
+    if (g_bKolDummyHost)
+        strcopy(kolHost, sizeof(kolHost), "commentary_dummy");
+    else if (g_iKolDummyFail > 0)
+    {
+        char kolRazon[96];
+        Kolossos_DummyFailText(kolRazon, sizeof(kolRazon));
+        Format(kolHost, sizeof(kolHost), "prop_dynamic_override — dummy cayo: %s", kolRazon);
+    }
+    else
+        strcopy(kolHost, sizeof(kolHost), "prop_dynamic_override");
+
+    PrintToConsole(client, "Capas: %s | host %s | %d slots | tabla %s",
+                   "NO EXISTEN EN L4D2 (canal no networkado — la via es Fusion)",
+                   kolHost,
                    g_iKolLayerSize,
-                   g_bKolLayHoldOn[client] ? "ON" : "off",
-                   layShot,
+                   kolTabla);
+    // v1.6.1: la MATRIZ de descubrimiento del canal — que resolvio la
+    // sonda en el host y en un player vivo (v1.7: el player SIEMPRE se
+    // pruebea — el veredicto completo: host=no player=no = L4D2 no
+    // networka capas para nadie)
+    PrintToConsole(client, "CanalCapas: host %s | player %s",
+                   g_sKolLayDiagDummy[0] != '\0' ? g_sKolLayDiagDummy : "sin sonda",
+                   g_sKolLayDiagPlayer[0] != '\0' ? g_sKolLayDiagPlayer : "sin sonda");
+    // v1.7: QUE .mdl corre de verdad el avatar (m_ModelName del host R)
+    char kolMdl[96];
+    int avDbg = EntRefToEntIndex(g_iKolAvatar[client]);
+    if (avDbg > 0 && IsValidEntity(avDbg) && HasEntProp(avDbg, Prop_Data, "m_ModelName"))
+        GetEntPropString(avDbg, Prop_Data, "m_ModelName", kolMdl, sizeof(kolMdl));
+    else
+        g_cvKolModel.GetString(kolMdl, sizeof(kolMdl));
+    PrintToConsole(client, "Modelo avatar: %s", kolMdl);
+    // v1.5: el estado de la FUSION — cuantas de las 12 compuestas del
+    // .mdl recompilado trae el modelo (12/12 = fusion operativa;
+    // 0/12 = hace falta el pack v1.5.1 COMPLETO)
+    // v1.7: LAS CAPAS NO EXISTEN EN L4D2 — la fusion es LA via
+    int nFused = 0;
+    for (int s = KOL_ST_HOLD_WALK; s <= KOL_ST_THROW_IDLE; s++)
+        if (g_bKolFusedNative[s]) nFused++;
+    PrintToConsole(client, "Fusion: %s (%d/12 compuestas) | convar kolossos_grab_layers %d",
+                   Kolossos_FusionActive() ? "ACTIVA — piernas y brazos en la misma seq"
+                                           : (g_cvKolGrabLayers != null && g_cvKolGrabLayers.BoolValue
+                                                ? "OFF — el .mdl no trae las compuestas (recompilar con el pack v1.5.1 COMPLETO)"
+                                                : "OFF (convar en 0)"),
+                   nFused,
                    g_cvKolGrabLayers != null ? g_cvKolGrabLayers.IntValue : -1);
+    // v1.8: el estado del pegado — la victima cuelga de la MANO del
+    // avatar (parent + attachment) con tilt afinable en vivo
+    PrintToConsole(client, "Victima: pegada al brazo (parent + attachment grabhand) | tilt %.0f grados (kolossos_grab_tilt) | fallback: offset v1.7",
+                   g_cvKolGrabTilt != null ? g_cvKolGrabTilt.FloatValue : -35.0);
     // v1.3: la serie del grab — duraciones medidas + lanzamiento pendiente
     PrintToConsole(client, "GrabSerie: reach %.2fs | punch %.2fs | throw %.2fs (0 = fallback QC 60fps) | lanzar en %.1fs",
                    g_fKolSeqDur[KOL_ST_GRABREACH], g_fKolSeqDur[KOL_ST_GRABPUNCH],
