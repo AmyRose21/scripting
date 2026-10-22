@@ -1,11 +1,37 @@
 /*
  * =====================================================================
- *  [MODULO] KOLOSSOS — El Coloso de OutComeMemories v2.3-OM
+ *  [MODULO] KOLOSSOS — El Coloso de OutComeMemories v2.4-OM
  *  PERSONAJE 14 DEL SUITE (KOLOSSOS_INDEX 13)
  *
  *  Port directo de "Lua de OM de Gmod/autorun/include/killer/
  *  noodles_om_pills_killer_kolossos.lua" (by noodles) — el killer
  *  colosal del pack OM pills, traido a L4D2 como personaje jugable.
+ *
+ *  v2.4 (manager 3.77.109) — EL CLIMB DE PAREDES. Pedido del owner:
+ *  "Hay que ahora sacar la habilidad de Escalar por las paredes, que
+ *  es una pasiva que tiene kolosos en Gmod — si notas en su Lua lo
+ *  dice sus animaciones y todo eso su funcionalidad" (con su
+ *  l4d_climb.sp de los survivors como REFERENCIA de sistema, no de
+ *  implementacion: Kolossos tiene avatar espejo y el .mdl trae la seq
+ *  "climb" propia del .qc v1.5.3 — fps 60, loop).
+ *  EL PORT (Lua l.2185-2310): ESPACIO en el aire con una pared a 65u
+ *  al frente = PEGADO (trace desde los PIES, velocidad PURAMENTE
+ *  vertical re-afirmada cada frame — la gravedad nunca gana); W sube /
+ *  S baja a 500 uu/s (kolossos_climb_speed; sin ninguno = colgado casi
+ *  quieto a 4); ESPACIO de nuevo = SALTO FUERA (185 arriba + 200
+ *  alejandose de la pared); perder la pared de vista = VAULT hacia
+ *  adentro (300 + 15: trepa el borde y encadena con otra pared); pisar
+ *  suelo = suelta. El avatar MIRA A LA PARED (pill_assignedangle =
+ *  -HitNormal del Lua l.2223) con la seq "climb" al ritmo de los
+ *  animrates (W 1.5 | S -1.5 al reves | colgado 0 congelado) y suena
+ *  "kol climb 1.wav" cada 0.35s mientras se mueve (pitch 95-105,
+ *  level 87). Gates del Lua l.2285-2296 (nada de agarre/stun/
+ *  avalancha al armar) + el stun lo despega todo (l.1529) +
+ *  charge/grab/block vetados mientras cuelga (l.2320/2414/2508); el
+ *  M1 queda LIBRE (el Lua no lo gatea: el gesto del swing va ENCIMA
+ *  del climb, como un AddGesture). Referencia l4d_climb.sp: su truco
+ *  del CLON dummy era para survivors SIN avatar — aqui no hace falta
+ *  nada de eso, el espejo ya anima lo que sea.
  *
  *  v2.3 (manager 3.77.108) — LA RISA 1x + EL BLOQUEO QUE LIBERA DE
  *  VERDAD + LOS HITS DEL BLOQUEO FUERTES. Reporte del owner con la
@@ -550,7 +576,7 @@
  * =====================================================================
  */
 
-#define KOLOSSOS_INC_VERSION "2.3-OM"   // v2.3: risa 1x por avalancha + unpin por el camino del motor + hits del bloqueo fuertes
+#define KOLOSSOS_INC_VERSION "2.5-OM"   // v2.5: EMBESTIDA/BLOQUEO INMUNES AL STUN (iframes Lua l.1608) + EL PUÑO DEL TANK ESTILO KNUCKLES + TODOS los sonidos GLOBALES (SNDCHAN_STATIC+SNDLEVEL_NONE, menos el indicador)
 
 // v2.3 [R2]: liberacion de agarres POR EL CAMINO DEL MOTOR — el modulo
 // compartido de Amy/Sally/Cream (Amy.inc lo trae ANTES en el manager;
@@ -561,7 +587,21 @@
 // (defaults = registro oficial GMod om_survivors_register_noodles_kolossos;
 //  velocidad L4D2 calibrada al Destructive Charge de Metal v5.0: 750)
 #define KOL_SND_LEVEL              87      // GMod: soundLevel 87 del killer
-#define KOL_SND_LOUD               140     // v2.3: los hits del bloqueo y la risa del Kill (140dB = cero atenuacion)
+
+// v2.4: LA PASIVA DEL CLIMB (Lua l.2185-2310) — trace de 65u al frente
+// desde los PIES, velocidad PURAMENTE vertical (el SetLocalVelocity
+// (0,0,speed) de cada tick: la gravedad nunca gana), base 4 = colgado
+#define KOL_CLIMB_TRACE            65.0    // Lua l.2187: forward*65
+#define KOL_CLIMB_HANG             4.0     // Lua l.2197: climbspeed base 4
+#define KOL_CLIMB_SND_TICK         0.35    // Lua l.2218: ClimbSounudTick +0.35
+#define KOL_CLIMB_KICK_Z           185.0   // Lua l.2299: (0,0,185)+fwd*-200
+#define KOL_CLIMB_KICK_BACK        200.0
+#define KOL_CLIMB_VAULT_Z          15.0    // Lua l.2229: (0,0,15)+fwd*300
+#define KOL_CLIMB_VAULT_FWD        300.0
+#define KOL_CLIMB_RATE_UP          1.5     // animrates l.409: W = 1.5
+#define KOL_CLIMB_RATE_DOWN        -1.5    // animrates l.412: S = -1.5 (al reves)
+#define KOL_SND_LOUD               140     // v2.5: el nivel de los sonidos POSICIONALES que quedan (el tick del climb: se oye lejos sin ser spam global)
+#define KOL_SND_GLOBAL             SNDLEVEL_NONE  // v2.5: CERO caida con la distancia (SNDCHAN_STATIC + SNDLEVEL_NONE = la receta que el owner investigo: "plays uniformly like a UI sound or music track" — TODO el server lo oye a volumen lleno)
 #define KOL_CHG_WINDUP_T          0.8     // chargestart_Kolossos = +0.8s (duracion del windup)
 #define KOL_CHG_WINDUP_SIGH        0.15    // kol sigh i think.wav
 #define KOL_CHG_WINDUP_RUMBLE      0.35    // kol charge start ground rumble
@@ -733,7 +773,8 @@
 #define KOL_ST_SWING_WALK          31   // el swing caminando
 #define KOL_ST_SWING_RUN           32   // el swing corriendo
 #define KOL_ST_SWING_IDLE          33   // el swing plantado
-#define KOL_ST_COUNT               34
+#define KOL_ST_CLIMB               34   // v2.4: colgado de la pared (ShouldAlternate fall: "climb")
+#define KOL_ST_COUNT               35
 
 // ------------------------- CONVARS ----------------------------------
 ConVar g_cvKolEnabled;
@@ -765,6 +806,8 @@ ConVar g_cvKolBlockCd;
 ConVar g_cvKolBlockDur;
 ConVar g_cvKolRockDmg;
 ConVar g_cvKolRockScale;
+ConVar g_cvKolClimb;                        // v2.4: la pasiva on/off (CanClimb del Lua)
+ConVar g_cvKolClimbSpeed;                   // v2.4: uu/s verticales (Lua: 500)
 ConVar g_cvKolRockStun;    // v1.9: stun al area del impacto de la roca
 ConVar g_cvKolM1;          // v1.9: click izq = puo (slots 0/1 pisados)
 ConVar g_cvKolM1Dmg;       // v2.1: dano MINIMO del puo basico (el max: kolossos_m1_damage_max)
@@ -913,7 +956,9 @@ char   g_sKolSeqName[KOL_ST_COUNT][24] = { "idle", "walk", "run", "jump", "fall"
                                             "walk_punch", "run_punch", "idle_punch",
                                             "walk_throw", "run_throw", "idle_throw",
                                             // v2.0: EL SWING DEL M1 (defaults = nombres del .qc v1.5.3)
-                                            "walk_swing", "run_swing", "idle_swing" };
+                                            "walk_swing", "run_swing", "idle_swing",
+                                            // v2.4: la pasiva del climb (default = nombre del .qc v1.5.3)
+                                            "climb" };
 
 // sonidos del killer (sound/om/kolossos/) — fallback nativo si falta
 bool   g_bKolSndSigh, g_bKolSndRumble, g_bKolSndRoar, g_bKolSndStartup;
@@ -925,6 +970,10 @@ bool   g_bKolSndSlam;                       // v1.1: Sound.mp3 (slam con empalad
 bool   g_bKolSndLaughKill;                  // v1.1: Kolossos laughing.wav (Kill)
 bool   g_bKolSndM1;                         // v1.9: kol m1 (1..4).wav (el basico de click)
 char   g_sKolLaughPath[PLATFORM_MAX_PATH];  // v1.1: ruta real (carpeta Kolossos/kolossos)
+// v2.5: la risa del impale resuelta por variantes (el bool crudo miraba
+// SOLO "Kol charge laugh impale.wav" con K mayuscula — si el pack la trae
+// con minuscula u otra carpeta, nunca sonaba)
+char   g_sKolChgLaughPath[PLATFORM_MAX_PATH];
 bool   g_bKolRockModel = false;             // v2.2: la cadena resolvio un modelo de roca
 // v2.2 [R1]: los 4 kol m1 REALES, uno por archivo — el pack puede traer
 // menos de 4 y el FileExists solo miraba el (1): compactados aqui al
@@ -952,6 +1001,19 @@ bool   g_bKolWasStunned[MAXPLAYERS + 1];
 // v2.2 [R3]: el modelo ACTIVO de la roca (la cadena rockgranite03b ->
 // chunk de Amy -> gascan nativa; vacio = cadena vacia, dano directo)
 char   g_sKolRockModel[96];
+// v2.4: LA PASIVA DEL CLIMB — los Kolossos_Climbing/HoldingSpaceClimb
+// del Lua (l.2185-2310): ESPACIO en el aire hacia una pared = pegado;
+// W/S sube/baja (velocidad vertical pura cada frame), ESPACIO de nuevo
+// = salto fuera; se suelta al pisar suelo o perder la pared de vista
+bool   g_bKolClimbing[MAXPLAYERS + 1];      // colgado de la pared
+bool   g_bKolClimbArm[MAXPLAYERS + 1];      // HoldingSpaceClimb (salto armado)
+float  g_fKolClimbDir[MAXPLAYERS + 1][3];   // DENTRO de la pared (el forward del puppet)
+float  g_fKolClimbYaw[MAXPLAYERS + 1];      // pill_assignedangle: cara a la pared
+float  g_fKolClimbSndAt[MAXPLAYERS + 1];    // ClimbSounudTick (0.35s entre wavs)
+// v2.4: los wavs "kol climb N" del pack (Lua l.2211: el 1, level 87,
+// pitch 95-105) — deteccion per-archivo con variantes de case/parentesis
+char   g_sKolClimbWavs[4][56];
+int    g_iKolSndClimbCount = 0;
 
 // sprites del indicator: g_iKolIndSprite[entidx] = EntRef del glow
 int    g_iKolIndSprite[KOL_MAXENT + 1];
@@ -993,30 +1055,56 @@ void Kolossos_GetMoveDir(int client, float dir[3])
     dir[2] = 0.0;
 }
 
+// v2.5: TODOS los sonidos del coloso son GLOBALES — el owner lo trajo
+// investigado: "set the channel to SNDCHAN_STATIC or pass SNDLEVEL_NONE
+// (0) so it plays uniformly like a UI sound or music track" = CERO
+// calculo de distancia, TODO el server lo oye a volumen lleno estando
+// donde este ("el resto de los sonidos son para que todos escuchen").
+// El unico que queda local es el INDICADOR (whispers/ping: "eso suena
+// solamente para el y creo que seria lo unico").
 void Kolossos_Emit(int client, bool has, const char[] real, const char[] fallback)
 {
-    if (has) EmitSoundToAll(real, client, _, KOL_SND_LEVEL);
-    else if (fallback[0] != '\0') EmitSoundToAll(fallback, client, _, KOL_SND_LEVEL);
+    Kolossos_EmitLoud(client, has, real, fallback);
 }
 
-// v2.3 [R3]: EL EMIT FUERTE — mismo contrato que Kolossos_Emit pero a
-// KOL_SND_LOUD (140dB: cero atenuacion con la distancia) y en DOS
-// canales simultaneos (SNDCHAN_AUTO + SNDCHAN_BODY: dos voces sumando
-// en el mix = el golpe SE SIENTE). Para los hits del bloqueo y la
-// risa de la ejecucion ("deben oirse mas fuerte": el 87 del GMod
-// queda apagado en el mix musical de L4D2)
+// v2.3 [R3] -> v2.5 [SND]: EL EMIT GLOBAL — mismo contrato de siempre
+// pero con la receta investigada por el owner: SNDCHAN_STATIC +
+// SNDLEVEL_NONE en UN canal (la v2.3 usaba 140dB en dos canales y en
+// el campo seguia sin sentirse: el STATIC+NONE es matematicamente sin
+// caida — volumen lleno a cualquier distancia, como la musica del
+// juego). Guard extra: has=true con ruta vacia = no emitir nada (el
+// bug del laughing no montado -> EmitSoundToAll("") de la v2.3).
 void Kolossos_EmitLoud(int client, bool has, const char[] real, const char[] fallback)
 {
-    if (has)
+    if (has && real[0] != '\0')
+        EmitSoundToAll(real, client, SNDCHAN_STATIC, KOL_SND_GLOBAL, _, 1.0);
+    else if (!has && fallback[0] != '\0')
+        EmitSoundToAll(fallback, client, SNDCHAN_STATIC, KOL_SND_GLOBAL, _, 1.0);
+}
+
+// v2.5 [R1]: EL RESOLVEDOR DE VARIANTES — el pack de sonidos del server
+// puede traer cada wav con case distinto, con o sin el " (1)" de la
+// extraccion de Windows, o en la carpeta con K mayuscula ("OM/Kolossos"
+// vs "om/kolossos" — el Lua usa AMBAS). La v2.2 solo probaba el nombre
+// LITERAL de los "kol stun N (1).wav" del Lua: si el pack trae otro
+// case, g_iKolSndStunCount quedaba en 0 y el stun del coloso era un
+// SILENCIO ETERNO ("el sonido NO se escucha cuando aturden a kolossos
+// — solo se escucha si el impacto a un boomer": eso era el ZAP generico
+// del suite sobre la VICTIMA, nunca su voz). Esta funcion prueba la
+// lista y devuelve la PRIMERA que exista, ya precacheada.
+bool Kolossos_SndResolve(char[] out, int maxLen, const char[][] vars, int nVars)
+{
+    out[0] = '\0';
+    char testPath[96];
+    for (int v = 0; v < nVars; v++)
     {
-        EmitSoundToAll(real, client, SNDCHAN_AUTO, KOL_SND_LOUD, _, 1.0);
-        EmitSoundToAll(real, client, SNDCHAN_BODY,  KOL_SND_LOUD, _, 1.0);
+        Format(testPath, sizeof(testPath), "sound/%s", vars[v]);
+        if (!FileExists(testPath, true)) continue;
+        strcopy(out, maxLen, vars[v]);
+        PrecacheSound(vars[v], true);
+        return true;
     }
-    else if (fallback[0] != '\0')
-    {
-        EmitSoundToAll(fallback, client, SNDCHAN_AUTO, KOL_SND_LOUD, _, 1.0);
-        EmitSoundToAll(fallback, client, SNDCHAN_BODY,  KOL_SND_LOUD, _, 1.0);
-    }
+    return false;
 }
 
 // =====================================================================
@@ -1066,6 +1154,10 @@ public void Kolossos_OnPluginStart()
     g_cvKolRockScale   = CreateConVar("kolossos_rock_scale", "3", "Kolossos [B] Block: escala de la roca (GMod 3)", 0, true, 0.5, true, 6.0);
     g_cvKolRockStun    = CreateConVar("kolossos_rock_stun", "1", "Kolossos [B] Block: stun s al area del impacto de la roca (0 = solo dano)", 0, true, 0.0, true, 5.0);
 
+    // v2.4: LA PASIVA DEL CLIMB (Lua: OUTCOMEMEMORIES_N_Kolosssos_CanClimb)
+    g_cvKolClimb       = CreateConVar("kolossos_climb", "1", "Kolossos: CLIMB pasivo de paredes — ESPACIO en el aire hacia una pared = PEGADO; W sube / S baja, ESPACIO de nuevo = salto fuera (GMod CanClimb)", 0, true, 0.0, true, 1.0);
+    g_cvKolClimbSpeed  = CreateConVar("kolossos_climb_speed", "500", "Kolossos [Climb]: uu/s verticales de subida/bajada (GMod 500; colgado = 4)", 0, true, 50.0, true, 1000.0);
+
     // v1.9: M1 al click + ragdolls + carry del counter/embestida
     g_cvKolM1          = CreateConVar("kolossos_m1", "1", "Kolossos: click izq con arma PRIMARIA/SECUNDARIA = PUO basico (el disparo queda pisado; granadas/botiquines/pastillas intactos)", 0, true, 0.0, true, 1.0);
     g_cvKolM1Dmg       = CreateConVar("kolossos_m1_damage", "350", "Kolossos [M1]: dano MINIMO del puo basico (v2.1: tirada aleatoria 350-450 con kolossos_m1_damage_max; antes 125)", 0, true, 1.0);
@@ -1105,6 +1197,10 @@ public void Kolossos_OnPluginStart()
         g_iKolLastButtons[i]   = 0;
         g_fKolM1CdUntil[i]     = 0.0;
         g_iKolHandMark[i]      = 0;    // v2.0: sin marcador de mano
+        // v2.4: el climb resetea completo
+        g_bKolClimbing[i]     = false;
+        g_bKolClimbArm[i]     = false;
+        g_fKolClimbSndAt[i]   = 0.0;
     }
     for (int e = 0; e <= KOL_MAXENT; e++) g_iKolIndSprite[e] = 0;
     for (int s = 0; s < KOL_ST_COUNT; s++) g_iKolSeqIdx[s] = -1;   // v1.6
@@ -1200,7 +1296,9 @@ public void Kolossos_OnMapStart()
     g_bKolSndRoar      = FileExists("sound/om/kolossos/KolossosChargeRoar.wav", true);
     g_bKolSndStartup   = FileExists("sound/om/kolossos/StartUpCharge.wav", true);
     g_bKolSndImpacts   = FileExists("sound/om/kolossos/Kol impacts.wav", true);
-    g_bKolSndLaugh     = FileExists("sound/om/kolossos/Kol charge laugh impale.wav", true);
+    // v2.5: la risa del impale se resuelve ABAJO por variantes (el literal
+    // de esta linea era la unica opcion y dejaba la avalancha muda si el
+    // pack traia otro case/carpeta)
     g_bKolSndWallBump  = FileExists("sound/om/kolossos/Kol wall bump.wav", true);
     // v2.2 [R1]: LOS 4 M1 DE VERDAD — el FileExists solo miraba el (1)
     // y NINGUNO se precacheaba: "SV_StartSound: om/kolossos/kol m1 (1).wav
@@ -1223,22 +1321,35 @@ public void Kolossos_OnMapStart()
         }
         g_bKolSndM1 = (g_iKolSndM1Count > 0);
     }
-    // v2.2 [R2]: LOS 4 STUN DEL LUA (l.1520-1523) — suenan al ENTRAR en
-    // cualquier stun (los nativos de L4D2 y los del suite), misma receta
+    // v2.2 [R2] -> v2.5 [R1]: LOS 4 STUN DEL LUA (l.1520-1523) — suenan
+    // al ENTRAR en cualquier stun (los nativos de L4D2 y los del suite).
+    // v2.5: resueltos por VARIANTES (case/sufijo/carpeta — el literal
+    // "kol stun N (1).wav" era la UNICA opcion y si el pack traia otro
+    // nombre el stun quedaba mudo; el owner solo oia el zap del suite
+    // en las VICTIMAS de la roca, nunca la voz del coloso aturdido)
     {
-        static const char sKolStunList[][] = {
-            "om/kolossos/kol stun 1 (1).wav", "om/kolossos/kol stun 2 (1).wav",
-            "om/kolossos/kol stun 3 (1).wav", "om/kolossos/kol stun 4 (1).wav"
-        };
         g_iKolSndStunCount = 0;
-        char stunPath[72];
-        for (int w = 0; w < 4; w++)
+        char num[4];
+        static const char sKolStunFolders[2][14] = { "om/kolossos/", "om/Kolossos/" };
+        for (int w = 1; w <= 4; w++)
         {
-            Format(stunPath, sizeof(stunPath), "sound/%s", sKolStunList[w]);
-            if (!FileExists(stunPath, true)) continue;
-            strcopy(g_sKolStunWavs[g_iKolSndStunCount], 56, sKolStunList[w]);
-            PrecacheSound(sKolStunList[w], true);
-            g_iKolSndStunCount++;
+            IntToString(w, num, sizeof(num));
+            char stunVars[6][56];
+            int nVars = 0;
+            for (int f = 0; f < 2; f++)
+            {
+                // variantes de nombre: literal del Lua con " (1)" / sin
+                // sufijo / con K mayuscula (la extraccion del pack manda)
+                Format(stunVars[nVars++], 56, "%skol stun %s (1).wav", sKolStunFolders[f], num);
+                Format(stunVars[nVars++], 56, "%skol stun %s.wav",     sKolStunFolders[f], num);
+                Format(stunVars[nVars++], 56, "%sKol Stun %s.wav",     sKolStunFolders[f], num);
+            }
+            char resolved[56];
+            if (Kolossos_SndResolve(resolved, sizeof(resolved), stunVars, nVars))
+            {
+                strcopy(g_sKolStunWavs[g_iKolSndStunCount], 56, resolved);
+                g_iKolSndStunCount++;
+            }
         }
     }
     g_bKolSndGrabLunge = FileExists("sound/om/kolossos/kol grab lunge.wav", true);
@@ -1251,54 +1362,76 @@ public void Kolossos_OnMapStart()
     g_bKolSndPing      = FileExists("sound/om/metal/ping1.wav", true);   // ya lo usa Metal
     // v1.1: el slam con empalados ("Sound.mp3" literal del Lua l.1735) y
     // la risa de la ejecucion (carpeta con K mayuscula en el Lua l.1225:
-    // "OM/Kolossos/Kolossos laughing.wav" — se prueban ambas mayusculas)
+    // "OM/Kolossos/Kolossos laughing.wav" — v2.5: + variantes de case del
+    // archivo: "kolossos laughing" minuscula y "Kolossos Laughing")
     g_bKolSndSlam      = FileExists("sound/om/kolossos/Sound.mp3", true);
-    g_bKolSndLaughKill = (FileExists("sound/om/Kolossos/Kolossos laughing.wav", true)
-                       || FileExists("sound/om/kolossos/Kolossos laughing.wav", true));
-    g_sKolLaughPath[0] = '\0';
-    if (g_bKolSndLaughKill)
     {
-        if (FileExists("sound/om/Kolossos/Kolossos laughing.wav", true))
-            strcopy(g_sKolLaughPath, PLATFORM_MAX_PATH, "om/Kolossos/Kolossos laughing.wav");
-        else
-            strcopy(g_sKolLaughPath, PLATFORM_MAX_PATH, "om/kolossos/Kolossos laughing.wav");
+        static const char sKolLaughVars[6][56] = {
+            "om/Kolossos/Kolossos laughing.wav",
+            "om/kolossos/Kolossos laughing.wav",
+            "om/kolossos/kolossos laughing.wav",
+            "om/Kolossos/kolossos laughing.wav",
+            "om/kolossos/Kolossos Laughing.wav",
+            "om/kolossos/kolossoslaugh.wav"
+        };
+        g_bKolSndLaughKill = Kolossos_SndResolve(g_sKolLaughPath, PLATFORM_MAX_PATH,
+                                                 sKolLaughVars, sizeof(sKolLaughVars));
     }
-    // v2.3 [R3]: LOS HITS DEL BLOQUEO DEL PACK — "kol block hit_melee"
-    // y "kol block hit_ranged" (el owner los pide FUERTES en el counter
-    // melee / a distancia): deteccion per-archivo con variantes de case
-    // y guion (misma receta del laughing), la primera que exista gana y
-    // se PRECACHEA. Sin archivo: el counter usa el punching/rumble de
-    // siempre (tambien fuertes ahora) — y sm_kolossos lo reporta para
-    // que nunca haya misterio de "no suena"
+    // v2.5 [SND]: LA RISA DEL IMPIALE resuelta por variantes — el bool
+    // crudo miraba SOLO "Kol charge laugh impale.wav" con K mayuscula;
+    // si el pack la trae minuscula o en la otra carpeta, "la risa"
+    // nunca sonaba en toda la avalancha
     {
-        static const char sKolBlkMList[][] = {
+        static const char sKolChgLaughVars[5][64] = {
+            "om/kolossos/Kol charge laugh impale.wav",
+            "om/Kolossos/Kol charge laugh impale.wav",
+            "om/kolossos/kol charge laugh impale.wav",
+            "om/kolossos/Kol Charge Laugh Impale.wav",
+            "om/kolossos/kol charge laugh.wav"
+        };
+        g_bKolSndLaugh = Kolossos_SndResolve(g_sKolChgLaughPath, PLATFORM_MAX_PATH,
+                                             sKolChgLaughVars, sizeof(sKolChgLaughVars));
+    }
+    // v2.3 [R3] -> v2.5: LOS HITS DEL BLOQUEO DEL PACK via el resolvedor
+    // de variantes (+ la carpeta om/Kolossos que faltaba)
+    {
+        static const char sKolBlkMList[5][64] = {
             "om/kolossos/kol block hit_melee.wav",
             "om/kolossos/Kol block hit_melee.wav",
-            "om/kolossos/kol block hit melee.wav"
+            "om/kolossos/kol block hit melee.wav",
+            "om/Kolossos/kol block hit_melee.wav",
+            "om/kolossos/kol block hit_melee (1).wav"
         };
-        static const char sKolBlkRList[][] = {
+        static const char sKolBlkRList[5][64] = {
             "om/kolossos/kol block hit_ranged.wav",
             "om/kolossos/Kol block hit_ranged.wav",
-            "om/kolossos/kol block hit ranged.wav"
+            "om/kolossos/kol block hit ranged.wav",
+            "om/Kolossos/kol block hit_ranged.wav",
+            "om/kolossos/kol block hit_ranged (1).wav"
         };
-        char testP[80];
-        g_sKolBlkHitM[0] = '\0';
-        g_sKolBlkHitR[0] = '\0';
-        for (int v = 0; v < sizeof(sKolBlkMList); v++)
+        Kolossos_SndResolve(g_sKolBlkHitM, sizeof(g_sKolBlkHitM), sKolBlkMList, sizeof(sKolBlkMList));
+        Kolossos_SndResolve(g_sKolBlkHitR, sizeof(g_sKolBlkHitR), sKolBlkRList, sizeof(sKolBlkRList));
+    }
+
+    // v2.4: el wav del climb (Lua l.2211: "kol climb 1.wav", level 87,
+    // pitch 95-105 cada 0.35s mientras se mueve) — variantes de case y
+    // parentesis como los demas del pack
+    {
+        static const char sKolClimbList[][] = {
+            "om/kolossos/kol climb 1.wav",
+            "om/kolossos/Kol climb 1.wav",
+            "om/kolossos/kol climb 1 (1).wav",
+            "om/kolossos/kol climb.wav"
+        };
+        g_iKolSndClimbCount = 0;
+        char clmbPath[80];
+        for (int w = 0; w < sizeof(sKolClimbList); w++)
         {
-            Format(testP, sizeof(testP), "sound/%s", sKolBlkMList[v]);
-            if (!FileExists(testP, true)) continue;
-            strcopy(g_sKolBlkHitM, sizeof(g_sKolBlkHitM), sKolBlkMList[v]);
-            PrecacheSound(sKolBlkMList[v], true);
-            break;
-        }
-        for (int v = 0; v < sizeof(sKolBlkRList); v++)
-        {
-            Format(testP, sizeof(testP), "sound/%s", sKolBlkRList[v]);
-            if (!FileExists(testP, true)) continue;
-            strcopy(g_sKolBlkHitR, sizeof(g_sKolBlkHitR), sKolBlkRList[v]);
-            PrecacheSound(sKolBlkRList[v], true);
-            break;
+            Format(clmbPath, sizeof(clmbPath), "sound/%s", sKolClimbList[w]);
+            if (!FileExists(clmbPath, true)) continue;
+            strcopy(g_sKolClimbWavs[g_iKolSndClimbCount], 56, sKolClimbList[w]);
+            PrecacheSound(sKolClimbList[w], true);
+            g_iKolSndClimbCount++;
         }
     }
 
@@ -1307,7 +1440,8 @@ public void Kolossos_OnMapStart()
     if (g_bKolSndRoar)      PrecacheSound("om/kolossos/KolossosChargeRoar.wav", true);
     if (g_bKolSndStartup)   PrecacheSound("om/kolossos/StartUpCharge.wav", true);
     if (g_bKolSndImpacts)   PrecacheSound("om/kolossos/Kol impacts.wav", true);
-    if (g_bKolSndLaugh)     PrecacheSound("om/kolossos/Kol charge laugh impale.wav", true);
+    // v2.5: la risa del impale ya queda precacheada por el resolvedor
+    // (Kolossos_SndResolve) con la ruta REAL del pack
     if (g_bKolSndWallBump)  PrecacheSound("om/kolossos/Kol wall bump.wav", true);
     if (g_bKolSndGrabLunge) PrecacheSound("om/kolossos/kol grab lunge.wav", true);
     if (g_bKolSndGrabUse)   PrecacheSound("om/kolossos/Kol uses grab.wav", true);
@@ -1497,6 +1631,9 @@ void Kolossos_ResetState(int client)
     g_fKolLungeUntil[client]   = 0.0;
     g_fKolGrabCdUntil[client]  = 0.0;
     g_bKolChgLaughDone[client] = false;   // v2.3: la risa renace con el jugador
+    g_bKolClimbing[client]     = false;   // v2.4: el climb renace limpio
+    g_bKolClimbArm[client]     = false;
+    g_fKolClimbSndAt[client]   = 0.0;
     g_fKolBlockUntil[client]   = 0.0;
     g_fKolBlockCdUntil[client] = 0.0;
     g_bKolBlockCountered[client] = false;
@@ -1830,6 +1967,8 @@ void Kolossos_ResolveSeqs(int av)
     char swgWC[][24]  = { "walk_swing", "WalkSwing", "walkswing" };
     char swgRC[][24]  = { "run_swing", "RunSwing", "runswing" };
     char swgIC[][24]  = { "idle_swing", "IdleSwing", "idleswing" };
+    // v2.4: la pasiva del climb (la seq "climb" del .qc v1.5.3)
+    char clbC[][24]   = { "climb", "Climb", "climbup" };
 
     for (int c = 0; c < sizeof(idleCands); c++) { Kolossos_ResolveTry(av, KOL_ST_IDLE, idleCands[c]); if (g_bKolSeqOK[KOL_ST_IDLE]) break; }
     for (int c = 0; c < sizeof(walkCands); c++) { Kolossos_ResolveTry(av, KOL_ST_WALK, walkCands[c]); if (g_bKolSeqOK[KOL_ST_WALK]) break; }
@@ -1867,6 +2006,8 @@ void Kolossos_ResolveSeqs(int av)
     for (int c = 0; c < sizeof(swgWC); c++)  { Kolossos_ResolveTry(av, KOL_ST_SWING_WALK, swgWC[c]); if (g_bKolSeqOK[KOL_ST_SWING_WALK]) break; }
     for (int c = 0; c < sizeof(swgRC); c++)  { Kolossos_ResolveTry(av, KOL_ST_SWING_RUN, swgRC[c]);  if (g_bKolSeqOK[KOL_ST_SWING_RUN]) break; }
     for (int c = 0; c < sizeof(swgIC); c++)  { Kolossos_ResolveTry(av, KOL_ST_SWING_IDLE, swgIC[c]); if (g_bKolSeqOK[KOL_ST_SWING_IDLE]) break; }
+    // v2.4: la pasiva del climb
+    for (int c = 0; c < sizeof(clbC); c++) { Kolossos_ResolveTry(av, KOL_ST_CLIMB, clbC[c]); if (g_bKolSeqOK[KOL_ST_CLIMB]) break; }
 
     // v1.5: LA SONDA DE FUSION — walk_hold & co solo existen en el .mdl
     // recompilado con el pack v1.5. Se captura ANTES de la cadena de
@@ -2455,6 +2596,11 @@ public Action T_Kol_LayerThink(Handle timer)
     Kolossos_RockFlightThink(nowLay);
     Kolossos_BlockStateThink(nowLay);
 
+    // v2.4: el latido del CLIMB — antes del gate de capas (la pasiva
+    // vive con o sin avatar montado, como todo el kit) y CADA FRAME
+    // (pisarle la gravedad a 500 uu/s con 10 Hz es imposible)
+    Kolossos_ClimbThink(nowLay);
+
     if (!Kolossos_LayersActive()) return Plugin_Continue;
 
     float now = GetEngineTime();
@@ -2814,6 +2960,12 @@ public void Kolossos_AvatarFollow(int client)
             yawObj = velYaw;
     }
 
+    // v2.4: colgado de la pared = el espejo mira a la PARED (el
+    // pill_assignedangle del Lua l.2223: -HitNormal cara a la pared);
+    // durante el climb la velocidad es vertical pura asi que este
+    // override manda siempre
+    if (g_bKolClimbing[client]) yawObj = g_fKolClimbYaw[client];
+
     float now = GetEngineTime();
     float dt  = now - g_fKolYawLastT[client];
     g_fKolYawLastT[client] = now;
@@ -2945,6 +3097,17 @@ void Kolossos_AvatarUpdate(int client, int av, float now)
         {
             state = KOL_ST_STUN;
         }
+        // ---- [2.5] colgado de la pared (ShouldAlternate fall L328:
+        //      el climb va entre el stun y el BlockPos) — animrates
+        //      L406-417: W = 1.5 | S = -1.5 (al reves) | colgado 0 ----
+        else if (g_bKolClimbing[client])
+        {
+            state = KOL_ST_CLIMB;
+            int cb = GetClientButtons(client);
+            if (cb & IN_FORWARD)       rate = KOL_CLIMB_RATE_UP;
+            else if (cb & IN_BACK)     rate = KOL_CLIMB_RATE_DOWN;
+            else                       rate = 0.0;
+        }
         // ---- [3] victima en vilo — v1.6 CAPAS REALES / v1.5 FUSION ----
         //      Con el avatar en commentary_dummy (kolossos_grab_layers
         //      1): el main es SOLO locomocion y la pose de sujetar vive
@@ -3061,7 +3224,9 @@ void Kolossos_AvatarUpdate(int client, int av, float now)
         g_iKolAnimState[client] = state;
     }
 
-    if (rate < 0.05) rate = 0.05;
+    // v2.4: el climb NO se clampa — colgado = 0 (congelado) y bajando
+    // = -1.5 (la seq corre al reves, el animrates del Lua)
+    if (state != KOL_ST_CLIMB && rate < 0.05) rate = 0.05;
     if (HasEntProp(av, Prop_Data, "m_flPlaybackRate"))
         SetEntPropFloat(av, Prop_Data, "m_flPlaybackRate", rate);
     if (g_iKolAvatarL[client] != 0)
@@ -3103,7 +3268,8 @@ void Kolossos_Ability1(int client)
     }
     if (g_fKolLungeUntil[client] > now
         || g_fKolBlockUntil[client] > now
-        || g_fKolIndUntil[client] > now)
+        || g_fKolIndUntil[client] > now
+        || g_bKolClimbing[client])   // v2.4: colgado no se arranca la avalancha (Lua l.2320)
     {
         PrintCenterText(client, "[Kolossos] Otra habilidad activa.");
         return;
@@ -3481,7 +3647,10 @@ void Kolossos_ChargeDashThink(int client, float now)
         if (g_bKolSndLaugh && !g_bKolChgLaughDone[client])
         {
             g_bKolChgLaughDone[client] = true;
-            EmitSoundToAll("om/kolossos/Kol charge laugh impale.wav", client, _, KOL_SND_LEVEL);
+            // v2.5: GLOBAL + la ruta RESUELTA del pack (antes el literal
+            // con K mayuscula a 87dB — la risa de la avalancha tiene que
+            // oirla todo el server, "tipo Alto")
+            Kolossos_EmitLoud(client, true, g_sKolChgLaughPath, "");
         }
 
         // extension por victima nueva (GMod ImapleChargeDuration 3.75)
@@ -4231,7 +4400,8 @@ void Kolossos_Ability2(int client)
     if (g_iKolChargeState[client] != KOL_CHG_IDLE
         || g_fKolBlockUntil[client] > now
         || g_fKolIndUntil[client] > now
-        || g_fKolLungeUntil[client] > now)
+        || g_fKolLungeUntil[client] > now
+        || g_bKolClimbing[client])   // v2.4: colgado no se agarra a nadie (Lua l.2414)
     {
         PrintCenterText(client, "[Kolossos] Otra habilidad activa.");
         return;
@@ -4648,7 +4818,7 @@ public Action Kolossos_T_KillLaugh(Handle timer, int userid)
     if (client < 1 || !IsClientInGame(client) || !IsPlayerAlive(client)) return Plugin_Stop;
     if (!Kolossos_PlayerIs(client)) return Plugin_Stop;
     if (g_sKolLaughPath[0] != '\0')
-        Kolossos_EmitLoud(client, true, g_sKolLaughPath, "");   // v2.3: FUERTE
+        Kolossos_EmitLoud(client, true, g_sKolLaughPath, "");   // v2.5: GLOBAL (STATIC+NONE) — "la risa kill" la oye todo el server
     return Plugin_Stop;
 }
 
@@ -4976,7 +5146,8 @@ void Kolossos_Ability4(int client)
     if (g_iKolChargeState[client] != KOL_CHG_IDLE
         || g_iKolGrabVictim[client] != 0
         || g_fKolLungeUntil[client] > now
-        || g_fKolIndUntil[client] > now)
+        || g_fKolIndUntil[client] > now
+        || g_bKolClimbing[client])   // v2.4: colgado no se bloquea (Lua l.2508)
     {
         PrintCenterText(client, "[Kolossos] Otra habilidad activa.");
         return;
@@ -5024,6 +5195,63 @@ bool Kolossos_BlockGuard(int client)
     if (client < 1 || client > MaxClients) return false;
     float now = GetEngineTime();
     return (g_fKolBlockUntil[client] > now || g_fKolCounterSafeUntil[client] > now);
+}
+
+// v2.5 [R2]: LOS IFRAMES DEL LUA l.1608-1611 — el think del GMod refresca
+// DisablePlayerMovement_OM_stun_iframe2 CADA TICK mientras dura la
+// embestida (Charging_kolossos + chargestart_Kolossos = windup + dash),
+// el agarre con victima (grabbing_kolossos) y el segundo del counter
+// (BlockingTime!_kolo_om), y el sistema de stun (noodles_om_pills_status
+// l.495-512) NIEGA cualquier stun con un iframe vivo. Pedido del owner:
+// "la embestida de kolossos deberia ser inmune a los aturdimientos de
+// todo tipo" — este getter es ese iframe, consultado por el manager
+// (L4D_OnKnockedDown / L4D2_OnStagger / L4D_TankClaw_OnPlayerHit_Pre),
+// por el Fling (Knuckles.inc) y por el gate del OM_Stun del suite.
+bool Kolossos_ControlImmune(int client)
+{
+    if (!Kolossos_PlayerIs(client)) return false;
+    if (g_iKolChargeState[client] != KOL_CHG_IDLE) return true;   // windup + dash (Lua l.1608/1609)
+    if (g_iKolGrabVictim[client] != 0) return true;               // victima en vilo (grabbing_kolossos)
+    return false;
+}
+
+// v2.5 [R4]: EL GATE DEL STUN DEL SUITE — OM_Stun (y cualquier stun del
+// estilo suite que pase por aqui) rebota contra el coloso en los mismos
+// estados de los iframes del GMod. Con el BLOQUEO ACTIVO el golpe se
+// COUNTERA (el equivalente exacto del OM_DamageBeforeBeforeCustomFunction
+// l.1256-1271: el dano a 0 durante el bloqueo dispara OM_AfterStunBlock
+// -> el bloqueo se consume + counter + iframes) y el stun se niega igual
+// (el iframe2 de 0.2s que deja el consumo en el Lua); en la ventana del
+// counter el golpe se ABSORBE sin segunda contra (los iframes puros).
+// "El bloqueo no deberia ser negado pues literalmente el bloqueo ignora
+// el aturdimiento."
+bool Kolossos_StunGate(int victim, int attacker)
+{
+    if (!Kolossos_PlayerIs(victim)) return false;
+    float now = GetEngineTime();
+
+    // iframes de la embestida/agarre: el stun simplemente NO entra
+    if (Kolossos_ControlImmune(victim)) return true;
+
+    if (Kolossos_BlockGuard(victim))
+    {
+        if (g_fKolBlockUntil[victim] > now)
+        {
+            // bloqueo ACTIVO: consumir + counter (solo si el atacante es
+            // un infectado valido — commons/FF se absorben sin contra,
+            // la misma regla del OnTakeDamage del bloqueo)
+            if (attacker > 0 && attacker <= MaxClients && IsClientInGame(attacker)
+                && IsPlayerAlive(attacker) && GetClientTeam(attacker) == 3)
+            {
+                Kolossos_BlockEnd(victim);
+                Kolossos_BlockCounter(victim, attacker, attacker);
+            }
+            else Kolossos_BlockEnd(victim);
+        }
+        // ventana del counter (ya consumido): absorbido, sin segunda contra
+        return true;
+    }
+    return false;
 }
 
 // v2.1: el bloqueo puro ACTIVO (sin la ventana del counter) — el getter
@@ -5099,7 +5327,10 @@ void Kolossos_StunSound(int client)
 {
     if (g_iKolSndStunCount <= 0) return;
     int pick = GetRandomInt(0, g_iKolSndStunCount - 1);
-    EmitSoundToAll(g_sKolStunWavs[pick], client, _, KOL_SND_LEVEL);
+    // v2.5: GLOBAL — "el stun el sonido NO se escucha cuando aturden a
+    // kolossos": con la deteccion por variantes + SNDCHAN_STATIC/
+    // SNDLEVEL_NONE la voz del coloso aturdido la oye TODO el server
+    Kolossos_EmitLoud(client, true, g_sKolStunWavs[pick], "");
 }
 
 // el flanco de entrada al stun (10 Hz en T_KolossosThink): el sonido
@@ -5109,6 +5340,272 @@ void Kolossos_StunEdgeThink(int client)
     bool st = Kolossos_AnyStun(client);
     if (st && !g_bKolWasStunned[client]) Kolossos_StunSound(client);
     g_bKolWasStunned[client] = st;
+}
+
+// =====================================================================
+//  v2.4: LA PASIVA DEL CLIMB — la pasiva de paredes del GMod (Lua
+//  l.2185-2310, el think + los keybinds del KEY_SPACE): ESPACIO en el
+//  aire con una pared a 65u al frente = PEGADO a ella. La velocidad es
+//  PURAMENTE vertical y se re-afirma CADA FRAME (el
+//  SetLocalVelocity(0,0,speed) del Lua: la gravedad nunca gana); W
+//  sube / S baja (kolossos_climb_speed, GMod 500; sin ninguno = colgado
+//  casi quieto a 4 uu/s), ESPACIO de nuevo = SALTO FUERA (185 arriba +
+//  200 alejandose), perder la pared de vista = VAULT hacia adentro
+//  (300 + 15: trepar el borde), pisar suelo = suelta. El avatar MIRA A
+//  LA PARED (pill_assignedangle = -HitNormal, Lua l.2223) con la seq
+//  "climb" del .mdl (fps 60 loop) al ritmo de los animrates: W 1.5 |
+//  S -1.5 (al reves) | colgado 0 congelado. Sonido: "kol climb 1.wav"
+//  cada 0.35s si se mueve (pitch 95-105, level 87). El kit veta
+//  charge/grab/block mientras cuelga (Lua l.2320/2414/2508); el M1
+//  queda LIBRE (el Lua no lo gatea: el gesto del swing va ENCIMA del
+//  climb, como un AddGesture).
+// =====================================================================
+
+// las props que el propio modulo administra (avatar R/L, marcador de
+// mano, roca en vuelo, dobles de ragdoll/witch): el trace del climb
+// las SALTA — pegarse al propio espejo no es escalar una pared
+bool Kolossos_IsManagedProp(int ent)
+{
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (g_iKolAvatar[i] != 0 && EntRefToEntIndex(g_iKolAvatar[i]) == ent) return true;
+        if (g_iKolAvatarL[i] != 0 && EntRefToEntIndex(g_iKolAvatarL[i]) == ent) return true;
+        if (g_iKolHandMark[i] != 0 && EntRefToEntIndex(g_iKolHandMark[i]) == ent) return true;
+        if (g_iKolRockFlying[i] != 0 && EntRefToEntIndex(g_iKolRockFlying[i]) == ent) return true;
+        if (g_iKolVictRag[i] != 0 && EntRefToEntIndex(g_iKolVictRag[i]) == ent) return true;
+        if (g_iKolWitchRag[i] != 0 && EntRefToEntIndex(g_iKolWitchRag[i]) == ent) return true;
+    }
+    return false;
+}
+
+// filtro del trace de pared: clientes NO (ni rivales ni comunes:
+// nadie escala sobre cabezas) y props del modulo NO — el mundo y los
+// demas props del mapa (coches, contenedores) SI son escalables
+public bool Kolossos_ClimbTraceFilter(int entity, int contentsMask, any data)
+{
+    if (entity > 0 && entity <= MaxClients) return false;
+    if (entity > MaxClients && Kolossos_IsManagedProp(entity)) return false;
+    return true;
+}
+
+// el trace de pared: 65u al frente desde los PIES (Lua l.2187:
+// startPos = GetPos, endPos = +forward*65, MASK_SOLID)
+bool Kolossos_ClimbWallTrace(int client, const float dir[3], float hitNormal[3])
+{
+    float pos[3], end[3];
+    GetClientAbsOrigin(client, pos);
+    end[0] = pos[0] + dir[0] * KOL_CLIMB_TRACE;
+    end[1] = pos[1] + dir[1] * KOL_CLIMB_TRACE;
+    end[2] = pos[2] + dir[2] * KOL_CLIMB_TRACE;
+
+    Handle tr = TR_TraceRayFilterEx(pos, end, MASK_SOLID, RayType_EndPoint,
+                                    Kolossos_ClimbTraceFilter, client);
+    bool hit = TR_DidHit(tr);
+    if (hit) TR_GetPlaneNormal(tr, hitNormal);
+    delete tr;
+    return hit;
+}
+
+// guardar la cara-a-la-pared desde la normal del golpe: dir = DENTRO
+// de la pared (el "puppet forward" del Lua: por ahi sigue el trace) y
+// el yaw del espejo (pill_assignedangle = -HitNormal, l.2223)
+void Kolossos_ClimbFace(int client, const float nrm[3])
+{
+    float dir[3];
+    dir[0] = -nrm[0];
+    dir[1] = -nrm[1];
+    dir[2] = 0.0;
+
+    // normalizar en el plano horizontal (paredes inclinadas traen z)
+    float len = SquareRoot(dir[0] * dir[0] + dir[1] * dir[1]);
+    if (len < 0.001)
+    {
+        dir[0] = 1.0;
+        dir[1] = 0.0;
+        len = 1.0;
+    }
+    dir[0] /= len;
+    dir[1] /= len;
+
+    g_fKolClimbDir[client][0] = dir[0];
+    g_fKolClimbDir[client][1] = dir[1];
+    g_fKolClimbDir[client][2] = 0.0;
+    g_fKolClimbYaw[client]    = RadToDeg(ArcTangent2(dir[1], dir[0]));
+}
+
+// los gates del arranque (Lua l.2285-2296: nada de agarre, stun ni
+// avalancha; el ledge de L4D2 tampoco — estado colgado del motor)
+bool Kolossos_ClimbGates(int client)
+{
+    float now = GetEngineTime();
+    if (Kolossos_AnyStun(client)) return false;
+    if (g_iKolChargeState[client] != KOL_CHG_IDLE) return false;
+    if (g_iKolGrabVictim[client] != 0 || g_fKolLungeUntil[client] > now) return false;
+    if (g_fKolBlockUntil[client] > now) return false;
+    if (HasEntProp(client, Prop_Send, "m_isHangingFromLedge")
+        && GetEntProp(client, Prop_Send, "m_isHangingFromLedge") > 0) return false;
+    return true;
+}
+
+// soltar la pared: kick = el SALTO FUERA del ESPACIO (Lua l.2299:
+// (0,0,185) + forward*-200 — la dir guarda DENTRO de la pared, asi
+// que -200*dir = alejandose); sin kick = algo cancelo el climb
+void Kolossos_ClimbStop(int client, bool kick)
+{
+    if (!g_bKolClimbing[client]) return;
+    g_bKolClimbing[client] = false;
+
+    if (kick)
+    {
+        float v[3];
+        v[0] = -g_fKolClimbDir[client][0] * KOL_CLIMB_KICK_BACK;
+        v[1] = -g_fKolClimbDir[client][1] * KOL_CLIMB_KICK_BACK;
+        v[2] = KOL_CLIMB_KICK_Z;
+        TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, v);
+    }
+}
+
+// el flanco del ESPACIO (OnPlayerRunCmd): armar el climb en el aire /
+// kick-off si ya esta colgado (Lua l.2283-2310 activate-deactivate)
+void Kolossos_ClimbEdge(int client, int buttons, int lastButtons)
+{
+    bool press   = ((buttons & IN_JUMP) != 0 && (lastButtons & IN_JUMP) == 0);
+    bool release = ((buttons & IN_JUMP) == 0 && (lastButtons & IN_JUMP) != 0);
+    if (!press && !release) return;
+
+    if (press)
+    {
+        // ya colgado: ESPACIO = saltar FUERA de la pared (l.2298)
+        if (g_bKolClimbing[client])
+        {
+            Kolossos_ClimbStop(client, true);
+            g_bKolClimbArm[client] = false;   // l.2301: HoldingSpaceClimb false
+            return;
+        }
+        if (g_cvKolClimb == null || !g_cvKolClimb.BoolValue) return;
+        if (!Kolossos_Valid(client)) return;
+        if (!Kolossos_ClimbGates(client)) return;
+        g_bKolClimbArm[client] = true;
+        return;
+    }
+
+    // release: solo desarma si NO esta colgado (l.2266-2269: soltar el
+    // ESPACIO en plena escalada NO despega — el climb es un pegado)
+    if (!g_bKolClimbing[client]) g_bKolClimbArm[client] = false;
+}
+
+// el latido del climb (CADA FRAME en T_Kol_LayerThink — el 10 Hz de la
+// FSM no puede pisarle la gravedad a 500 uu/s: entre ticks ella ya
+// mete ~80 uu/s; el Lua corre esto en su think de cada tick)
+void Kolossos_ClimbThink(float now)
+{
+    for (int c = 1; c <= MaxClients; c++)
+    {
+        if (!g_bKolClimbArm[c] && !g_bKolClimbing[c]) continue;
+
+        // murio / dejo de ser Kolossos / incap: fuera todo, sin push
+        if (!Kolossos_Valid(c))
+        {
+            g_bKolClimbArm[c] = false;
+            g_bKolClimbing[c] = false;
+            continue;
+        }
+
+        // ---- COLGADO: sostener / perder la pared ----
+        if (g_bKolClimbing[c])
+        {
+            // canceladores: el stun lo suelta (Lua l.1529); charge y
+            // grab no pueden arrancar colgado (defensa en profundidad)
+            if (Kolossos_AnyStun(c) || g_iKolChargeState[c] != KOL_CHG_IDLE
+                || g_iKolGrabVictim[c] != 0)
+            {
+                Kolossos_ClimbStop(c, false);
+                continue;
+            }
+
+            // pisar suelo = soltar sin push (el suelo ya sostiene)
+            if (GetEntityFlags(c) & FL_ONGROUND)
+            {
+                Kolossos_ClimbStop(c, false);
+                continue;
+            }
+
+            // re-trace por la direccion guardada (el puppet del Lua
+            // mira a la pared: SU forward es la direccion del trace)
+            float nrm[3];
+            if (Kolossos_ClimbWallTrace(c, g_fKolClimbDir[c], nrm))
+            {
+                // pared curva: la cara se refresca cada frame
+                Kolossos_ClimbFace(c, nrm);
+
+                // la receta del Lua: base 4 (colgado) + 500 con W / -500 con S
+                float speed = KOL_CLIMB_HANG;
+                int btn = GetClientButtons(c);
+                if (btn & IN_FORWARD)      speed += g_cvKolClimbSpeed.FloatValue;
+                else if (btn & IN_BACK)    speed -= g_cvKolClimbSpeed.FloatValue;
+
+                // SetLocalVelocity(0,0,speed): vertical PURA, la
+                // horizontal muere (pegado a la pared de verdad)
+                float v[3];
+                v[0] = 0.0;
+                v[1] = 0.0;
+                v[2] = speed;
+                TeleportEntity(c, NULL_VECTOR, NULL_VECTOR, v);
+
+                // el wav cada 0.35s SOLO si se mueve (l.2206: vel > 50)
+                // v2.5: a KOL_SND_LOUD (140) POSICIONAL — se oye lejos
+                // pero NO global: es un tick cada 0.35s, el STATIC+NONE
+                // a esa frecuencia seria spam para todo el server
+                if (speed > 50.0 || speed < -50.0)
+                {
+                    if (now >= g_fKolClimbSndAt[c] && g_iKolSndClimbCount > 0)
+                    {
+                        int pick = GetRandomInt(0, g_iKolSndClimbCount - 1);
+                        EmitSoundToAll(g_sKolClimbWavs[pick], c, _, KOL_SND_LOUD, _, 1.0,
+                                       GetRandomInt(95, 105));
+                        g_fKolClimbSndAt[c] = now + KOL_CLIMB_SND_TICK;
+                    }
+                }
+            }
+            else
+            {
+                // perdio la pared (los PIES pasaron el borde): VAULT
+                // hacia adentro (l.2229: (0,0,15)+fwd*300) — el ARM
+                // queda puesto: otra pared al frente en el vuelo =
+                // encadena la escalada, igual que el GMod
+                float v[3];
+                v[0] = g_fKolClimbDir[c][0] * KOL_CLIMB_VAULT_FWD;
+                v[1] = g_fKolClimbDir[c][1] * KOL_CLIMB_VAULT_FWD;
+                v[2] = KOL_CLIMB_VAULT_Z;
+                g_bKolClimbing[c] = false;
+                TeleportEntity(c, NULL_VECTOR, NULL_VECTOR, v);
+            }
+            continue;
+        }
+
+        // ---- ARMADO (en el aire): buscar pared al frente ----
+        if (GetEntityFlags(c) & FL_ONGROUND) continue;   // el salto aun no despega
+        if (!Kolossos_ClimbGates(c)) { g_bKolClimbArm[c] = false; continue; }
+
+        float eye[3], fwd[3], nrm[3];
+        GetClientEyeAngles(c, eye);
+        GetAngleVectors(eye, fwd, NULL_VECTOR, NULL_VECTOR);
+        fwd[2] = 0.0;
+        float flen = SquareRoot(fwd[0] * fwd[0] + fwd[1] * fwd[1]);
+        if (flen < 0.001) continue;
+        fwd[0] /= flen;
+        fwd[1] /= flen;
+
+        if (Kolossos_ClimbWallTrace(c, fwd, nrm))
+        {
+            // PEGADO: guardar la cara + snap del espejo a la pared YA
+            Kolossos_ClimbFace(c, nrm);
+            g_fKolBodyYaw[c]    = g_fKolClimbYaw[c];   // pill_assignedangle instantaneo
+            g_bKolSmSnap[c]     = true;
+            g_bKolClimbing[c]   = true;
+            g_fKolClimbSndAt[c] = 0.0;                 // el primer tick con W suena ya
+        }
+    }
 }
 
 // v2.1: EL BLOQUEO DETECTA ESTADOS AL INSTANTE — "ahora podra detectar
@@ -5125,7 +5622,15 @@ void Kolossos_BlockStateThink(float now)
 {
     for (int c = 1; c <= MaxClients; c++)
     {
-        if (g_fKolBlockUntil[c] <= now) continue;   // solo con el bloqueo ACTIVO
+        // v2.5: tambien con la EMBESTIDA en marcha (windup + dash) — los
+        // iframes del Lua l.1608 niegan el stun PERO el motor de L4D2
+        // igual clava los punteros m_pounce/tongue/carry/pummel/jockey
+        // en el CLIENTE al entrar el control: hay que romperlos el mismo
+        // frame o el AnyStun cancela la avalancha ("la embestida deberia
+        // ser inmune a los aturdimientos de todo tipo")
+        bool blockOn  = (g_fKolBlockUntil[c] > now);
+        bool chargeOn = (g_iKolChargeState[c] != KOL_CHG_IDLE);
+        if (!blockOn && !chargeOn) continue;
         if (!Kolossos_PlayerIs(c)) continue;
         if (!IsClientInGame(c) || !IsPlayerAlive(c)) continue;
 
@@ -5178,21 +5683,41 @@ void Kolossos_BlockStateThink(float now)
         // y corta el agarre igual. Despues, el counter lo castiga.
         PinRelease_Cleanse(c);
 
-        // y el counter completo (consume el bloqueo + ventana anti-empuje)
-        Kolossos_BlockEnd(c);
-        Kolossos_BlockCounter(c, attacker, attacker);
-        PrintCenterText(c, "BLOQUEO! Estado roto al instante");
+        // v2.5: el counter completo es EXCLUSIVO del bloqueo (consume la
+        // ventana + responde con roca/ragdoll); con la embestida en
+        // marcha el agarre solo se ROMPE (los iframes del GMod: el
+        // control no entra, no hay contra que castigar — la avalancha
+        // sigue su camino)
+        if (blockOn)
+        {
+            Kolossos_BlockEnd(c);
+            Kolossos_BlockCounter(c, attacker, attacker);
+            PrintCenterText(c, "BLOQUEO! Estado roto al instante");
+        }
+        else
+            PrintCenterText(c, "EMBESTIDA! El agarre no entra");
     }
 }
 
-// v2.1: LA GARRA DEL TANK CONTRA EL BLOQUEO — la receta Knuckles del
-// CheckTankCounter: cero velocidad + MOVETYPE_NONE 0.2s (el puno del
-// tank NO lo desplaza ni un paso — el anti stagger pedido) + la ventana
-// anti-empuje + el counter (al tank le sale la ROCA: es fuente pesada)
+// v2.1 -> v2.5 [R3]: LA GARRA DEL TANK CONTRA EL BLOQUEO — la receta
+// Knuckles COMPLETA. El owner: "el bloq de knuckles cuando este bloquea
+// el puno del tank no lo empuja NI LE HACE dano — el de kolossos parece
+// no hacer precisamente eso". Dos huecos cerrados: [1] la v2.1 solo
+// cubria el bloqueo ACTIVO — si la garra llegaba DESPUES de que un
+// especial consumiera el bloqueo (dentro de la ventana del counter),
+// Kolossos_BlockTankClaw devolvia false, el pre-hook dejaba pasar el
+// claw y EL PUNO LO LANZABA igual; ahora cubre TODO el BlockGuard
+// (bloqueo activo = counter completo / ventana del counter = absorbido
+// sin segunda contra, los iframes del Lua l.1608); [2] faltaba el
+// m_takedamage 0 de 0.5s de la receta Knuckles (el dano residual del
+// swing) — ahora tampoco le hace dano.
 bool Kolossos_BlockTankClaw(int tank, int player)
 {
     if (!Kolossos_PlayerIs(player)) return false;
-    if (g_fKolBlockUntil[player] <= GetEngineTime()) return false;
+    float now = GetEngineTime();
+    bool blockActive = (g_fKolBlockUntil[player] > now);
+    bool counterSafe = (g_fKolCounterSafeUntil[player] > now);
+    if (!blockActive && !counterSafe) return false;
 
     // clavarlo: ni el knockback del claw lo mueve (receta Knuckles)
     float zeroVel[3] = { 0.0, 0.0, 0.0 };
@@ -5200,9 +5725,19 @@ bool Kolossos_BlockTankClaw(int tank, int player)
     SetEntityMoveType(player, MOVETYPE_NONE);
     CreateTimer(0.2, Kolossos_T_CounterUnfreeze, GetClientUserId(player), TIMER_FLAG_NO_MAPCHANGE);
 
-    // la contra (consume el bloqueo, abre la ventana anti-empuje)
-    Kolossos_BlockEnd(player);
-    Kolossos_BlockCounter(player, tank, tank);
+    // v2.5: NI DANo — el m_takedamage 0 de 0.5s de la receta Knuckles
+    // (T_RemoveGodMode): el swing entero rebota, dano incluido
+    SetEntProp(player, Prop_Data, "m_takedamage", 0);
+    CreateTimer(0.5, Kolossos_T_CounterUngod, GetClientUserId(player), TIMER_FLAG_NO_MAPCHANGE);
+
+    if (blockActive)
+    {
+        // la contra (consume el bloqueo, abre la ventana anti-empuje)
+        Kolossos_BlockEnd(player);
+        Kolossos_BlockCounter(player, tank, tank);
+    }
+    else
+        PrintCenterText(player, "⚓ [BLOQUEO] ¡EL PUÑO NO TE MUEVE NI TE DAÑA!");
     return true;
 }
 
@@ -5212,6 +5747,16 @@ public Action Kolossos_T_CounterUnfreeze(Handle timer, int userid)
     int client = GetClientOfUserId(userid);
     if (client > 0 && IsClientInGame(client) && IsPlayerAlive(client))
         SetEntityMoveType(client, MOVETYPE_WALK);
+    return Plugin_Stop;
+}
+
+// v2.5: devolverle el dano tras el godmode del counter (receta
+// Knuckles T_RemoveGodMode: 0 = invulnerable, 2 = normal)
+public Action Kolossos_T_CounterUngod(Handle timer, int userid)
+{
+    int client = GetClientOfUserId(userid);
+    if (client > 0 && IsClientInGame(client) && IsPlayerAlive(client))
+        SetEntProp(client, Prop_Data, "m_takedamage", 2);
     return Plugin_Stop;
 }
 
@@ -5354,7 +5899,8 @@ void Kolossos_SpawnCounterRock(int client, const float targetPos[3])
         g_vKolRockDir[client][1] = aim[1];
         g_vKolRockDir[client][2] = aim[2];
 
-        EmitSoundToAll("physics/concrete/concrete_break2.wav", client, _, KOL_SND_LEVEL);
+        // v2.5: GLOBAL — el estruendo del fallback sin modelo tambien
+        Kolossos_EmitLoud(client, false, "", "physics/concrete/concrete_break2.wav");
         Kolossos_RockBlast(client, tp);
         return;
     }
@@ -5578,8 +6124,9 @@ void Kolossos_RockDetonate(int client, int rock)
     GetEntPropVector(rock, Prop_Data, "m_vecOrigin", pos);
 
     // el estruendo del impacto ANTES de matarla (la roca del coloso
-    // revienta el suelo — el sonido necesita la entidad viva)
-    EmitSoundToAll("physics/concrete/concrete_break2.wav", rock, _, KOL_SND_LEVEL);
+    // revienta el suelo — el sonido necesita la entidad viva) — v2.5:
+    // GLOBAL, el estruendo de la roca retumba en todo el mapa
+    Kolossos_EmitLoud(rock, false, "", "physics/concrete/concrete_break2.wav");
 
     g_iKolRockFlying[client] = 0;
     AcceptEntityInput(rock, "Kill");
@@ -5835,11 +6382,12 @@ void Kolossos_M1(int client)
     // (1) se habia comprobado: de ahi el "not precached" del (2)/(3)/(4)
     if (g_bKolSndM1)
     {
-        EmitSoundToAll(g_sKolM1Wavs[GetRandomInt(0, g_iKolSndM1Count - 1)],
-                       client, _, KOL_SND_LEVEL);
+        // v2.5: GLOBAL — el puo del coloso se oye en todo el mapa
+        Kolossos_EmitLoud(client, true,
+                          g_sKolM1Wavs[GetRandomInt(0, g_iKolSndM1Count - 1)], "");
     }
     else
-        EmitSoundToAll("physics/flesh/flesh_impact_hard4.wav", client, _, KOL_SND_LEVEL);
+        Kolossos_EmitLoud(client, false, "", "physics/flesh/flesh_impact_hard4.wav");
 
     // la esfera del golpe (la misma geometria frontal del empale)
     float pos[3], dir[3];
@@ -5952,6 +6500,11 @@ public bool Kolossos_OnPlayerRunCmd(int client, int &buttons, float vel[3])
 
     // v1.9: el click izq pisado en slots 0/1 = EL PUO (el arma no dispara)
     bool changed = Kolossos_M1Gate(client, buttons);
+
+    // v2.4: el flanco del ESPACIO — armar el climb / saltar fuera de
+    // la pared (antes de pisar lastButtons: el edge mira el frame anterior)
+    Kolossos_ClimbEdge(client, buttons, g_iKolLastButtons[client]);
+
     g_iKolLastButtons[client] = buttons;
 
     // durante el WINDUP: clavado en el sitio
@@ -6005,10 +6558,25 @@ public Action T_KolossosThink(Handle timer)
             // l.935/l.1012: nada de habilidades con el stun puesto)
             if (Kolossos_AnyStun(i))
             {
-                // aturdido: cancelar todo (no pelear contra el stun)
+                // aturdido: cancelar todo MENOS el bloqueo (no pelear
+                // contra el stun)
                 if (g_iKolChargeState[i] != KOL_CHG_IDLE) Kolossos_ChargeEnd(i, false);
                 if (g_iKolGrabVictim[i] != 0) Kolossos_GrabRelease(i, false, false);
-                if (g_fKolBlockUntil[i] > 0.0) Kolossos_BlockEnd(i);
+                // v2.5 [R4]: EL BLOQUEO YA NO SE CANCELA — en el GMod
+                // NINGUN stun limpia Kolossos_blocking (solo el counter
+                // lo consume, l.1299) y el dano sigue en 0 mientras
+                // dure la ventana (l.1256): "el bloqueo no deberia ser
+                // negado pues literalmente el bloqueo ignora el
+                // aturdimiento". La ventana expira sola o la gasta el
+                // counter — con los iframes v2.5 casi ningun stun
+                // entra de todos modos.
+                // v2.4: el stun despega del todo (Lua l.1529: limpia
+                // Climbing + HoldingSpaceClimb juntos)
+                if (g_bKolClimbing[i] || g_bKolClimbArm[i])
+                {
+                    Kolossos_ClimbStop(i, false);
+                    g_bKolClimbArm[i] = false;
+                }
             }
             else
             {
@@ -6062,6 +6630,8 @@ public Action T_KolossosThink(Handle timer)
             if (g_iKolGrabVictim[i] != 0) Kolossos_GrabRelease(i, false, false);
             if (g_fKolBlockUntil[i] > 0.0) Kolossos_BlockEnd(i);
             if (g_fKolIndUntil[i] > 0.0)   g_fKolIndUntil[i] = 0.0;
+            g_bKolClimbing[i] = false;   // v2.4: sin Kolossos vivo no hay pared
+            g_bKolClimbArm[i] = false;
         }
 
         // ---- montaje del avatar ----
@@ -6250,11 +6820,26 @@ public Action Kolossos_CmdDebug(int client, int args)
                        KOL_ROCK_SPEED,
                        KOL_CNT_STUN);
     }
-    // v2.3: lo nuevo de esta version (risa 1x + unpin del bloqueo +
+    // v2.4: el climb pasivo (la pasiva de paredes del GMod)
+    PrintToConsole(client, "v2.4: CLIMB pasivo %s — ESPACIO en el aire hacia una pared = PEGADO (trace 65u desde los pies) | W sube / S baja a %.0f uu/s (colgado casi quieto) | ESPACIO de nuevo = salto fuera (%.0f arriba + %.0f atras) | perder la pared = vault | pisar suelo = suelta | charge/grab/block vetados colgado (M1 libre) | kol climb wav: %s",
+                   (g_cvKolClimb != null && g_cvKolClimb.BoolValue) ? "ON (kolossos_climb 1)" : "OFF (kolossos_climb 0)",
+                   g_cvKolClimbSpeed != null ? g_cvKolClimbSpeed.FloatValue : 500.0,
+                   KOL_CLIMB_KICK_Z,
+                   KOL_CLIMB_KICK_BACK,
+                   g_iKolSndClimbCount > 0 ? g_sKolClimbWavs[0] : "no montado (silencioso)");
+    // v2.5: lo nuevo de esta version (iframes de la embestida + puno del
+    // tank estilo Knuckles + el sonido del stun resuelto por variantes +
+    // todos los sonidos GLOBALES — el diagnostico dice QUE wav monto)
+    PrintToConsole(client, "v2.5: EMBESTIDA/AGARRE/counter INMUNES a TODO stun (knockdown/stagger/garra del tank/fling/OM_Stun rebotan; bloqueo activo = COUNTER como el GMod) | puno del tank: NI EMPUJE NI DANO durante bloqueo/counter (godmode 0.5s estilo Knuckles) | bloqueo YA NO se cancela por stun | SONIDOS: stun %d/4 (%s) | risa impale: %s | risa Kill: %s | TODO GLOBAL (SNDCHAN_STATIC+SNDLEVEL_NONE, cero caida con distancia — solo el indicador queda para ti; el climb a 140dB posicional)",
+                   g_iKolSndStunCount,
+                   g_iKolSndStunCount > 0 ? g_sKolStunWavs[0] : "NO MONTADO: renombra los wavs a 'om/kolossos/kol stun N (1).wav' o cualquiera de sus variantes",
+                   g_bKolSndLaugh ? g_sKolChgLaughPath : "no montado",
+                   g_bKolSndLaughKill ? g_sKolLaughPath : "no montado");
+    // v2.3: lo nuevo de esa version (risa 1x + unpin del bloqueo +
     // los hits del bloqueo montados — nunca mas misterio de "no suena")
-    PrintToConsole(client, "v2.3: risa de empale 1x POR avalancha | bloqueo rompe agarres POR EL CAMINO DEL MOTOR (PinRelease: EndPummel/EndCarry/ReleaseVictim/EndRide + musica del agarre cortada + stagger anti-regrab) | block hit melee: %s | block hit ranged: %s | risa del Kill: FUERTE (dual canal + 140dB)",
-                   g_sKolBlkHitM[0] != '\0' ? g_sKolBlkHitM : "no montado (usa kolossos punching FUERTE)",
-                   g_sKolBlkHitR[0] != '\0' ? g_sKolBlkHitR : "no montado (usa ground rumble)");
+    PrintToConsole(client, "v2.3: risa de empale 1x POR avalancha | bloqueo rompe agarres POR EL CAMINO DEL MOTOR (PinRelease: EndPummel/EndCarry/ReleaseVictim/EndRide + musica del agarre cortada + stagger anti-regrab) | block hit melee: %s | block hit ranged: %s",
+                   g_sKolBlkHitM[0] != '\0' ? g_sKolBlkHitM : "no montado (usa kolossos punching GLOBAL)",
+                   g_sKolBlkHitR[0] != '\0' ? g_sKolBlkHitR : "no montado (usa ground rumble GLOBAL)");
     // v2.2: el modelo ACTIVO de la roca (la cadena) + el stun nativo +
     // los wavs de cada uno (que nunca mas haya misterio de "no sale")
     PrintToConsole(client, "v2.2: roca modelo %s (escala %.1f por m_flModelScale, colision solo-mundo) | stun NATIVO L4D2 (pounce/lengua/carry/pummel/jockey/stagger/knockdown) = anim stun + kol stun %d/4 wavs | M1: %d/4 wavs precacheados (cero not-precached)",

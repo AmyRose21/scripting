@@ -349,6 +349,19 @@ bool OM_Stun(int victim, float duration, int attacker = 0,
     if ((flags & OM_STUN_F_FIXED) != 0 && OM_IsStunned(victim)) return false;
     if (!OM_CanStun(victim, stack)) return false;
 
+    // v2.5 KOLOSSOS: LOS IFRAMES DEL KILLER (Lua del GMod l.1608-1611) —
+    // el think del Kolossos refresca DisablePlayerMovement_OM_stun_iframe2
+    // CADA TICK durante la embestida (windup + dash), el agarre y el
+    // segundo del counter, y el sistema de stun del GMod (noodles_om_
+    // pills_status l.495-512) NIEGA el stun con un iframe vivo. Aqui el
+    // equivalente: con el BLOQUEO activo el golpe se COUNTERA (el
+    // OM_DamageBeforeBeforeCustomFunction l.1256-1271 del Lua: dano 0 +
+    // OM_AfterStunBlock) y el stun rebota; en embestida/agarre/ventana
+    // del counter rebota sin contra. "La embestida deberia ser inmune a
+    // los aturdimientos de todo tipo" + "el bloqueo ignora el
+    // aturdimiento" (pedidos textuales del owner).
+    if (Kolossos_StunGate(victim, attacker)) return false;
+
     float now = GetEngineTime();
 
     // GMod: stack (suma sobre el restante) + clamp a StunLimitDuration

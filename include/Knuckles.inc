@@ -2018,7 +2018,11 @@ public Action L4D2_OnPlayerFling(int client, int attacker, float vecDir[3])
     // v2.1 Kolossos: EL ANTI-EMPUJE — con el bloqueo activo o dentro
     // de la ventana del counter NINGUN fling del motor lo mueve (el
     // tank no puede empujarlo durante la contra, receta Knuckles)
-    if (Kolossos_PlayerIs(client) && Kolossos_BlockGuard(client))
+    // v2.5: TAMBIEN con la embestida en marcha o el agarre (los
+    // iframes del Lua l.1608 — "la embestida deberia ser inmune a los
+    // aturdimientos de todo tipo": ni el puno/roca del tank desvia
+    // la avalancha)
+    if (Kolossos_PlayerIs(client) && (Kolossos_BlockGuard(client) || Kolossos_ControlImmune(client)))
     {
         PrintCenterText(client, "⚓ [BLOQUEO] ¡INMOVILIDAD!");
         return Plugin_Handled;
