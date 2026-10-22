@@ -1,6 +1,50 @@
 /*
  * ======================================================
- *  [MODULO] Rouge the Bat - Spy & Night Ops v10.4-OM (KIT GMOD + AVATAR)
+ *  [MODULO] Rouge the Bat - Spy & Night Ops v11.0-OM (KIT GMOD + AVATAR)
+ *
+ *  v11.0-OM - "EL GLIDE DE ROUGE" (manager 3.77.112, pedido del owner
+ *          2026-10-22: "es hora de crear el codigo del glide... el
+ *          glide La activacion seria = a la de knuckles la diferencia
+ *          es que Ella si podra subir con los aleteos pero al moverse
+ *          ahora usara la animacion glide en vez de flyrun"). TRES
+ *          cambios quirurgicos sobre el vuelo v10.2 (la fisica — cap
+ *          de caida -100, steering 45, tope 320 — INTACTA):
+ *
+ *            [1] ACTIVACION ESTILO KNUCKLES: un TAP de SPACE en el
+ *                aire despliega las alas y el planeo SE QUEDA ON solo
+ *                — nada que mantener (antes: SPACE apretado todo el
+ *                vuelo; al soltarlo se apagaba al frame). El salto del
+ *                SUELO no la enciende: el borde del boton se consume
+ *                en el piso, hay que RE-APRETAR en el aire (el
+ *                doble-salto clasico de los Sonic). El lanzazo de
+ *                pared la enciende de una — Knuckles sale de su pared
+ *                ya planeando, ella igual. Termina al ATERRIZAR,
+ *                agarrar pared o frenar con SHIFT: los mismos finales
+ *                del glide de Knuckles.inc.
+ *
+ *            [2] EL ALETEO VIVE DENTRO DEL PLANEO: con las alas
+ *                fuera, cada TAP nuevo de SPACE es un aleteo que la
+ *                ELEVA (energia 8 — la unica moneda del vuelo:
+ *                "solo dependera es de la energia"). El primer tap
+ *                (el que abre las alas) es gratis. LA DIFERENCIA CON
+ *                KNUCKLES: el solo cae planeando — ELLA SI PUEDE
+ *                SUBIR.
+ *
+ *            [3] AL MOVERSE = SECUENCIA "glide": el estado FLYRUN
+ *                dispara la secuencia "glide" del rouge.mdl v15 (el
+ *                planeo Sonic Dream Team construido en las Tasks
+ *                30-38: cuerpo horizontal, alas batiendo, brazos
+ *                atras, piernas en tijera). QUIETA en el aire sigue
+ *                siendo FlyIdle (el hover del freno). PROBE en cada
+ *                montaje de avatar (receta Shadow v6.0 / Amy v92:
+ *                SetAnimation + m_nSequence): si el servidor todavia
+ *                tiene el rouge.mdl VIEJO sin la secuencia, el FSM cae
+ *                a "FlyRun" SOLA — nunca se congela el avatar.
+ *
+ *          Extra: el planeo NO pelea con el Barrido — si embiste en
+ *          el aire (Z), la maquina del kick manda ese frame y el cap
+ *          del planeo espera; al soltarla sigue planeando como si
+ *          nada.
  *
  *  v10.4-OM - "EL RAGDOLL QUE POR FIN VUELA" (manager 3.77.52): el
  *          cuerpo del Barrido (Z) contra comunes usaba
@@ -279,7 +323,7 @@
     #endinput
 #endif
 #define _Rouge_included
-#define ROUGE_INC_VERSION "v10.7-OM" // v10.7: EL BARRIDO CON RANGO (pedido del owner 2026-10-17, ronda 2): "Rouge daño aumentado 225 a 200-335" — la patada baja deja de ser un 225 FIJO y pasa a un aleatorio por golpe [rouge_kick_dmg_min/_max; rouge_kick_damage queda DEPRECATED] | v10.6: LA BARRA DE ENERGÍA AL CHAT (manager 3.77.85, pedido del owner: "ese mismo tipo de barra debería salir para sonic y todos aquellos que lo usan") — la rouge_latchbar del lua (0-250) vive ahora en el motor común SBar con la paleta colors.inc [PARED! en oliva mientras DRENA pegada / FRENO! el hover de SHIFT / PLANEO! con SPACE / AGOTADA! en rojo parpadeando con la histeresis del lua (bloquea pegarse a paredes hasta rouge_energy_serious 88)] vía Rouge_BarState + el despachador SBar_Resolve; el hint de 10 bloques Rouge_EnergyHUD se RETIRA (patron anillos de Sonic v6.36: la barra pinta EN VIVO a 5 Hz, el hint era un recurso compartido a 1.2s) | v10.5: LA PATADA BAJA MANDA A VOLAR (pedido del owner 2026-10-13: "hay que aplicar el stun ragdoll a rouge... rouge es una patada baja") — su CONTRAGOLPE ahora aplica STUN + RAGDOLL VOLADOR con la dirección de la patada (horizontal alejándola + elevación corta — una patada baja barre, no levanta): orden martillo v106 (dano amplificado PRIMERO; letal = cadaver volando con la copia Rouge; sobrevive = OM_Stun + doble volador por Sonic_SpawnFlingRagdollEx). Convars nuevos rouge_parry_ragdoll (3.0s) / rouge_parry_fling (600 u/s). + el dano de sus habilidades pasa por OM_AbilityDamage (amplificador hibrido x2 + % vs jefes del OM_Stun v2.2). v10.4: RAGDOLL DEL BARRIDO CON IMPULSO REAL — SetVelocity por hueso vía sonic v6.33 (antes TeleportEntity-vel que los huesos ignoraban); v10.3-OM: PATCH DE BALANCE — patada baja (Barrido Z) dano 150->225 (+50%) y radio 95->118.75 (+25%); counter +45% dano (145/290) y 7s (manager 3.77.50); v10.2: ALETEO SIN LIMITE — solo energía (manager 3.77.48); v10.1: rework del vuelo + counter pleno + onda negra
+#define ROUGE_INC_VERSION "v11.0-OM" // v11.0: EL GLIDE DE ROUGE (manager 3.77.112) — activacion ESTILO KNUCKLES (tap de SPACE en el aire = planeo que SE QUEDA ON; aterrizar/pared/SHIFT lo apagan; el salto del piso no la enciende — re-apretar en el aire) + aleteo DENTRO del planeo (primer tap abre alas gratis, siguientes ELEVAN — energia; LA DIFERENCIA CON KNUCKLES: ella SI sube) + AL MOVERSE secuencia "glide" del rouge.mdl v15 (probe por montaje; fallback "FlyRun" con modelo viejo) + gate del kick aereo | v10.7: EL BARRIDO CON RANGO (pedido del owner 2026-10-17, ronda 2): "Rouge daño aumentado 225 a 200-335" — la patada baja deja de ser un 225 FIJO y pasa a un aleatorio por golpe [rouge_kick_dmg_min/_max; rouge_kick_damage queda DEPRECATED] | v10.6: LA BARRA DE ENERGÍA AL CHAT (manager 3.77.85, pedido del owner: "ese mismo tipo de barra debería salir para sonic y todos aquellos que lo usan") — la rouge_latchbar del lua (0-250) vive ahora en el motor común SBar con la paleta colors.inc [PARED! en oliva mientras DRENA pegada / FRENO! el hover de SHIFT / PLANEO! con SPACE / AGOTADA! en rojo parpadeando con la histeresis del lua (bloquea pegarse a paredes hasta rouge_energy_serious 88)] vía Rouge_BarState + el despachador SBar_Resolve; el hint de 10 bloques Rouge_EnergyHUD se RETIRA (patron anillos de Sonic v6.36: la barra pinta EN VIVO a 5 Hz, el hint era un recurso compartido a 1.2s) | v10.5: LA PATADA BAJA MANDA A VOLAR (pedido del owner 2026-10-13: "hay que aplicar el stun ragdoll a rouge... rouge es una patada baja") — su CONTRAGOLPE ahora aplica STUN + RAGDOLL VOLADOR con la dirección de la patada (horizontal alejándola + elevación corta — una patada baja barre, no levanta): orden martillo v106 (dano amplificado PRIMERO; letal = cadaver volando con la copia Rouge; sobrevive = OM_Stun + doble volador por Sonic_SpawnFlingRagdollEx). Convars nuevos rouge_parry_ragdoll (3.0s) / rouge_parry_fling (600 u/s). + el dano de sus habilidades pasa por OM_AbilityDamage (amplificador hibrido x2 + % vs jefes del OM_Stun v2.2). v10.4: RAGDOLL DEL BARRIDO CON IMPULSO REAL — SetVelocity por hueso vía sonic v6.33 (antes TeleportEntity-vel que los huesos ignoraban); v10.3-OM: PATCH DE BALANCE — patada baja (Barrido Z) dano 150->225 (+50%) y radio 95->118.75 (+25%); counter +45% dano (145/290) y 7s (manager 3.77.50); v10.2: ALETEO SIN LIMITE — solo energía (manager 3.77.48); v10.1: rework del vuelo + counter pleno + onda negra
 
 #if !defined _sourcemod_included
     #include <sourcemod>
@@ -342,7 +386,7 @@
 #define ROUGE_GLIDE_FALL        -100.0  // velocidad de caida máxima planeando
 #define ROUGE_GLIDE_HORIZ_MAX   320.0   // velocidad horizontal máxima planeando
 #define ROUGE_GLIDE_ACCEL       45.0    // aceleración aérea WASD por PreThink
-#define ROUGE_GLIDE_MIN_FALL    -50.0   // (v10: la activación vieja pedia caer — el planeo nuevo es SPACE mantenido)
+#define ROUGE_GLIDE_MIN_FALL    -50.0   // (v11.0: sin uso — la activación es el TAP de SPACE en el aire, estilo Knuckles)
 #define ROUGE_BRAKE_RATE       7.0    // v10.1: tasa de decaimiento del FRENO aéreo (1-e^-7 ~ freno total en ~0.6s)
 #define ROUGE_BRAKE_STOP       30.0   // v10.1: por debajo de esta velocidad queda CLAVADA (hover)
 #define ROUGE_KICK_HITS        24     // v10.1: victims del barrido en área por embestida
@@ -385,7 +429,7 @@
 #define ROUGE_ST_DOWNED_IDLE  11   // DownedIdle (incap)
 #define ROUGE_ST_DOWNED_WALK  12
 #define ROUGE_ST_FLYIDLE      13   // v10.1: QUIETA en el aire (hover/freno) — la anim del owner
-#define ROUGE_ST_FLYRUN       14   // v10.1: volando EN MOVIMIENTO (planeo/steering)
+#define ROUGE_ST_FLYRUN       14   // v11.0: volando EN MOVIMIENTO — secuencia "glide" (modelo v15; fallback "FlyRun" si el .mdl viejo no la trae)
 #define ROUGE_ANIM_COUNT      15
 
 #define ROUGE_LOCK_FLAP       0.45
@@ -461,6 +505,7 @@ float  g_fRougeTintEnd[MAXPLAYERS + 1];
 float  g_fRougeDeathHideUntil[MAXPLAYERS + 1];
 float  g_vRougeDeathOrigin[MAXPLAYERS + 1][3];
 Handle g_hRougeAvatarThink = null;
+bool   g_bRougeGlideSeqOK = false;      // v11.0: el rouge.mdl trae la secuencia "glide" (modelo v15 compilado)
 // (v10.6: g_fRougeHUDNext/g_fRougeHUDLastVal RETIRADOS — el HUD de
 // energía vive en la BARRA SBar del manager, pintada por T_SBarThink
 // a 5 Hz; ya no hay throttle propio del hint)
@@ -1179,7 +1224,7 @@ public void Rouge_PreThink(int client)
             g_bRougeGliding[client] = true;    // ...y vuela: planeo activo YA
             Rouge_AvatarOneShot(client, ROUGE_ST_JUMP, ROUGE_LOCK_LATCHOFF);
             if (g_bRougeSndFlap) EmitSoundToAll("om/rouge/flap.wav", client, _, ROUGE_SND_LEVEL);
-            PrintCenterText(client, "¡Lanzada! (SPACE mantenido = vuelo)");
+            PrintCenterText(client, "¡Lanzada! (planeo ON — tap SPACE = aleteo para subir)");
         }
 
         if (soltar)
@@ -1263,11 +1308,15 @@ public void Rouge_PreThink(int client)
             delete trw;
         }
 
-        // ---- ALETEO v10.2: SIN LIMITE de cantidad — el único limite
-        // es la ENERGÍA (owner: "el vuelo no tiene limite de saltos de
-        // vuelo. Solo dependera es de la energía"). rouge_flap_max 0 =
-        // ilimitado; >0 = tope (palanca por si se quiere devolver) ----
-        if (jumpPressed && !g_bRougeLatched[client]
+        // ---- ALETEO v11.0: VIVE DENTRO DEL PLANEO — el primer tap en
+        // el aire ABRE LAS ALAS (activa el planeo, gratis: bloque de
+        // abajo) y los taps SIGUIENTES ya son aleteos que la elevan
+        // (la diferencia con Knuckles: ella SI puede subir). SIN
+        // LIMITE de cantidad — el único limite es la ENERGÍA (owner:
+        // "el vuelo no tiene limite de saltos de vuelo. Solo dependera
+        // es de la energía"). rouge_flap_max 0 = ilimitado; >0 = tope
+        // (palanca por si se quiere devolver) ----
+        if (jumpPressed && g_bRougeGliding[client] && !g_bRougeLatched[client]
             && g_iRougeKickPhase[client] == ROUGE_KICK_NONE
             && (g_cvRougeFlapMax.IntValue <= 0
                 || g_iRougeUsedJumps[client] < g_cvRougeFlapMax.IntValue)
@@ -1348,7 +1397,8 @@ public void Rouge_PreThink(int client)
     // frenar)": gravedad 0 + decaimiento exponencial de TODA la
     // velocidad -> se queda QUIETA en el aire (el hover del FlyIdle).
     // Suelta SHIFT y cae/planea normal. El steering aéreo del manager
-    // sigue vivo frenando: moverse frenando = FlyRun.
+    // sigue vivo frenando: moverse frenando = glide (v11.0; FlyRun si
+    // el modelo viejo no trae la secuencia).
     if (!(flags & FL_ONGROUND) && (buttons & IN_SPEED) && !g_bRougeLatched[client]
         && g_iRougeKickPhase[client] == ROUGE_KICK_NONE)
     {
@@ -1389,15 +1439,16 @@ public void Rouge_PreThink(int client)
     }
 
     // ---- EN EL AIRE ----
-    if (g_bRougeGliding[client])
+    // v11.0: EL PLANEO YA NO SE SUELTA — activación estilo Knuckles: se
+    // enciende con el TAP de SPACE (bloque de abajo) o con el lanzazo
+    // de pared, y se queda ON hasta aterrizar / agarrar pared / frenar
+    // con SHIFT / que la rompan (incap/agarres, mas arriba). Soltar
+    // SPACE NO hace nada (v10.1 lo apagaba al soltar — fuera). El gate
+    // del KICK: si esta embistiendo (Z en el aire) la maquina del
+    // Barrido manda ese frame — el cap del planeo NO le pelea la
+    // velocidad a la embestida; al acabar el dash sigue planeando.
+    if (g_bRougeGliding[client] && g_iRougeKickPhase[client] == ROUGE_KICK_NONE)
     {
-        // v10.1: soltar SPACE termina el planeo (antes era SHIFT — el
-        // plano mando: SPACE mantiene, SHIFT frena)
-        if (!(buttons & IN_JUMP))
-        {
-            g_bRougeGliding[client] = false;
-            return;
-        }
 
         // v8.0 FIX PRINCIPAL (bug "el planeo no planea"): la versión
         // antigua aplicaba el cap de caida y el steering UNA SOLA VEZ
@@ -1433,11 +1484,15 @@ public void Rouge_PreThink(int client)
     }
     else
     {
-        // v10.1: activación con SPACE MANTENIDO en el aire — sin exigir
-        // caida: "ella salta se eleva y vuela" (saltar con SPACE agarrado
-        // = salta, se eleva y pasa a volar de una). El tap corto sigue
-        // siendo el ALETEO (que vive arriba, en el borde del boton).
-        if ((buttons & IN_JUMP) && !g_bRougeBraking[client]
+        // v11.0: ACTIVACIÓN ESTILO KNUCKLES — un TAP de SPACE en el
+        // aire despliega las alas y el planeo SE QUEDA ON (nada que
+        // mantener: Knuckles sale de su pared ya planeando y vuela
+        // hasta aterrizar; aqui igual, sin pedir pared). El salto del
+        // SUELO no la enciende: el borde del SPACE se consume en el
+        // piso — hay que RE-APRETAR EN el aire (el doble-salto clasico
+        // de los Sonic). Con el planeo ya ON, cada tap nuevo es el
+        // ALETEO que la eleva (vive arriba, en el borde del boton).
+        if (jumpPressed && !g_bRougeBraking[client]
             && g_iRougeKickPhase[client] == ROUGE_KICK_NONE)
         {
             g_bRougeGliding[client] = true;
@@ -1452,7 +1507,7 @@ public void Rouge_PreThink(int client)
             GetClientAbsOrigin(client, pos); pos[2] += 20.0;
             TE_SetupBeamRingPoint(pos, 10.0, 90.0, g_iRougeBeamSprite, 0, 0, 0, 0.4, 6.0, 0.0, {255, 20, 147, 220}, 0, 0);
             TE_SendToAll();
-            PrintCenterText(client, "¡VUELO! (manten SPACE / tap = aleteo / SHIFT frena / WASD dirige)");
+            PrintCenterText(client, "¡PLANEO! (tap SPACE = aleteo para subir / WASD dirige / SHIFT frena)");
         }
     }
 }
@@ -1853,7 +1908,8 @@ public Action T_RougeEvadeRestore(Handle timer, DataPack dp)
 //       MANTENIDO ("si deja presionado el espacio ella puede planear");
 //       el aleteo (tap) sigue elevándola; SHIFT en el aire es el FRENO
 //       (reduce la velocidad hasta FRENAR — hover real con gravedad 0,
-//       quieta en el aire = FlyIdle, moviéndose = FlyRun, las DOS anims
+//       quieta en el aire = FlyIdle, moviéndose = "glide" desde la
+//       v11.0 (FlyRun queda de fallback), las DOS anims
 //       nuevas del avatar); el agarre de pared sale IDENTICO al de
 //       Knuckles (impulso por la NORMAL de la pared + 450 vertical) y
 //       enciende el planeo solo: "ella salta se eleva y vuela".
@@ -4192,8 +4248,48 @@ static const char g_sRougeAnimSeq[ROUGE_ANIM_COUNT][20] = {
     "flap", "SweepKick",
     "IdleLowHealth", "WalkLowHealth", "RunLowHealth",
     "DownedIdle", "DownedWalk",
-    "FlyIdle", "FlyRun"   // v10.1: el rework del vuelo (quieta = FlyIdle, moviéndose = FlyRun)
+    // v11.0: quieta = FlyIdle (hover), MOVIENDOSE = "glide" (la
+    // secuencia nueva del rouge.mdl v15). "FlyRun" queda en la tabla
+    // como FALLBACK del probe (modelo viejo sin "glide").
+    "FlyIdle", "FlyRun"
 };
+
+// =====================================================================
+// v11.0: PROBE DE LA SECUENCIA "glide" (receta Shadow v6.0 / Amy v92):
+// SourcePawn no trae LookupSequence — se dispara SetAnimation(nombre)
+// y se lee m_nSequence: si el indice CAMBIO, el nombre existe en el
+// .mdl. El rouge.mdl v15 (compilado con Crowbar) trae "glide"; el
+// viejo no. Se resuelve en CADA montaje del avatar R (barato: dos
+// inputs extra dentro del MISMO frame del spawn — el cliente solo ve
+// el idle final). Con el modelo viejo el FSM cae a "FlyRun" sola:
+// nunca se congela el avatar volando.
+// =====================================================================
+void Rouge_ProbeGlideSeq(int av)
+{
+    g_bRougeGlideSeqOK = false;
+    if (av <= 0 || !IsValidEntity(av)) return;
+    if (!HasEntProp(av, Prop_Send, "m_nSequence")) return;
+
+    int before = GetEntProp(av, Prop_Send, "m_nSequence");
+    SetVariantString("glide");
+    AcceptEntityInput(av, "SetAnimation");
+    int after = GetEntProp(av, Prop_Send, "m_nSequence");
+
+    g_bRougeGlideSeqOK = (after != before);
+
+    // devolver el avatar al idle (estado limpio para la FSM)
+    SetVariantString("idle");
+    AcceptEntityInput(av, "SetAnimation");
+}
+
+// v11.0: la secuencia de un estado — FLYRUN usa "glide" cuando el
+// probe lo confirmo (la anim del planeo nueva); si no, "FlyRun"
+void Rouge_SeqFor(int state, char out[20])
+{
+    strcopy(out, 20, g_sRougeAnimSeq[state]);
+    if (state == ROUGE_ST_FLYRUN && g_bRougeGlideSeqOK)
+        strcopy(out, 20, "glide");
+}
 
 int Rouge_CreateAvatarProp(int client, const char[] model, const char[] targetname, bool tpMode = false)
 {
@@ -4329,6 +4425,7 @@ void Rouge_CreateAvatar(int client, bool pulsePause = true)
 
     SetVariantString("idle");
     AcceptEntityInput(av, "SetAnimation");
+    Rouge_ProbeGlideSeq(av);          // v11.0: ¿el .mdl trae "glide"? (deja idle)
     g_iRougeAnimState[client] = 0;
 
     SDKHook(av, SDKHook_SetTransmit, Rouge_TransmitAvatarR);
@@ -4642,10 +4739,12 @@ void Rouge_AvatarUpdate(int client, int av, float now)
     }
     else if (!(GetEntityFlags(client) & FL_ONGROUND))
     {
-        // v10.1: MODO VUELO (planeo con SPACE mantenido o freno con
-        // SHIFT): QUIETA en el aire = FlyIdle, MOVIENDOSE = FlyRun —
-        // las DOS anims del rework del owner. Fuera del modo de vuelo
-        // el aire sigue siendo jump (sube) / fall (cae).
+        // v11.0: MODO VUELO (planeo estilo Knuckles — tap de SPACE lo
+        // enciende y SE QUEDA ON — o freno con SHIFT): QUIETA en el
+        // aire = FlyIdle, MOVIENDOSE = "glide" (la secuencia nueva
+        // del rouge.mdl v15; el probe cae a FlyRun con el modelo
+        // viejo). Fuera del modo de vuelo el aire sigue siendo jump
+        // (sube) / fall (cae).
         if (g_bRougeGliding[client] || g_bRougeBraking[client])
         {
             state = (Rouge_Speed2D(client) > 40.0) ? ROUGE_ST_FLYRUN : ROUGE_ST_FLYIDLE;
@@ -4704,7 +4803,9 @@ void Rouge_AvatarUpdate(int client, int av, float now)
     {
         // el t0 del jump para su ventana (receta Sonic/Metal/Knuckles)
         if (state == ROUGE_ST_JUMP) g_fRougeJumpStart[client] = now;
-        SetVariantString(g_sRougeAnimSeq[state]);
+        char seq[20];
+        Rouge_SeqFor(state, seq);   // v11.0: FLYRUN -> "glide" (o FlyRun)
+        SetVariantString(seq);
         AcceptEntityInput(av, "SetAnimation");
         if (g_iRougeAvatarL[client] != 0)
         {
@@ -4712,7 +4813,7 @@ void Rouge_AvatarUpdate(int client, int av, float now)
             if (avLA > 0 && IsValidEntity(avLA))
             {
                 // el variant es de UN SOLO USO — re-armarlo
-                SetVariantString(g_sRougeAnimSeq[state]);
+                SetVariantString(seq);
                 AcceptEntityInput(avLA, "SetAnimation");
             }
         }
