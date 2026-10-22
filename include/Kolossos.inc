@@ -576,7 +576,7 @@
  * =====================================================================
  */
 
-#define KOLOSSOS_INC_VERSION "2.5-OM"   // v2.5: EMBESTIDA/BLOQUEO INMUNES AL STUN (iframes Lua l.1608) + EL PUÑO DEL TANK ESTILO KNUCKLES + TODOS los sonidos GLOBALES (SNDCHAN_STATIC+SNDLEVEL_NONE, menos el indicador)
+#define KOLOSSOS_INC_VERSION "2.6-OM"   // v2.6: EL STUN SUENA DE VERDAD — el flanco Kolossos_StunEdgeThink era CODIGO MUERTO desde la v2.2 (llamado solo en la rama NO aturdida del tick): movido ARRIBA de la bifurcacion + flanco re-armado en la rama muerta (v2.5: EMBESTIDA/BLOQUEO INMUNES AL STUN + PUÑO DEL TANK ESTILO KNUCKLES + TODOS los sonidos GLOBALES)
 
 // v2.3 [R2]: liberacion de agarres POR EL CAMINO DEL MOTOR — el modulo
 // compartido de Amy/Sally/Cream (Amy.inc lo trae ANTES en el manager;
@@ -6554,6 +6554,17 @@ public Action T_KolossosThink(Handle timer)
         // ---- EL TICK DEL KIT ----
         if (esKolViva)
         {
+            // v2.6 [R1]: EL FLANCO DEL STUN, ARRIBA DE LA BIFURCACION.
+            // v2.2-v2.5 lo llamaban SOLO dentro del else (la rama NO
+            // aturdida): ahi AnyStun es siempre false, y en la rama
+            // aturdida NUNCA se llamaba — el "kol stun N" de entrada
+            // era CODIGO MUERTO desde la v2.2 (4/4 montados y mudos:
+            // "no suena ni agarrado por smoker/hunter/jockey/charger
+            // ni con los empujones que dan stagger"). Aqui suena en
+            // el MISMO tick en que el stun entra — solo la
+            // transicion, como el Lua l.1517.
+            Kolossos_StunEdgeThink(i);
+
             // v2.2: el stun NATIVO tambien cancela el kit (el Lua
             // l.935/l.1012: nada de habilidades con el stun puesto)
             if (Kolossos_AnyStun(i))
@@ -6614,10 +6625,9 @@ public Action T_KolossosThink(Handle timer)
                 if (g_fKolBlockUntil[i] > 0.0 && now >= g_fKolBlockUntil[i])
                     Kolossos_BlockEnd(i);
 
-                // v2.2: el flanco del stun (nativo o suite) — el sonido
-                // de entrada "kol stun N" al EMPEZAR el stun (10 Hz,
-                // corre con o sin avatar: el kit entero lo escucha)
-                Kolossos_StunEdgeThink(i);
+                // v2.6: el flanco del stun se llama ARRIBA de la
+                // bifurcacion del tick (aqui era codigo muerto desde
+                // la v2.2: corria solo con AnyStun false)
 
                 // indicator
                 if (g_fKolIndUntil[i] > now) indOwner = i;
@@ -6632,6 +6642,12 @@ public Action T_KolossosThink(Handle timer)
             if (g_fKolIndUntil[i] > 0.0)   g_fKolIndUntil[i] = 0.0;
             g_bKolClimbing[i] = false;   // v2.4: sin Kolossos vivo no hay pared
             g_bKolClimbArm[i] = false;
+            // v2.6: el flanco re-armado y sin ventanas fantasma —
+            // morir/incap EN stun dejaba wasStunned=true (mudo en el
+            // primer stun de la vida siguiente) y la ventana nativa
+            // podia disparar el sonido de entrada al revivir
+            g_bKolWasStunned[i] = false;
+            g_fKolNativeStunUntil[i] = 0.0;
         }
 
         // ---- montaje del avatar ----
