@@ -1878,6 +1878,16 @@ public Action L4D_OnGrabWithTongue(int victim, int attacker)
         return Plugin_Handled;
     }
 
+    // v2.1 Kolossos: el bloqueo detecta la lengua AL INSTANTE — el
+    // agarre nunca llega a empezar y el smoker come el counter
+    if (Kolossos_PlayerIs(victim) && Kolossos_BlockActive(victim))
+    {
+        Kolossos_BlockEnd(victim);
+        Kolossos_BlockCounter(victim, attacker, attacker);
+        PrintCenterText(victim, "BLOQUEO! Lengua rota al instante");
+        return Plugin_Handled;
+    }
+
     // v3.77.46 (Rouge v10.1): su counter rompe la lengua en seco (= al
     // de Knuckles); sin ventana, la EVA de control puede esquivarla
     if (g_iPlayerCharIdx[victim] == ROUGE_INDEX)
@@ -1910,6 +1920,16 @@ public Action L4D2_OnStartCarryingVictim(int victim, int attacker)
         return Plugin_Handled; 
     }
 
+    // v2.1 Kolossos: el bloqueo detecta la carga del charger AL
+    // INSTANTE — el carry nunca arranca y el charger sale contraado
+    if (Kolossos_PlayerIs(victim) && Kolossos_BlockActive(victim))
+    {
+        Kolossos_BlockEnd(victim);
+        Kolossos_BlockCounter(victim, attacker, attacker);
+        PrintCenterText(victim, "BLOQUEO! Carga rota al instante");
+        return Plugin_Handled;
+    }
+
     // v3.77.46 (Rouge v10.1): idem — counter pleno o EVA del carry
     if (g_iPlayerCharIdx[victim] == ROUGE_INDEX)
     {
@@ -1938,6 +1958,15 @@ public Action L4D2_OnSlammedSurvivor(int victim, int attacker, bool &bWallSlam, 
     {
         // v65-OM: rebote de la contra — pulso BLANCO + CounterBounce
         Knux_CounterBlockFx(victim, KNUX_SOUND_COUNTER_HIT);
+        return Plugin_Handled;
+    }
+
+    // v2.1 Kolossos: ni el slam del charger lo tumba con el bloqueo
+    // puesto — absorbido en seco
+    if (Kolossos_PlayerIs(victim) && Kolossos_BlockActive(victim))
+    {
+        bWallSlam = false;
+        bDeadlyCharge = false;
         return Plugin_Handled;
     }
 
@@ -1983,6 +2012,15 @@ public Action L4D2_OnPlayerFling(int client, int attacker, float vecDir[3])
         PrintCenterText(client, "⚓ [COUNTER] ¡INMOVILIDAD!");
         // v65-OM: rebote de la contra — pulso BLANCO + CounterBounce
         Knux_CounterBlockFx(client, KNUX_SOUND_COUNTER_HIT);
+        return Plugin_Handled;
+    }
+
+    // v2.1 Kolossos: EL ANTI-EMPUJE — con el bloqueo activo o dentro
+    // de la ventana del counter NINGUN fling del motor lo mueve (el
+    // tank no puede empujarlo durante la contra, receta Knuckles)
+    if (Kolossos_PlayerIs(client) && Kolossos_BlockGuard(client))
+    {
+        PrintCenterText(client, "⚓ [BLOQUEO] ¡INMOVILIDAD!");
         return Plugin_Handled;
     }
 

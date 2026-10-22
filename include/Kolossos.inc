@@ -1,11 +1,104 @@
 /*
  * =====================================================================
- *  [MODULO] KOLOSSOS — El Coloso de OutComeMemories v1.2-OM
+ *  [MODULO] KOLOSSOS — El Coloso de OutComeMemories v2.2-OM
  *  PERSONAJE 14 DEL SUITE (KOLOSSOS_INDEX 13)
  *
  *  Port directo de "Lua de OM de Gmod/autorun/include/killer/
  *  noodles_om_pills_killer_kolossos.lua" (by noodles) — el killer
  *  colosal del pack OM pills, traido a L4D2 como personaje jugable.
+ *
+ *  v2.2 (manager 3.77.107) — EL STUN NATIVO + LA ROCA QUE SALE + LOS
+ *  M1 PRECACHEADOS. Reporte del owner con la v2.1 en vivo: [R1] la
+ *  consola escupe "SV_StartSound: om/kolossos/kol m1 (1).wav not
+ *  precached (0)" (y el (2)) en cada basico; [R2] "cuando kolosos
+ *  este stuneado (stagger agarrado o demas (ya sabes los stun
+ *  posibles de L4d2) el reproducira su animacion de stuneado y el
+ *  sonido (esta en los lua de Gmod)"; [R3] "la piedra todavia no
+ *  sale?... el stun de cerca esta bn pero el objeto que debe
+ *  lanzarle al enemigo no aparece aun".
+ *  FIXES: [R1] los 4 "kol m1 (N).wav" se chequeaban SOLO con el (1)
+ *  y NINGUNO se precacheaba (la linea simplemente no existia en el
+ *  bloque de precache) — ahora cada archivo se comprueba y se
+ *  precachea POR SEPARADO y el M1 elige al azar SOLO entre los que
+ *  existen (si el pack trae 2, suena uno de esos 2); [R2] EL STUN
+ *  NATIVO DE L4D2: los mismos 5 punteros de control que rompe el
+ *  bloqueo (m_pounceAttacker/m_tongueOwner/m_carryAttacker/
+ *  m_pummelAttacker/m_jockeyAttacker) + la ventana que marcan los
+ *  forwards del manager (L4D2_OnStagger / L4D_OnKnockedDown — el
+ *  stagger y el tumbon que el bloqueo NO absorbe) + el OM_IsStunned
+ *  de siempre: con cualquiera de ellos la FSM pasa a KOL_ST_STUN (la
+ *  seq "stun" del ShouldAlternate del Lua) y el FLANCO de entrada
+ *  suena con uno de los 4 "kol stun N (1).wav" del Lua l.1520-1523
+ *  (al EMPEZAR el stun, nunca durante — mismo criterio GMod);
+ *  [R3] LA ROCA: rockgranite03b.mdl es un modelo de HL2 que L4D2 NO
+ *  trae — el FileExists daba false y SpawnCounterRock salia en
+ *  silencio: NI roca NI dano, solo la anim (por eso "todavia no
+ *  sale" desde la v1.9). Ahora la CADENA de Silver v2.0: la del GMod
+ *  si esta montada -> el chunk de Amy (concrete_chunk01a, probado en
+ *  este server) -> la gascan nativa de L4D2; escala por
+ *  m_flModelScale (la receta de la bola de Knuckles / esfera de
+ *  Rouge — el KV "modelscale" no aplica en prop_physics_override) +
+ *  grupo de colision DEBRIS (solo mundo: igual que el MOVETYPE_NONE
+ *  del Lua, la roca del GMod no empuja a nadie — el dano lo hace el
+ *  barrido del vuelo) + si la cadena quedara vacia (imposible con la
+ *  gascan nativa) el counter a distancia NO se queda en nada: la
+ *  detonacion cae DIRECTO sobre el atacante. sm_kolossos reporta el
+ *  modelo activo de la roca y cuantos wavs de stun hay.
+ *
+ *  v2.1 (manager 3.77.106) — LA WITCH COLGADA + LA PUERTA DEL COMBO +
+ *  EL BLOQUEO QUE DETECTA ESTADOS + LA ROCA LANZA. Reporte del owner
+ *  con la v2.0 en vivo: la lluvia de "Data field m_hMoveParent is not
+ *  an integer (13)" en cada fin de avalancha + "la witch tiene una
+ *  interaccion extrana su ragdoll no es llevada y cuando la lleva
+ *  literalmente no aparece despues de soltarla" + "aunque los golpes
+ *  tienen un time el juego sigue tomando la pulsacion como golpes
+ *  fuera de los 3 permitidos" + el rebalanceo (punos 550 + 1.75% de
+ *  la vida actual, basicos 350-450, stun del bloqueo +2s) + "ahora
+ *  podra detectar estados al instante... charger hunter smoker y
+ *  jockey... y el anti stagger del tank... y un arreglo a la roca de
+ *  kolossos usara el mismo tipo de roca... siguiendo las pautas de la
+ *  habilidad original de como esta la lanza. esta roca producira el
+ *  stun ragdoll al impactar".
+ *  FIXES: [1] m_hMoveParent es un EHANDLE: el GetEntProp crudo de
+ *  Kolossos_FlingHitList reventaba con excepcion en CADA victima
+ *  entidad del fling final (commons arrastrados), el abort cortaba
+ *  ChargeEnd ANTES del "= IDLE" de ultima linea y el FSM re-llamaba
+ *  ChargeEnd cada tick = el spam del log + commons parentados para
+ *  siempre. Va GetEntPropEnt (como el resto del file) y la SALIDA del
+ *  estado sube a lo PRIMERO de ChargeEnd (anti-wedge para siempre);
+ *  [2] LA WITCH: parentar la entidad witch viva la vuelve INVISIBLE
+ *  en L4D2 (el motor no la recupera al soltarla) — JAMAS se parenta:
+ *  viaja como RAGDOLL DOBLE (prop_ragdoll con su modelo, pineado por
+ *  frame a la mano del marker, sacudida por puno) igual que los
+ *  especiales, la original RENDER_NONE + FL_FROZEN (la estatua del
+ *  suite) + colision fantasma, y al soltarla/lanzarla revive DONDE
+ *  QUEDO el doble (follow congruente 10 Hz); si muere agarrada el
+ *  doble queda de cadaver y ella vuelve a verse. La embestida TAMPOCO
+ *  la parenta (solo commons arrastrados); [3] LA PUERTA DEL COMBO:
+ *  el M1/Z durante el agarre no pasaba por NINGUN gate (3 clicks en 3
+ *  frames = combo entero + punos extra re-triggereando la anim y
+ *  re-agendando el lanzamiento) — ahora sin cargas no hay puno y
+ *  entre punos tiene que pasar KOL_PUNCH_GATE (0.45s, la mitad del
+ *  anim); [4] REBALANCEO: punos 550 (kolossos_grab_punchdamage) +
+ *  kolossos_grab_punchhpdmg 1.75% de la vida ACTUAL, basicos 350-450
+ *  (kolossos_m1_damage/_max), KOL_CNT_STUN 2.5 -> 4.5s (+2s el stun
+ *  del bloqueo); [5] ESTADOS AL INSTANTE: ramas Kolossos en los
+ *  forwards reales (lengua/carry/slam en Knuckles.inc, pounce/jockey
+ *  en sonic.inc, garra del tank en el TankClaw del manager — contra
+ *  inmediata + Handled) + Kolossos_BlockStateThink cada frame rompe
+ *  los punteros de control (m_pounceAttacker/m_jockeyAttacker/
+ *  m_carryAttacker/m_pummelAttacker a -1, receta T_KnuxHardStop)
+ *  cuando un control ya estaba agarrado al apretar B + LA VENTANA
+ *  ANTI-EMPUJE (Kolossos_BlockGuard: 1.5s tras el counter, ningun
+ *  fling/knockdown/stagger del motor lo mueve — el anti stagger del
+ *  tank, receta Knuckles con el clavado MOVETYPE_NONE 0.2s);
+ *  [6] LA ROCA ESTILO LANZA: vuelo RECTO por direccion guardada (la
+ *  receta del javelin de Blaze v2.5) con hitbox de segmento barrido
+ *  (v2.8), pared por trace del segmento, tope 2.5s, y al impactar
+ *  STUN-RAGDOLL del TIEMPO DEL COUNTER MELEE (KOL_CNT_STUN) con el
+ *  doble volando + follow (los especiales que sobreviven salen en
+ *  ragdoll stun, "el mismo tiempo de stun que el original que hace a
+ *  melee"). CERO FX tocados.
  *
  *  v1.8 (manager 3.77.103) — LA VICTIMA PEGADA AL BRAZO. Reporte
  *  del owner con la v1.7.1 en vivo (el compilo el .mdl y el grab se
@@ -412,7 +505,7 @@
  * =====================================================================
  */
 
-#define KOLOSSOS_INC_VERSION "2.0-OM"
+#define KOLOSSOS_INC_VERSION "2.2-OM"   // v2.2: stun nativo L4D2 + roca con cadena de modelo + M1 precacheados (2.1 nunca se anoto aqui: la macro quedo en 2.0)
 
 // ------------------------- CONSTANTES KIT ---------------------------
 // (defaults = registro oficial GMod om_survivors_register_noodles_kolossos;
@@ -493,9 +586,22 @@
 // recompilar el modelo todo cae a la monocapa v1.3 sin romper nada.
 #define KOL_IND_PING_EVERY         1.0     // heartbeat del indicator
 #define KOL_ROCK_LIFETIME          3.0     // la roca muere sola si no toca nada
-#define KOL_ROCK_ARC_TIME          0.5     // GMod: travelTime 0.5
-#define KOL_ROCK_ARC_PEAK          150.0   // GMod: peakHeight 150
+#define KOL_ROCK_ARC_TIME          0.5     // GMod: travelTime 0.5 (LEGADO v1.9: la roca ya vuela recta estilo lanza)
+#define KOL_ROCK_ARC_PEAK          150.0   // GMod: peakHeight 150 (LEGADO v1.9)
 #define KOL_ROCK_TOUCH_RADIUS      100.0   // AoE del impacto de la roca
+#define KOL_ROCK_SPEED             2200.0  // v2.1: vuelo RECTO de la roca (estilo lanza/javelin)
+#define KOL_ROCK_FLIGHT_MAX        2.5     // v2.1: tope de vuelo de la roca (s)
+#define KOL_ROCK_CATCH_RADIUS      90.0    // v2.1: radio de caza del segmento barrido
+#define KOL_ROCK_SPAWN_FWD         25.0    // v2.1: nace al frente del pecho del coloso
+#define KOL_ROCK_SPAWN_UP          55.0    // v2.1: ...y a la altura del puno
+// v2.2: el grupo de colision DEBRIS del motor (enum Collision_Group:
+// 1 = DEBRIS = solo choca con el mundo) — no viene en los includes
+// core del SM 1.12 y es el equivalente exacto del MOVETYPE_NONE del
+// Lua l.1458: la roca del GMod atraviesa sin empujar a nadie
+#define KOL_ROCK_COLGROUP          1
+#define KOL_COUNTER_SAFE           1.5     // v2.1: ventana anti-empuje tras el counter (fling/knockdown/stagger fuera)
+#define KOL_PUNCH_GATE             0.45    // v2.1: ritmo minimo entre punos del combo (la mitad del anim 0.85)
+#define KOL_WITCH_RAG_FLY_MAX      3.25    // v2.1: vuelo maximo del doble de la witch antes de restaurarla
 #define KOL_DASH_VEL_INJECT        900.0   // vel[0] saturado (receta Metal)
 #define KOL_MAXENT                 2048    // sprites del indicator (por indice)
 
@@ -515,7 +621,7 @@
 #define KOL_CNT_FLING              700.0   // counter melee: el atacante vuela (GMod 3000 escalado)
 #define KOL_CNT_LIFT               0.55    // fraccion Z del counter
 #define KOL_CNT_TUMBLE             900.0   // giro por hueso del counter
-#define KOL_CNT_STUN               2.5     // stun del atacante countered
+#define KOL_CNT_STUN               4.5     // stun del atacante countered (v2.1: 2.5 + 2s — pedido del owner: "el bloqueo su aturdimiento durara 2 seg mas")
 #define KOL_M1_CD                  1.65    // GMod l.2664: AttackCooldown del M1
 #define KOL_M1_RANGE               65.0    // esfera del puo basico (hull frontal del charge)
 
@@ -610,10 +716,12 @@ ConVar g_cvKolRockDmg;
 ConVar g_cvKolRockScale;
 ConVar g_cvKolRockStun;    // v1.9: stun al area del impacto de la roca
 ConVar g_cvKolM1;          // v1.9: click izq = puo (slots 0/1 pisados)
-ConVar g_cvKolM1Dmg;       // v1.9: dano del puo basico
+ConVar g_cvKolM1Dmg;       // v2.1: dano MINIMO del puo basico (el max: kolossos_m1_damage_max)
+ConVar g_cvKolM1DmgMax;    // v2.1: dano MAXIMO del puo basico (tirada aleatoria 350-450)
 ConVar g_cvKolGrabRag;     // v1.9: la victima del grab viaja como ragdoll
 ConVar g_cvKolChgCarry;    // v1.9: la embestida lleva por delante
 ConVar g_cvKolCntRag;      // v1.9: el counter manda al atacante en ragdoll
+ConVar g_cvKolGrabHpDmg;   // v2.1: % de la vida ACTUAL del agarrado que cada puno quita (1.75)
 
 // ------------------------- ESTADO POR JUGADOR -----------------------
 int    g_iKolChargeState[MAXPLAYERS + 1];   // KOL_CHG_*
@@ -631,6 +739,41 @@ float  g_fKolLungeUntil[MAXPLAYERS + 1];    // ventana del lunge 0.6s
 float  g_fKolGrabHoldEnd[MAXPLAYERS + 1];   // max 10s en vilo
 float  g_fKolGrabCdUntil[MAXPLAYERS + 1];
 bool   g_bKolGrabLunged[MAXPLAYERS + 1];    // el impulso del lunge ya salio
+
+// v2.1: LA WITCH VIAJA COMO RAGDOLL — la v1.8 pegaba la witch VIVA con
+// SetParent+SetParentAttachment y el motor la volvia INVISIBLE (el bug
+// del owner: "cuando la lleva literalmente no aparece despues de
+// soltarla"): la witch ya no se parenta NUNCA — viaja con su DOBLE
+// prop_ragdoll pineado a la mano (la misma receta de los clientes) y la
+// original queda RENDER_NONE + FL_FROZEN hasta soltarla. Registro por
+// AGARRADOR (solo hay una witch agarrada por Kolossos a la vez).
+int    g_iKolWitchRag[MAXPLAYERS + 1];        // EntRef del doble de la witch agarrada
+int    g_iKolWitchRagVictim[MAXPLAYERS + 1];  // EntRef de la WITCH agarrada (vive mas que el grab)
+int    g_iKolWitchRagRender[MAXPLAYERS + 1];  // render original de la witch
+int    g_iKolWitchRagCol[MAXPLAYERS + 1];     // collision group original
+bool   g_bKolWitchRagJolt[MAXPLAYERS + 1];    // sacudida del puno en curso
+float  g_fKolWitchRagRepinAt[MAXPLAYERS + 1]; // fin de la pausa de la sacudida
+float  g_fKolWitchRagPinDelay[MAXPLAYERS + 1];// beat de fisica del spawn
+bool   g_bKolWitchRagFlying[MAXPLAYERS + 1];  // lanzada: el doble vuela y la original lo sigue
+float  g_fKolWitchRagFlyEnd[MAXPLAYERS + 1];  // fin del vuelo (restauracion donde caiga)
+bool   g_bKolGrabIsWitch[MAXPLAYERS + 1];     // v2.1: el agarrado actual es la witch
+
+// v2.1: LA PUERTA DEL COMBO — el spam del boton ya no fabrica golpes
+// fuera de los 3 permitidos (el M1 durante el agarre no pasaba por NINGUN
+// cooldown: 3 clicks en 3 frames = combo entero + punos extra re-triggereando
+// la anim y re-agendando el lanzamiento)
+float  g_fKolGrabNextPunchAt[MAXPLAYERS + 1]; // v2.1: proximo puno permitido
+
+// v2.1: LA ROCA ESTILO LANZA — vuelo RECTO por direccion (la receta del
+// javelin de Blaze v2.5/v2.8: cero arco balistico, hitbox = segmento
+// recorrido del tick, tope de vuelo) + detonacion en stun-ragdoll. Y la
+// ventana ANTI-EMPUJE del counter (la receta Knuckles: el tank no puede
+// empujar a Kolossos mientras contraataca).
+int    g_iKolRockFlying[MAXPLAYERS + 1];      // EntRef de la roca en vuelo
+float  g_fKolRockDieAt[MAXPLAYERS + 1];       // tope de vuelo de la roca
+float  g_vKolRockDir[MAXPLAYERS + 1][3];      // direccion guardada al disparar
+float  g_vKolRockPrev[MAXPLAYERS + 1][3];     // posicion del tick anterior (hitbox barrida)
+float  g_fKolCounterSafeUntil[MAXPLAYERS + 1];// v2.1: anti-push del counter (fling/knockdown/stagger fuera)
 
 float  g_fKolBlockUntil[MAXPLAYERS + 1];
 float  g_fKolBlockCdUntil[MAXPLAYERS + 1];
@@ -731,7 +874,24 @@ bool   g_bKolSndSlam;                       // v1.1: Sound.mp3 (slam con empalad
 bool   g_bKolSndLaughKill;                  // v1.1: Kolossos laughing.wav (Kill)
 bool   g_bKolSndM1;                         // v1.9: kol m1 (1..4).wav (el basico de click)
 char   g_sKolLaughPath[PLATFORM_MAX_PATH];  // v1.1: ruta real (carpeta Kolossos/kolossos)
-bool   g_bKolRockModel = false;            // rockgranite03b.mdl (nativo L4D2)
+bool   g_bKolRockModel = false;             // v2.2: la cadena resolvio un modelo de roca
+// v2.2 [R1]: los 4 kol m1 REALES, uno por archivo — el pack puede traer
+// menos de 4 y el FileExists solo miraba el (1): compactados aqui al
+// arrancar el mapa (solo los que existen) para que el M1 elija al azar
+// ENTRE LOS QUE HAY, todos ya precacheados (el bug del "not precached")
+char   g_sKolM1Wavs[4][56];
+int    g_iKolSndM1Count = 0;
+// v2.2 [R2]: los 4 "kol stun N (1).wav" del Lua l.1520-1523 — suenan al
+// ENTRAR en cualquier stun (nativo L4D2 o del suite), misma compactacion
+char   g_sKolStunWavs[4][56];
+int    g_iKolSndStunCount = 0;
+// v2.2 [R2]: la ventana del stun NATIVO (stagger/knockdown marcados por
+// los forwards del manager) + el flanco para el sonido de entrada
+float  g_fKolNativeStunUntil[MAXPLAYERS + 1];
+bool   g_bKolWasStunned[MAXPLAYERS + 1];
+// v2.2 [R3]: el modelo ACTIVO de la roca (la cadena rockgranite03b ->
+// chunk de Amy -> gascan nativa; vacio = cadena vacia, dano directo)
+char   g_sKolRockModel[96];
 
 // sprites del indicator: g_iKolIndSprite[entidx] = EntRef del glow
 int    g_iKolIndSprite[KOL_MAXENT + 1];
@@ -803,7 +963,8 @@ public void Kolossos_OnPluginStart()
     g_cvKolGrabWindow  = CreateConVar("kolossos_grab_window", "0.6", "Kolossos [X] Grab: ventana del lunge s (GMod 0.6)", 0, true, 0.1, true, 3.0);
     g_cvKolGrabHold    = CreateConVar("kolossos_grab_hold", "10", "Kolossos [X] Grab: max s con la victima en vilo (GMod 10)", 0, true, 1.0, true, 30.0);
     g_cvKolGrabPunches = CreateConVar("kolossos_grab_punches", "3", "Kolossos [X] Grab: puos antes del lanzamiento (GMod 3)", 0, true, 1.0, true, 10.0);
-    g_cvKolGrabPunchDmg= CreateConVar("kolossos_grab_punchdamage", "15", "Kolossos [X] Grab: dano por puo (GMod slamDamage 15)", 0, true, 1.0);
+    g_cvKolGrabPunchDmg= CreateConVar("kolossos_grab_punchdamage", "550", "Kolossos [X] Grab: dano base por puo (v2.1: 550 — pedido del owner, antes 15; se suma kolossos_grab_punchhpdmg)", 0, true, 1.0);
+    g_cvKolGrabHpDmg  = CreateConVar("kolossos_grab_punchhpdmg", "1.75", "Kolossos [X] Grab: % de la VIDA ACTUAL del agarrado que cada puo quita ademas del dano base (v2.1; 0 = solo el base)", 0, true, 0.0, true, 100.0);
     g_cvKolGrabCancel  = CreateConVar("kolossos_grab_cancel", "0", "Kolossos [X] Grab: X de nuevo suelta a la victima (GMod CanCancelGrab=0)", 0, true, 0.0, true, 1.0);
     // v1.6: el switch de la SERIE GRAB por CAPAS REALES — el avatar se
     // monta en commentary_dummy (la unica entidad tipo prop que hereda
@@ -827,7 +988,8 @@ public void Kolossos_OnPluginStart()
 
     // v1.9: M1 al click + ragdolls + carry del counter/embestida
     g_cvKolM1          = CreateConVar("kolossos_m1", "1", "Kolossos: click izq con arma PRIMARIA/SECUNDARIA = PUO basico (el disparo queda pisado; granadas/botiquines/pastillas intactos)", 0, true, 0.0, true, 1.0);
-    g_cvKolM1Dmg       = CreateConVar("kolossos_m1_damage", "35", "Kolossos [M1]: dano del puo basico (esfera 65u al frente)", 0, true, 1.0);
+    g_cvKolM1Dmg       = CreateConVar("kolossos_m1_damage", "350", "Kolossos [M1]: dano MINIMO del puo basico (v2.1: tirada aleatoria 350-450 con kolossos_m1_damage_max; antes 125)", 0, true, 1.0);
+    g_cvKolM1DmgMax    = CreateConVar("kolossos_m1_damage_max", "450", "Kolossos [M1]: dano MAXIMO del puo basico (la tirada sale entre kolossos_m1_damage y este)", 0, true, 1.0);
     g_cvKolGrabRag     = CreateConVar("kolossos_grab_ragdoll", "1", "Kolossos [X] Grab: la victima viaja como RAGDOLL (doble ocultando al original, sacudida por puo, lanzamiento con follow congruente; 0 = pegado vivo v1.8)", 0, true, 0.0, true, 1.0);
     g_cvKolChgCarry    = CreateConVar("kolossos_charge_carry", "1", "Kolossos [Z] Charge: la embestida LLEVA POR DELANTE a quienes engancha (especiales como ragdoll delante, comunes arrastrados; Lua l.1785+)", 0, true, 0.0, true, 1.0);
     g_cvKolCntRag      = CreateConVar("kolossos_counter_ragdoll", "1", "Kolossos [B] Block: el counter melee manda al atacante en RAGDOLL stun volando (0 = solo el fling)", 0, true, 0.0, true, 1.0);
@@ -924,9 +1086,33 @@ public void Kolossos_OnMapStart()
         LogMessage("[Kolossos] Sin '%s' — avatar espejo OFF (el kit funciona igual). Copia el .mdl a esa ruta para activarlo.", mdl);
     }
 
-    // la roca del contragolpe (nativa L4D2: models/props_wasteland/rockgranite03b.mdl)
-    g_bKolRockModel = FileExists("models/props_wasteland/rockgranite03b.mdl", true);
-    if (g_bKolRockModel) PrecacheModel("models/props_wasteland/rockgranite03b.mdl", true);
+    // v2.2 [R3]: LA CADENA DE LA ROCA — rockgranite03b.mdl es un modelo
+    // de HL2 que L4D2 NO trae de fabrica: el FileExists crudo daba false
+    // desde la v1.9 y SpawnCounterRock salia en silencio (sin roca y sin
+    // dano — el "la piedra todavia no sale" del owner). Receta de la
+    // cadena de Silver v2.0: la del GMod si esta montada -> el chunk de
+    // concreto de Amy (probado en este server) -> la gascan nativa.
+    {
+        static const char sKolRockModels[][] = {
+            "models/props_wasteland/rockgranite03b.mdl",   // la del Lua l.1451
+            "models/props_debris/concrete_chunk01a.mdl",   // la de Amy (AMY_MODEL_CHUNK)
+            "models/props_junk/gascan001a.mdl"             // nativa 100% L4D2
+        };
+        g_sKolRockModel[0] = '\0';
+        g_bKolRockModel = false;
+        for (int m = 0; m < sizeof(sKolRockModels); m++)
+        {
+            if (FileExists(sKolRockModels[m], true))
+            {
+                strcopy(g_sKolRockModel, sizeof(g_sKolRockModel), sKolRockModels[m]);
+                PrecacheModel(g_sKolRockModel, true);
+                g_bKolRockModel = true;
+                break;
+            }
+        }
+        if (!g_bKolRockModel)
+            LogMessage("[Kolossos] Sin NINGUN modelo de roca (ni rockgranite03b ni concrete_chunk01a ni gascan001a) — el counter a distancia cae como dano directo sin roca visible.");
+    }
 
     // sonidos del killer: carpeta om/kolossos del addon GMod + fallbacks nativos
     g_bKolSndSigh      = FileExists("sound/om/kolossos/kol sigh i think.wav", true);
@@ -936,7 +1122,45 @@ public void Kolossos_OnMapStart()
     g_bKolSndImpacts   = FileExists("sound/om/kolossos/Kol impacts.wav", true);
     g_bKolSndLaugh     = FileExists("sound/om/kolossos/Kol charge laugh impale.wav", true);
     g_bKolSndWallBump  = FileExists("sound/om/kolossos/Kol wall bump.wav", true);
-    g_bKolSndM1        = FileExists("sound/om/kolossos/kol m1 (1).wav", true);   // v1.9: el pack trae los 4
+    // v2.2 [R1]: LOS 4 M1 DE VERDAD — el FileExists solo miraba el (1)
+    // y NINGUNO se precacheaba: "SV_StartSound: om/kolossos/kol m1 (1).wav
+    // not precached (0)" en cada basico. Cada archivo se comprueba, se
+    // PRECACHEA y se compacta; el M1 elige al azar SOLO entre los que hay.
+    {
+        static const char sKolM1List[][] = {
+            "om/kolossos/kol m1 (1).wav", "om/kolossos/kol m1 (2).wav",
+            "om/kolossos/kol m1 (3).wav", "om/kolossos/kol m1 (4).wav"
+        };
+        g_iKolSndM1Count = 0;
+        char sndPath[72];
+        for (int w = 0; w < 4; w++)
+        {
+            Format(sndPath, sizeof(sndPath), "sound/%s", sKolM1List[w]);
+            if (!FileExists(sndPath, true)) continue;
+            strcopy(g_sKolM1Wavs[g_iKolSndM1Count], 56, sKolM1List[w]);
+            PrecacheSound(sKolM1List[w], true);
+            g_iKolSndM1Count++;
+        }
+        g_bKolSndM1 = (g_iKolSndM1Count > 0);
+    }
+    // v2.2 [R2]: LOS 4 STUN DEL LUA (l.1520-1523) — suenan al ENTRAR en
+    // cualquier stun (los nativos de L4D2 y los del suite), misma receta
+    {
+        static const char sKolStunList[][] = {
+            "om/kolossos/kol stun 1 (1).wav", "om/kolossos/kol stun 2 (1).wav",
+            "om/kolossos/kol stun 3 (1).wav", "om/kolossos/kol stun 4 (1).wav"
+        };
+        g_iKolSndStunCount = 0;
+        char stunPath[72];
+        for (int w = 0; w < 4; w++)
+        {
+            Format(stunPath, sizeof(stunPath), "sound/%s", sKolStunList[w]);
+            if (!FileExists(stunPath, true)) continue;
+            strcopy(g_sKolStunWavs[g_iKolSndStunCount], 56, sKolStunList[w]);
+            PrecacheSound(sKolStunList[w], true);
+            g_iKolSndStunCount++;
+        }
+    }
     g_bKolSndGrabLunge = FileExists("sound/om/kolossos/kol grab lunge.wav", true);
     g_bKolSndGrabUse   = FileExists("sound/om/kolossos/Kol uses grab.wav", true);
     g_bKolSndImpale    = FileExists("sound/om/kolossos/Kol impales.wav", true);
@@ -1046,6 +1270,22 @@ public void Kolossos_OnMapEnd()
         g_fKolGrabHoldEnd[i]    = 0.0;
         g_fKolGrabCdUntil[i]    = 0.0;
         g_bKolGrabLunged[i]     = false;
+        g_iKolWitchRag[i]       = 0;     // v2.1: registro de la witch
+        g_iKolWitchRagVictim[i] = 0;
+        g_iKolWitchRagRender[i] = -1;
+        g_iKolWitchRagCol[i]    = -1;
+        g_bKolWitchRagJolt[i]   = false;
+        g_fKolWitchRagRepinAt[i]= 0.0;
+        g_fKolWitchRagPinDelay[i] = 0.0;
+        g_bKolWitchRagFlying[i] = false;
+        g_fKolWitchRagFlyEnd[i] = 0.0;
+        g_bKolGrabIsWitch[i]    = false;
+        g_fKolGrabNextPunchAt[i]= 0.0;   // v2.1: puerta del combo
+        g_iKolRockFlying[i]     = 0;     // v2.1: roca en vuelo
+        g_fKolRockDieAt[i]      = 0.0;
+        g_fKolCounterSafeUntil[i] = 0.0; // v2.1: anti-empuje del counter
+        g_fKolNativeStunUntil[i] = 0.0;  // v2.2: ventana del stun nativo
+        g_bKolWasStunned[i]      = false;// v2.2: flanco del kol stun N
         g_fKolBlockUntil[i]     = 0.0;
         g_fKolBlockCdUntil[i]   = 0.0;
         g_bKolBlockCountered[i] = false;
@@ -1158,6 +1398,22 @@ void Kolossos_ResetState(int client)
         if (g_iKolVictRag[v] != 0 && g_iKolVictRagOwner[v] == client)
             Kolossos_VictRagEnd(v, true);
     }
+
+    // v2.1: la WITCH propia — su doble muere y la original revive
+    // visible/andante donde quedo (nunca dejarla invisible/helada)
+    if (g_iKolWitchRag[client] != 0)
+        Kolossos_WitchRagEnd(client, true);
+
+    // v2.1: la roca en vuelo propia muere con el reset
+    if (g_iKolRockFlying[client] != 0)
+    {
+        int rockK = EntRefToEntIndex(g_iKolRockFlying[client]);
+        if (rockK > 0 && IsValidEntity(rockK)) AcceptEntityInput(rockK, "Kill");
+        g_iKolRockFlying[client] = 0;
+    }
+    g_fKolCounterSafeUntil[client] = 0.0;   // v2.1
+    g_fKolGrabNextPunchAt[client] = 0.0;    // v2.1
+    g_bKolGrabIsWitch[client]     = false;  // v2.1
 
     if (g_hKolHitList[client] != null)
     {
@@ -2069,7 +2325,15 @@ public Action T_Kol_LayerThink(Handle timer)
     // timer es 0.0 (cada tick) y este es el latido del agarre/carry (el
     // 10 Hz de T_KolossosThink es demasiado grueso a 750 u/s: 75u por
     // tick; a 66 Hz son ~11u — el doble pegado al brazo de verdad)
-    Kolossos_VictRagPinThink(GetEngineTime());
+    float nowLay = GetEngineTime();
+    Kolossos_VictRagPinThink(nowLay);
+
+    // v2.1: el pin de la WITCH agarrada (misma receta, otro registro) +
+    // el vuelo de la ROCA del counter (direccion fija, hitbox barrida) +
+    // el bloqueo DETECTA estados al instante (el suyo y el del enemigo)
+    Kolossos_WitchRagPinThink(nowLay);
+    Kolossos_RockFlightThink(nowLay);
+    Kolossos_BlockStateThink(nowLay);
 
     if (!Kolossos_LayersActive()) return Plugin_Continue;
 
@@ -2554,7 +2818,10 @@ void Kolossos_AvatarUpdate(int client, int av, float now)
         }
 
         // ---- [2] aturdido (ShouldAlternate: "stun" en todos los estados) ----
-        if (OM_IsStunned(client))
+        // v2.2: el stun NATIVO de L4D2 tambien cuenta — pounce/lengua/
+        // carry/pummel/jockey (los 5 punteros) + stagger/knockdown (la
+        // ventana del manager) + el OM_Stun del suite de siempre
+        if (Kolossos_AnyStun(client))
         {
             state = KOL_ST_STUN;
         }
@@ -2823,8 +3090,18 @@ void Kolossos_ChargeEnd(int client, bool hitWall)
 {
     if (g_iKolChargeState[client] == KOL_CHG_IDLE) return;
 
+    // v2.1: LA SALIDA PRIMERO — la v2.0 dejaba el "= IDLE" de ULTIMA
+    // linea y una excepcion en el fling (el GetEntProp del
+    // m_hMoveParent) abortaba ChargeEnd ANTES de llegar ahi: el estado
+    // quedaba en DASH para siempre y el FSM re-llamaba ChargeEnd cada
+    // tick = la lluvia de "Data field m_hMoveParent is not an integer"
+    // del log. Con la salida arriba, NADA de lo que pase despues puede
+    // volver a clavar la avalancha.
+    int chgState = g_iKolChargeState[client];
+    g_iKolChargeState[client] = KOL_CHG_IDLE;
+
     // lagged del windup si quedo clavado en 0
-    if (g_iKolChargeState[client] == KOL_CHG_WINDUP)
+    if (chgState == KOL_CHG_WINDUP)
         SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
 
     // fuera DEBRIS + slot del stack + frenado suave + FOV
@@ -2868,8 +3145,6 @@ void Kolossos_ChargeEnd(int client, bool hitWall)
                           "physics/concrete/concrete_break2.wav");
         }
     }
-
-    g_iKolChargeState[client] = KOL_CHG_IDLE;
 }
 
 // las victimas empaladas que siguen vivas salen volando al final
@@ -2923,7 +3198,11 @@ void Kolossos_FlingHitList(int client, bool hitWall)
         else
         {
             // commons/witch arrastrados: DESPEGARLOS del avatar y volar
-            if (GetEntProp(ent, Prop_Data, "m_hMoveParent") != -1)
+            // v2.1: m_hMoveParent es un EHANDLE — GetEntProp crudo
+            // reventaba con "Data field m_hMoveParent is not an integer
+            // (13)" en CADA victima entidad (el bug del log 19:27): va
+            // con GetEntPropEnt como TODAS las demas lecturas del file
+            if (GetEntPropEnt(ent, Prop_Data, "m_hMoveParent") != -1)
             {
                 SetVariantString("");
                 AcceptEntityInput(ent, "SetParent", ent, ent);
@@ -3040,10 +3319,14 @@ void Kolossos_ChargeDashThink(int client, float now)
             if (GetEntProp(v, Prop_Data, "m_iHealth") <= 0) continue;
             OM_AbilityDamage(v, client, dmg);
 
-            // v1.9: commons/witch ARRASTRADOS — pegados al frente del
-            // avatar (entidades: parent estable), visibles luchando
-            // contra la avalancha, tal cual el "llevar por delante"
-            if (g_cvKolChgCarry != null && g_cvKolChgCarry.BoolValue)
+            // v1.9: commons ARRASTRADOS — pegados al frente del avatar
+            // (entidades: parent estable), visibles luchando contra la
+            // avalancha, tal cual el "llevar por delante".
+            // v2.1: LA WITCH NO SE PARENTA JAMAS — el motor la vuelve
+            // invisible con el parent (mismo bug del grab): ella solo
+            // recibe el empujon del fling final
+            if (g_cvKolChgCarry != null && g_cvKolChgCarry.BoolValue
+                && !Kolossos_IsWitchEnt(v))
             {
                 int avC = EntRefToEntIndex(g_iKolAvatar[client]);
                 if (avC > 0 && IsValidEntity(avC)
@@ -3497,6 +3780,296 @@ void Kolossos_VictRagThink()
             TeleportEntity(v, ragPos, NULL_VECTOR, NULL_VECTOR);
         }
     }
+
+    // v2.1: la WITCH lanzada — su doble vuela y la original (oculta)
+    // lo sigue; a los KOL_WITCH_RAG_FLY_MAX revive donde caiga
+    Kolossos_WitchRagFollow();
+}
+
+// =====================================================================
+//  v2.1: LA WITCH DEL GRAB VIAJA COMO RAGDOLL — mismo trato que los
+//  clientes. La witch VIVA nunca mas se parenta (SetParent sobre la
+//  entidad witch la vuelve INVISIBLE en el motor de L4D2 y a veces no
+//  se recupera al soltarla — el reporte del owner): nace su DOBLE
+//  prop_ragdoll pineado por frame a la mano (Kolossos_WitchRagPinThink
+//  en T_Kol_LayerThink), la original queda RENDER_NONE + FL_FROZEN
+//  (la estatua del suite: su IA apagada sin romper su calendario),
+//  los punos la sacuden igual que a los SI, el lanzamiento vuela el
+//  DOBLE con impulso por hueso y la witch reaparece DONDE CAYO. Si
+//  muere agarrada, el doble queda de cadaver (patron VictRagCorpse)
+//  y la restauracion la devuelve visible para su muerte normal.
+// =====================================================================
+
+// la entidad es una witch viva?
+bool Kolossos_IsWitchEnt(int ent)
+{
+    if (ent <= MaxClients || !IsValidEntity(ent)) return false;
+    char cls[16];
+    GetEntityClassname(ent, cls, sizeof(cls));
+    return StrEqual(cls, "witch", false);
+}
+
+int Kolossos_WitchRagOf(int client)
+{
+    if (client < 1 || client > MaxClients) return 0;
+    if (g_iKolWitchRag[client] == 0) return 0;
+    int rag = EntRefToEntIndex(g_iKolWitchRag[client]);
+    if (rag <= MaxClients || !IsValidEntity(rag)) return 0;
+    return rag;
+}
+
+bool Kolossos_WitchRagActive(int client)
+{
+    return Kolossos_WitchRagOf(client) != 0;
+}
+
+// spawn del doble + witch congelada/invisible (el pin sale diferido como
+// los clientes: el beat de fisica que da el pose colgado)
+bool Kolossos_WitchRagSpawn(int client, int witch)
+{
+    if (client < 1 || client > MaxClients) return false;
+    if (!Kolossos_IsWitchEnt(witch)) return false;
+    if (Kolossos_WitchRagActive(client)) return true;
+
+    char mdl[PLATFORM_MAX_PATH];
+    GetEntPropString(witch, Prop_Data, "m_ModelName", mdl, sizeof(mdl));
+    if (mdl[0] == '\0') return false;
+
+    int rag = CreateEntityByName("prop_ragdoll");
+    if (rag <= 0 || !IsValidEntity(rag)) return false;
+
+    DispatchKeyValue(rag, "model", mdl);
+    DispatchSpawn(rag);
+    AcceptEntityInput(rag, "EnableMotion");
+    AcceptEntityInput(rag, "Wake");
+
+    float pos[3], ang[3];
+    GetEntPropVector(witch, Prop_Data, "m_vecOrigin", pos);
+    GetEntPropVector(witch, Prop_Data, "m_angRotation", ang);
+    pos[2] += KOL_RAG_RESTORE_Z;
+    TeleportEntity(rag, pos, ang, NULL_VECTOR);
+    Sonic_RagMakePassable(rag);   // DEBRIS: el doble no traba contra nada
+
+    // la witch FUERA de la vista y CONGELADA (FL_FROZEN = la estatua del
+    // suite, receta Sonic_WitchStun: apaga su IA NextBot de raiz)
+    g_iKolWitchRagRender[client] = view_as<int>(GetEntityRenderMode(witch));
+    SetEntityRenderMode(witch, RENDER_NONE);
+    Sonic_RagGhostCollision(witch, g_iKolWitchRagCol[client]);
+    SetEntityFlags(witch, GetEntityFlags(witch) | FL_FROZEN);
+
+    g_iKolWitchRag[client]        = EntIndexToEntRef(rag);
+    g_iKolWitchRagVictim[client]  = EntIndexToEntRef(witch);
+    g_bKolWitchRagJolt[client]    = false;
+    g_fKolWitchRagRepinAt[client] = 0.0;
+    g_fKolWitchRagPinDelay[client] = GetEngineTime() + KOL_RAG_PIN_DELAY;
+    g_bKolWitchRagFlying[client]  = false;
+    g_fKolWitchRagFlyEnd[client]  = 0.0;
+    return true;
+}
+
+// el pin por frame de la witch agarrada (corre en T_Kol_LayerThink junto
+// a Kolossos_VictRagPinThink — MISMA receta: hueso raiz a la MANO
+// animada del marker, velocidad CERO, tilt del convar, plan B engine)
+void Kolossos_WitchRagPinThink(float now)
+{
+    for (int c = 1; c <= MaxClients; c++)
+    {
+        if (g_iKolWitchRag[c] == 0 || g_bKolWitchRagFlying[c]) continue;
+
+        int rag = Kolossos_WitchRagOf(c);
+        if (rag == 0) continue;   // el follow barre huerfanos
+
+        if (!IsClientInGame(c) || !IsPlayerAlive(c)) continue;
+
+        // el beat de fisica del spawn y la pausa de la sacudida
+        if (g_fKolWitchRagPinDelay[c] > 0.0 && now < g_fKolWitchRagPinDelay[c]) continue;
+        if (g_bKolWitchRagJolt[c])
+        {
+            if (now < g_fKolWitchRagRepinAt[c]) continue;
+            g_bKolWitchRagJolt[c] = false;
+        }
+
+        // la MANO ANIMADA (el marker del attachment grabhand del avatar)
+        float pinPos[3];
+        int mk = Kolossos_HandMarkGet(c);
+        if (mk > 0 && HasEntProp(mk, Prop_Data, "m_vecAbsOrigin"))
+        {
+            GetEntPropVector(mk, Prop_Data, "m_vecAbsOrigin", pinPos);
+            pinPos[2] -= KOL_RAG_HANG_Z;
+        }
+        else
+        {
+            float pos[3], dir[3];
+            GetClientAbsOrigin(c, pos);
+            Kolossos_GetMoveDir(c, dir);
+            pinPos[0] = pos[0] + dir[0] * KOL_GRAB_HOLD_DIST;
+            pinPos[1] = pos[1] + dir[1] * KOL_GRAB_HOLD_DIST;
+            pinPos[2] = pos[2] + KOL_GRAB_HOLD_Z;
+        }
+
+        float pinAng[3], tmpPos[3];
+        if (!Sonic_RagPhysGet(rag, tmpPos, pinAng))
+            GetEntPropVector(rag, Prop_Data, "m_angAbsRotation", pinAng);
+        if (g_cvKolGrabTilt != null && g_cvKolGrabTilt.FloatValue != 0.0)
+            pinAng[0] += g_cvKolGrabTilt.FloatValue;
+
+        if (!Sonic_RagPhysPin(rag, pinPos, pinAng))
+        {
+            float zero[3];
+            TeleportEntity(rag, pinPos, NULL_VECTOR, zero);
+        }
+    }
+}
+
+// la sacudida del puno (identica a la de los SI: impulso + pausa del pin)
+void Kolossos_WitchRagJolt(int client)
+{
+    int rag = Kolossos_WitchRagOf(client);
+    if (rag == 0) return;
+    AcceptEntityInput(rag, "EnableMotion");
+    AcceptEntityInput(rag, "Wake");
+    float vel[3];
+    vel[0] = GetRandomFloat(-80.0, 80.0);
+    vel[1] = GetRandomFloat(-80.0, 80.0);
+    vel[2] = KOL_RAG_JOLT_UP;
+    TeleportEntity(rag, NULL_VECTOR, NULL_VECTOR, vel);
+    g_bKolWitchRagJolt[client] = true;
+    g_fKolWitchRagRepinAt[client] = GetEngineTime() + KOL_RAG_JOLT_REPIN;
+}
+
+// la witch murio agarrada: el doble queda de CADaver donde cuelga (se
+// limpia a los 3s) y la witch vuelve a verse para su muerte normal
+void Kolossos_WitchRagCorpse(int client)
+{
+    int rag = Kolossos_WitchRagOf(client);
+    if (rag != 0)
+    {
+        AcceptEntityInput(rag, "EnableMotion");
+        AcceptEntityInput(rag, "Wake");
+        float drop[3];
+        drop[0] = GetRandomFloat(-60.0, 60.0);
+        drop[1] = GetRandomFloat(-60.0, 60.0);
+        drop[2] = -80.0;
+        TeleportEntity(rag, NULL_VECTOR, NULL_VECTOR, drop);
+        CreateTimer(3.0, Kolossos_T_VictRagCorpseClean, EntIndexToEntRef(rag), TIMER_FLAG_NO_MAPCHANGE);
+    }
+
+    // registro libre y la witch visible de nuevo (si el motor todavia no
+    // la retiro): su anim de muerte se ve, el doble es el cadaver que cae
+    int witch = EntRefToEntIndex(g_iKolWitchRagVictim[client]);
+    bool wasWitch = (witch > MaxClients && IsValidEntity(witch) && Kolossos_IsWitchEnt(witch));
+
+    g_iKolWitchRag[client]       = 0;
+    g_iKolWitchRagVictim[client] = 0;
+    g_bKolWitchRagFlying[client] = false;
+    g_fKolWitchRagFlyEnd[client] = 0.0;
+    g_bKolWitchRagJolt[client]   = false;
+
+    if (wasWitch)
+    {
+        SetEntityRenderMode(witch, view_as<RenderMode>(g_iKolWitchRagRender[client]));
+        Sonic_RagRestoreCollision(witch, g_iKolWitchRagCol[client]);
+        SetEntityFlags(witch, GetEntityFlags(witch) & ~FL_FROZEN);
+    }
+    g_iKolWitchRagRender[client] = -1;
+    g_iKolWitchRagCol[client]    = -1;
+}
+
+// el LANZAMIENTO de la witch: el doble vuela con impulso por hueso, la
+// original queda oculta siguiendolo (WitchRagFollow) y revive donde caiga
+void Kolossos_WitchRagLaunch(int client, const float dir[3], float speed)
+{
+    int rag = Kolossos_WitchRagOf(client);
+    if (rag == 0) return;
+
+    AcceptEntityInput(rag, "EnableMotion");
+    AcceptEntityInput(rag, "Wake");
+
+    if (!Sonic_RagPhysLaunch(rag, dir, speed, speed * KOL_RAG_THROW_LIFT, KOL_RAG_THROW_TUMBLE))
+        Sonic_RagFlingEngine(rag, dir, speed, speed * KOL_RAG_THROW_LIFT);
+
+    g_bKolWitchRagFlying[client] = true;
+    g_fKolWitchRagFlyEnd[client] = GetEngineTime() + KOL_WITCH_RAG_FLY_MAX;
+}
+
+// el follow del vuelo (10 Hz, colgado de Kolossos_VictRagThink): la witch
+// original oculta persigue al doble y al terminar revive donde quedo
+void Kolossos_WitchRagFollow()
+{
+    float now = GetEngineTime();
+    for (int c = 1; c <= MaxClients; c++)
+    {
+        if (g_iKolWitchRag[c] == 0) continue;
+
+        int rag = Kolossos_WitchRagOf(c);
+        if (rag == 0)
+        {
+            // doble muerto en pleno vuelo: restaurar ya
+            Kolossos_WitchRagEnd(c, false);
+            continue;
+        }
+        if (!g_bKolWitchRagFlying[c]) continue;
+
+        int witch = EntRefToEntIndex(g_iKolWitchRagVictim[c]);
+        bool witchGone = (witch <= 0 || !IsValidEntity(witch) || !Kolossos_IsWitchEnt(witch));
+
+        // el motor retiro a la witch (muerta/cleanup): el doble cae solo
+        if (witchGone)
+        {
+            g_bKolGrabIsWitch[c] = false;
+            AcceptEntityInput(rag, "EnableMotion");
+            CreateTimer(3.0, Kolossos_T_VictRagCorpseClean, EntIndexToEntRef(rag), TIMER_FLAG_NO_MAPCHANGE);
+            g_iKolWitchRag[c] = 0;
+            g_iKolWitchRagVictim[c] = 0;
+            g_bKolWitchRagFlying[c] = false;
+            continue;
+        }
+
+        // follow congruente: la original invisible viaja con el doble
+        float ragPos[3];
+        GetEntPropVector(rag, Prop_Data, "m_vecOrigin", ragPos);
+        TeleportEntity(witch, ragPos, NULL_VECTOR, NULL_VECTOR);
+
+        if (now >= g_fKolWitchRagFlyEnd[c])
+            Kolossos_WitchRagEnd(c, true);
+    }
+}
+
+// fin del ciclo de la witch: doble muerto + original restaurada (render,
+// colision y IA) donde quedo el doble — o donde este si el doble ya no existe
+void Kolossos_WitchRagEnd(int client, bool teleportToRag)
+{
+    if (client < 1 || client > MaxClients) return;
+    if (g_iKolWitchRag[client] == 0) return;
+
+    int rag = Kolossos_WitchRagOf(client);
+    int witch = EntRefToEntIndex(g_iKolWitchRagVictim[client]);
+
+    if (witch > MaxClients && IsValidEntity(witch) && Kolossos_IsWitchEnt(witch))
+    {
+        if (teleportToRag && rag != 0)
+        {
+            float ragPos[3];
+            GetEntPropVector(rag, Prop_Data, "m_vecOrigin", ragPos);
+            ragPos[2] += KOL_RAG_RESTORE_Z;
+            TeleportEntity(witch, ragPos, NULL_VECTOR, NULL_VECTOR);
+        }
+        SetEntityRenderMode(witch, view_as<RenderMode>(g_iKolWitchRagRender[client]));
+        Sonic_RagRestoreCollision(witch, g_iKolWitchRagCol[client]);
+        SetEntityFlags(witch, GetEntityFlags(witch) & ~FL_FROZEN);
+    }
+
+    if (rag != 0) AcceptEntityInput(rag, "Kill");
+
+    g_iKolWitchRag[client]        = 0;
+    g_iKolWitchRagVictim[client]  = 0;
+    g_iKolWitchRagRender[client]  = -1;
+    g_iKolWitchRagCol[client]     = -1;
+    g_bKolWitchRagJolt[client]    = false;
+    g_fKolWitchRagRepinAt[client] = 0.0;
+    g_fKolWitchRagPinDelay[client] = 0.0;
+    g_bKolWitchRagFlying[client]  = false;
+    g_fKolWitchRagFlyEnd[client]  = 0.0;
 }
 
 // =====================================================================
@@ -3723,6 +4296,8 @@ void Kolossos_GrabBegin(int client, int victim)
     g_iKolGrabVictim[client] = EntIndexToEntRef(victim);
     g_iKolGrabPunches[client] = g_cvKolGrabPunches.IntValue;
     g_fKolGrabHoldEnd[client] = GetEngineTime() + g_cvKolGrabHold.FloatValue;
+    g_bKolGrabIsWitch[client] = Kolossos_IsWitchEnt(victim);   // v2.1
+    g_fKolGrabNextPunchAt[client] = 0.0;                        // v2.1: combo fresco
 
     // congelar a la victima: commons por movetype, SI por OM_Stun
     if (victim > 0 && victim <= MaxClients)
@@ -3741,12 +4316,17 @@ void Kolossos_GrabBegin(int client, int victim)
     // el original queda RENDER_NONE y pegado al doble por teleport
     // congruente (el fix del video: la v1.8 parentaba al PLAYER vivo y
     // re-assertaba cada tick = el SNAP repetido "del agarre mas de una
-    // vez"). Commons/witch (entidades) o convar off: pegado v1.8
+    // vez"). v2.1: LA WITCH TAMBIEN — parentar la witch viva la volvia
+    // INVISIBLE en el motor ("cuando la lleva literalmente no aparece
+    // despues de soltarla"): ahora viaja con doble pineado igual que
+    // los SI. Commons o convar off: pegado v1.8
     bool ragdolled = false;
-    if (g_cvKolGrabRag != null && g_cvKolGrabRag.BoolValue
-        && victim > 0 && victim <= MaxClients)
+    if (g_cvKolGrabRag != null && g_cvKolGrabRag.BoolValue)
     {
-        ragdolled = Kolossos_VictRagSpawn(client, victim, KOL_RAGMODE_GRABPIN);
+        if (victim > 0 && victim <= MaxClients)
+            ragdolled = Kolossos_VictRagSpawn(client, victim, KOL_RAGMODE_GRABPIN);
+        else if (g_bKolGrabIsWitch[client])
+            ragdolled = Kolossos_WitchRagSpawn(client, victim);
     }
 
     // v1.8: LA VICTIMA PEGADA AL BRAZO DESDE EL INSTANTE DEL AGARRE — el
@@ -3800,10 +4380,13 @@ void Kolossos_GrabHoldThink(int client, float now)
     }
 
     // v2.0: en modo ragdoll el original lo sigue VictRagThink (10 Hz,
-    // el mismo follow para grab/carry/vuelo). Sin doble (commons/witch
-    // o convar off): la v1.8 — pegada al brazo con parent (re-assert
-    // solo si se solto) o el offset v1.7 de ultima instancia
-    if (!Kolossos_VictRagActive(victim) && !Kolossos_GrabVictimGlue(client, victim))
+    // el mismo follow para grab/carry/vuelo). v2.1: la WITCH con doble
+    // tampoco se toca aqui (el pin por frame es su verdad de mundo —
+    // JAMAS parentar la witch). Sin doble (commons o convar off): la
+    // v1.8 — pegada al brazo con parent (re-assert solo si se solto) o
+    // el offset v1.7 de ultima instancia
+    bool witchPinned = (g_bKolGrabIsWitch[client] && Kolossos_WitchRagActive(client));
+    if (!witchPinned && !Kolossos_VictRagActive(victim) && !Kolossos_GrabVictimGlue(client, victim))
     {
         float pos[3], dir[3];
         GetClientAbsOrigin(client, pos);
@@ -3840,10 +4423,38 @@ void Kolossos_GrabPunch(int client)
 
     float now = GetEngineTime();
 
+    // v2.1: LA PUERTA DEL COMBO — "aunque los golpes tienen un time el
+    // juego sigue tomando la pulsacion como golpes fuera de los 3
+    // permitidos": el M1/Z durante el agarre no pasaba por NINGUN gate,
+    // cada click era un puo (3 clicks en 3 frames = combo entero) y los
+    // extra seguan re-triggereando la anim y re-agendando el
+    // lanzamiento. AHORA: sin cargas no hay puo (el lanzamiento ya esta
+    // agendado) y entre puo y puo tiene que pasar KOL_PUNCH_GATE
+    if (g_iKolGrabPunches[client] <= 0) return;
+    if (now < g_fKolGrabNextPunchAt[client]) return;
+    g_fKolGrabNextPunchAt[client] = now + KOL_PUNCH_GATE;
+
     Kolossos_Emit(client, g_bKolSndPunch, "om/kolossos/kolossos punching.wav",
                   "physics/flesh/flesh_impact_hard3.wav");
 
-    OM_AbilityDamage(victim, client, g_cvKolGrabPunchDmg.FloatValue);
+    // v2.1: EL DANO DEL PUO — base 550 (pedido del owner, antes 15)
+    // + 1.75% de la VIDA ACTUAL del agarrado (kolossos_grab_punchhpdmg:
+    // al tank le duela de verdad, el % escala con lo que le quede)
+    float punchDmg = (g_cvKolGrabPunchDmg != null) ? g_cvKolGrabPunchDmg.FloatValue : 550.0;
+    float hpPct = (g_cvKolGrabHpDmg != null) ? g_cvKolGrabHpDmg.FloatValue : 0.0;
+    if (hpPct > 0.0)
+    {
+        int hp = 0;
+        if (victim <= MaxClients)
+        {
+            if (IsClientInGame(victim) && IsPlayerAlive(victim))
+                hp = GetEntProp(victim, Prop_Data, "m_iHealth");
+        }
+        else if (HasEntProp(victim, Prop_Data, "m_iHealth"))
+            hp = GetEntProp(victim, Prop_Data, "m_iHealth");
+        if (hp > 0) punchDmg += float(hp) * hpPct / 100.0;
+    }
+    OM_AbilityDamage(victim, client, punchDmg);
 
     // ?murio con ese puo? (SI: cliente muerto / comun sin vida)
     bool killed = false;
@@ -3876,8 +4487,11 @@ void Kolossos_GrabPunch(int client)
 
     // v1.9: el cuerpo colgado SACUDE con el puo (unpin + impulso +
     // re-pin) — el golpe se VE en la victima, una vez por puo
+    // v2.1: la witch colgada sacude igual (su doble cuelga de la mano)
     if (Kolossos_VictRagActive(victim))
         Kolossos_VictRagJolt(victim);
+    else if (g_bKolGrabIsWitch[client] && Kolossos_WitchRagActive(client))
+        Kolossos_WitchRagJolt(client);
 
     g_iKolGrabPunches[client]--;
     if (g_iKolGrabPunches[client] <= 0)
@@ -3959,6 +4573,23 @@ void Kolossos_GrabRelease(int client, bool fling, bool victimDied)
             ragMode = false;
         }
 
+        // v2.1: LA WITCH — murio agarrada: el doble queda de cadaver y
+        // ella vuelve a verse para su muerte; la sueltan SIN lanzamiento
+        // (drop/timeout): reaparece DONDE CUELGA el doble; con
+        // lanzamiento: el doble vuela y el follow la restaura donde caiga
+        bool witchRag = (victim > MaxClients && Kolossos_IsWitchEnt(victim)
+                         && Kolossos_WitchRagActive(client));
+        if (witchRag && victimDied)
+        {
+            Kolossos_WitchRagCorpse(client);
+            witchRag = false;
+        }
+        else if (witchRag && !fling)
+        {
+            Kolossos_WitchRagEnd(client, true);
+            witchRag = false;
+        }
+
         // restaurar movimiento
         if (victim <= MaxClients)
         {
@@ -3998,6 +4629,14 @@ void Kolossos_GrabRelease(int client, bool fling, bool victimDied)
                 Kolossos_GetMoveDir(client, dir);
                 Kolossos_VictRagLaunch(client, victim, dir, KOL_RAG_THROW_FWD);
             }
+            else if (witchRag)
+            {
+                // v2.1: la witch lanzada — vuela el DOBLE con impulso por
+                // hueso y la original (oculta/frozen) lo sigue hasta caer
+                float dir[3];
+                Kolossos_GetMoveDir(client, dir);
+                Kolossos_WitchRagLaunch(client, dir, KOL_RAG_THROW_FWD);
+            }
             else
             {
                 g_iKolGrabFlingRef[client] = EntIndexToEntRef(victim);
@@ -4010,6 +4649,8 @@ void Kolossos_GrabRelease(int client, bool fling, bool victimDied)
     }
 
     g_iKolGrabMoveType[client] = -1;
+    g_bKolGrabIsWitch[client] = false;   // v2.1 (el ref de la witch lo administra su registro)
+    g_fKolGrabNextPunchAt[client] = 0.0; // v2.1
 
     float now = GetEngineTime();
     if (victimDied)
@@ -4243,6 +4884,194 @@ void Kolossos_BlockEnd(int client)
         SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
 }
 
+// v2.1: LA VENTANA DEL GUARDIA — el bloqueo activo O los KOL_COUNTER_SAFE
+// segundos posteriores al counter (la receta Knuckles: durante su contra
+// NINGUN empujon del motor lo mueve — "el anti stagger del tank para
+// evitar que durante el counter el tank pueda empujar a kolossos")
+bool Kolossos_BlockGuard(int client)
+{
+    if (client < 1 || client > MaxClients) return false;
+    float now = GetEngineTime();
+    return (g_fKolBlockUntil[client] > now || g_fKolCounterSafeUntil[client] > now);
+}
+
+// v2.1: el bloqueo puro ACTIVO (sin la ventana del counter) — el getter
+// para los forwards que viven en OTROS includes (Knuckles va ANTES que
+// Kolossos en el manager: los globals no se ven ahi, las funciones si)
+bool Kolossos_BlockActive(int client)
+{
+    if (client < 1 || client > MaxClients) return false;
+    return g_fKolBlockUntil[client] > GetEngineTime();
+}
+
+// =====================================================================
+//  v2.2: EL STUN NATIVO DE L4D2 — "cuando kolosos este stuneado
+//  (stagger agarrado o demas (ya sabes los stun posibles de L4d2) el
+//  reproducira su animacion de stuneado y el sonido (esta en los lua
+//  de Gmod)". El Lua (l.1517-1530) dispara los 4 "kol stun N (1).wav"
+//  al ENTRAR en DisablePlayerMovement_OM_stun y el ShouldAlternate
+//  (L322-395) fuerza la seq "stun" sobre CUALQUIER locomocion. Aqui el
+//  equivalente L4D2 completo: los CONTROLES de infectados (pounce del
+//  hunter / lengua del smoker / carry y pummel del charger / monta del
+//  jockey — los mismos 5 punteros que rompe el bloqueo) + el stagger y
+//  el tumbon del motor (ventana marcada por L4D2_OnStagger /
+//  L4D_OnKnockedDown del manager cuando el bloqueo NO los absorbe) +
+//  el OM_IsStunned de siempre: con cualquiera de ellos la FSM pasa a
+//  KOL_ST_STUN y el flanco de entrada suena UNO de los 4 wavs al azar.
+// =====================================================================
+
+// algun control de especial agarrado? (los 5 punteros del BlockStateThink)
+bool Kolossos_SIControlled(int client)
+{
+    if (client < 1 || client > MaxClients) return false;
+    if (!IsClientInGame(client) || !IsPlayerAlive(client)) return false;
+    // con el bloqueo activo los punteros se rompen el MISMO frame que
+    // entran (Kolossos_BlockStateThink): ni un tick de anim de stun
+    if (Kolossos_BlockGuard(client)) return false;
+
+    static const char sKolCtlProps[5][20] = {
+        "m_pounceAttacker", "m_tongueOwner", "m_carryAttacker",
+        "m_pummelAttacker", "m_jockeyAttacker"
+    };
+    for (int p = 0; p < 5; p++)
+    {
+        int a = GetEntPropEnt(client, Prop_Send, sKolCtlProps[p]);
+        if (a > 0 && a <= MaxClients) return true;
+    }
+    return false;
+}
+
+// el stun TOTAL: suite (OM_Stun) + controles de SI + ventana nativa
+bool Kolossos_AnyStun(int client)
+{
+    if (client < 1 || client > MaxClients) return false;
+    if (OM_IsStunned(client)) return true;
+    if (g_fKolNativeStunUntil[client] > GetEngineTime()) return true;
+    return Kolossos_SIControlled(client);
+}
+
+// el manager marca aqui el stagger/knockdown que el bloqueo NO absorbe
+// (L4D2_OnStagger / L4D_OnKnockedDown devolviendo Continue: el golpe
+// pasa, el coloso lo sufre — y su avatar lo DEMUESTRA)
+void Kolossos_NativeStunMark(int client, float dur)
+{
+    if (client < 1 || client > MaxClients) return;
+    if (!Kolossos_PlayerIs(client)) return;
+    float now = GetEngineTime();
+    if (g_fKolNativeStunUntil[client] < now + dur)
+        g_fKolNativeStunUntil[client] = now + dur;
+}
+
+// uno de los 4 "kol stun N (1).wav" al azar (solo los que existen; sin
+// la carpeta: solo la anim, igual que el Lua sin los wavs)
+void Kolossos_StunSound(int client)
+{
+    if (g_iKolSndStunCount <= 0) return;
+    int pick = GetRandomInt(0, g_iKolSndStunCount - 1);
+    EmitSoundToAll(g_sKolStunWavs[pick], client, _, KOL_SND_LEVEL);
+}
+
+// el flanco de entrada al stun (10 Hz en T_KolossosThink): el sonido
+// al EMPEZAR el stun, nunca durante (GMod l.1517: solo la transicion)
+void Kolossos_StunEdgeThink(int client)
+{
+    bool st = Kolossos_AnyStun(client);
+    if (st && !g_bKolWasStunned[client]) Kolossos_StunSound(client);
+    g_bKolWasStunned[client] = st;
+}
+
+// v2.1: EL BLOQUEO DETECTA ESTADOS AL INSTANTE — "ahora podra detectar
+// estados al instante... detectando el estado del enemigo y el suyo
+// charger hunter smoker y jockey". El estado DEL ENEMIGO lo cazan los
+// forwards del manager (tongue/carry/pounce/jockey/slam: la contra sale
+// ANTES de que el control empiece — Handled). El SUYO lo barre este
+// think CADA FRAME: si un control ya estaba agarrado cuando el bloqueo
+// empezo (el B se apreto tarde), los punteros de control se rompen en
+// seco (la receta T_KnuxHardStopAttacker: m_pounceAttacker/
+// m_jockeyAttacker/m_carryAttacker/m_pummelAttacker a -1) y el
+// atacante se come el counter completo
+void Kolossos_BlockStateThink(float now)
+{
+    for (int c = 1; c <= MaxClients; c++)
+    {
+        if (g_fKolBlockUntil[c] <= now) continue;   // solo con el bloqueo ACTIVO
+        if (!Kolossos_PlayerIs(c)) continue;
+        if (!IsClientInGame(c) || !IsPlayerAlive(c)) continue;
+
+        // su estado: algun control enemigo agarrado?
+        int attacker = 0;
+        if (attacker == 0)
+        {
+            int a = GetEntPropEnt(c, Prop_Send, "m_pounceAttacker");
+            if (a > 0) attacker = a;
+        }
+        if (attacker == 0)
+        {
+            int a = GetEntPropEnt(c, Prop_Send, "m_tongueOwner");
+            if (a > 0) attacker = a;
+        }
+        if (attacker == 0)
+        {
+            int a = GetEntPropEnt(c, Prop_Send, "m_carryAttacker");
+            if (a > 0) attacker = a;
+        }
+        if (attacker == 0)
+        {
+            int a = GetEntPropEnt(c, Prop_Send, "m_pummelAttacker");
+            if (a > 0) attacker = a;
+        }
+        if (attacker == 0)
+        {
+            int a = GetEntPropEnt(c, Prop_Send, "m_jockeyAttacker");
+            if (a > 0) attacker = a;
+        }
+        if (attacker <= 0 || attacker > MaxClients) continue;
+        if (!IsClientInGame(attacker) || !IsPlayerAlive(attacker)) continue;
+        if (GetClientTeam(attacker) != 3) continue;
+
+        // romper TODOS los punteros de control (desvinculacion absoluta)
+        SetEntPropEnt(c, Prop_Send, "m_pounceAttacker", -1);
+        SetEntPropEnt(c, Prop_Send, "m_jockeyAttacker", -1);
+        SetEntPropEnt(c, Prop_Send, "m_carryAttacker", -1);
+        SetEntPropEnt(c, Prop_Send, "m_pummelAttacker", -1);
+
+        // y el counter completo (consume el bloqueo + ventana anti-empuje)
+        Kolossos_BlockEnd(c);
+        Kolossos_BlockCounter(c, attacker, attacker);
+        PrintCenterText(c, "BLOQUEO! Estado roto al instante");
+    }
+}
+
+// v2.1: LA GARRA DEL TANK CONTRA EL BLOQUEO — la receta Knuckles del
+// CheckTankCounter: cero velocidad + MOVETYPE_NONE 0.2s (el puno del
+// tank NO lo desplaza ni un paso — el anti stagger pedido) + la ventana
+// anti-empuje + el counter (al tank le sale la ROCA: es fuente pesada)
+bool Kolossos_BlockTankClaw(int tank, int player)
+{
+    if (!Kolossos_PlayerIs(player)) return false;
+    if (g_fKolBlockUntil[player] <= GetEngineTime()) return false;
+
+    // clavarlo: ni el knockback del claw lo mueve (receta Knuckles)
+    float zeroVel[3] = { 0.0, 0.0, 0.0 };
+    TeleportEntity(player, NULL_VECTOR, NULL_VECTOR, zeroVel);
+    SetEntityMoveType(player, MOVETYPE_NONE);
+    CreateTimer(0.2, Kolossos_T_CounterUnfreeze, GetClientUserId(player), TIMER_FLAG_NO_MAPCHANGE);
+
+    // la contra (consume el bloqueo, abre la ventana anti-empuje)
+    Kolossos_BlockEnd(player);
+    Kolossos_BlockCounter(player, tank, tank);
+    return true;
+}
+
+// v2.1: devolverle el movimiento tras la inmovilidad del counter
+public Action Kolossos_T_CounterUnfreeze(Handle timer, int userid)
+{
+    int client = GetClientOfUserId(userid);
+    if (client > 0 && IsClientInGame(client) && IsPlayerAlive(client))
+        SetEntityMoveType(client, MOVETYPE_WALK);
+    return Plugin_Stop;
+}
+
 // el contragolpe: gira al atacante y responde SEGUN LA FUENTE
 // v1.1: la anim del counter segun la distancia del atacante (GMod
 // l.1347-1355: <300u = BlackCounterMelee cuerpo a cuerpo / si no =
@@ -4255,6 +5084,11 @@ void Kolossos_BlockEnd(int client)
 void Kolossos_BlockCounter(int client, int attacker, int inflictor)
 {
     g_bKolBlockCountered[client] = true;
+
+    // v2.1: LA VENTANA ANTI-EMPUJE — durante el counter (y 1.5s despues)
+    // NINGUN fling/knockdown/stagger del motor mueve a Kolossos (la
+    // receta Knuckles: "el tank no puede empujarlo durante el counter")
+    g_fKolCounterSafeUntil[client] = GetEngineTime() + KOL_COUNTER_SAFE;
 
     if (!IsClientInGame(attacker) || !IsPlayerAlive(client)) return;
 
@@ -4322,66 +5156,284 @@ void Kolossos_BlockCounter(int client, int attacker, int inflictor)
                   "physics/flesh/flesh_impact_hard3.wav");
 }
 
-// la roca: prop_physics con velocidad balistica (travelTime 0.5, peak 150)
+// v2.1: LA ROCA ESTILO LANZA — "usara el mismo tipo de roca... siguiendo
+// las pautas de la habilidad original de como esta la lanza": la roca
+// VUELA RECTA por DIRECCION guardada al disparar (la receta del javelin
+// de Blaze v2.5: cero arco balistico, cero lecturas de velocidad) con
+// la HITBOX del segmento recorrido del tick (v2.8: el barrido que mato
+// los huecos) y al IMPACTAR produce el STUN RAGDOLL con el MISMO tiempo
+// del counter melee (KOL_CNT_STUN): dano en area + los especiales que
+// sobreviven salen en ragdoll stun volando (VictRagFling). Tope 2.5s.
+// v2.2: EL MODELO YA NO ES rockgranite03b A CIEGAS — es un modelo de
+// HL2 que L4D2 no trae: el FileExists daba false y esta funcion salia
+// en silencio (NI roca NI dano desde la v1.9 — "la piedra todavia no
+// sale"). Ahora vuela con el modelo que resolvio la CADENA del
+// OnMapStart (rockgranite03b del GMod si esta montada -> el chunk de
+// concreto de Amy -> la gascan nativa), la escala va por m_flModelScale
+// (la receta de la bola de Knuckles: el KV "modelscale" no aplica en
+// prop_physics_override) y la colision es DEBRIS — solo mundo, igual
+// que el MOVETYPE_NONE del Lua l.1458 (la roca del GMod no empuja a
+// nadie: el dano lo hace el barrido del vuelo, no el vphysics).
 void Kolossos_SpawnCounterRock(int client, const float targetPos[3])
 {
     if (!g_bKolRockModel)
     {
-        // sin la roca nativa: dano directo al atacante (fallback honesto)
+        // v2.2: cadena vacia (con la gascan nativa es casi imposible,
+        // pero HONESTO): el counter a distancia NO se queda en nada —
+        // la detonacion cae DIRECTO sobre el atacante, sin roca visible
+        float tp[3];
+        tp[0] = targetPos[0]; tp[1] = targetPos[1]; tp[2] = targetPos[2] + 20.0;
+
+        // la direccion del stun-ragdoll de RockBlast sale de
+        // g_vKolRockDir: apuntarla al blanco ANTES (sin roca que la
+        // fije en el vuelo, quedaria la de la roca anterior)
+        float cpos[3], aim[3];
+        GetClientAbsOrigin(client, cpos);
+        MakeVectorFromPoints(cpos, tp, aim);
+        if (NormalizeVector(aim, aim) < 1.0)
+        {
+            aim[0] = 1.0; aim[1] = 0.0; aim[2] = 0.0;
+        }
+        g_vKolRockDir[client][0] = aim[0];
+        g_vKolRockDir[client][1] = aim[1];
+        g_vKolRockDir[client][2] = aim[2];
+
+        EmitSoundToAll("physics/concrete/concrete_break2.wav", client, _, KOL_SND_LEVEL);
+        Kolossos_RockBlast(client, tp);
         return;
+    }
+
+    // una roca en vuelo por Kolossos (patron Silver/Blaze)
+    if (g_iKolRockFlying[client] != 0)
+    {
+        int old = EntRefToEntIndex(g_iKolRockFlying[client]);
+        if (old > 0 && IsValidEntity(old)) AcceptEntityInput(old, "Kill");
+        g_iKolRockFlying[client] = 0;
     }
 
     int rock = CreateEntityByName("prop_physics_override");
     if (rock <= 0 || !IsValidEntity(rock)) return;
 
-    char scaleStr[8];
-    FloatToString(g_cvKolRockScale.FloatValue, scaleStr, sizeof(scaleStr));
-
-    DispatchKeyValue(rock, "model", "models/props_wasteland/rockgranite03b.mdl");
+    DispatchKeyValue(rock, "model", g_sKolRockModel);
     DispatchKeyValue(rock, "targetname", "kolossos_rock_om");
-    DispatchKeyValue(rock, "modelscale", scaleStr);
     DispatchSpawn(rock);
 
-    // origen: a los pies del coloso (GMod l.1461: GetPos() - 30z)
-    float pos[3];
+    // v2.2: escala por m_flModelScale (bola de Knuckles / esfera de
+    // Rouge — el KV "modelscale" no vive en prop_physics_override) y
+    // colision DEBRIS = solo mundo (la receta MOVETYPE_NONE del Lua:
+    // la roca atraviesa sin empujar, el dano lo pone el barrido)
+    if (HasEntProp(rock, Prop_Send, "m_flModelScale"))
+        SetEntPropFloat(rock, Prop_Send, "m_flModelScale", g_cvKolRockScale.FloatValue);
+    SetEntProp(rock, Prop_Data, "m_CollisionGroup", KOL_ROCK_COLGROUP);
+
+    // nace al frente del PECHO del coloso (el puno que la lanza)
+    float pos[3], dir[3];
     GetClientAbsOrigin(client, pos);
-    pos[2] -= 30.0;
+    Kolossos_GetMoveDir(client, dir);
+    pos[0] += dir[0] * KOL_ROCK_SPAWN_FWD;
+    pos[1] += dir[1] * KOL_ROCK_SPAWN_FWD;
+    pos[2] += KOL_ROCK_SPAWN_UP;
     TeleportEntity(rock, pos, NULL_VECTOR, NULL_VECTOR);
 
-    // velocidad balistica: t=0.5s, gravedad 800 (GMod travelTime/peakHeight)
-    float t = KOL_ROCK_ARC_TIME;
-    float g = 800.0;
-    float dz = (targetPos[2] + 20.0) - pos[2] + KOL_ROCK_ARC_PEAK;
+    // DIRECCION FIJA al blanco (la pauta de la lanza: recta, sin arco)
+    float aim[3];
+    aim[0] = targetPos[0] - pos[0];
+    aim[1] = targetPos[1] - pos[1];
+    aim[2] = (targetPos[2] + 20.0) - pos[2];
+    if (NormalizeVector(aim, aim) < 1.0)
+    {
+        // blanco encima: sale al frente
+        aim[0] = dir[0]; aim[1] = dir[1]; aim[2] = 0.1;
+        NormalizeVector(aim, aim);
+    }
+    g_vKolRockDir[client][0] = aim[0];
+    g_vKolRockDir[client][1] = aim[1];
+    g_vKolRockDir[client][2] = aim[2];
+    g_vKolRockPrev[client][0] = pos[0];
+    g_vKolRockPrev[client][1] = pos[1];
+    g_vKolRockPrev[client][2] = pos[2];
+
     float vel[3];
-    vel[0] = (targetPos[0] - pos[0]) / t;
-    vel[1] = (targetPos[1] - pos[1]) / t;
-    vel[2] = dz / t + 0.5 * g * t;
+    vel[0] = aim[0] * KOL_ROCK_SPEED;
+    vel[1] = aim[1] * KOL_ROCK_SPEED;
+    vel[2] = aim[2] * KOL_ROCK_SPEED;
     TeleportEntity(rock, NULL_VECTOR, NULL_VECTOR, vel);
 
-    // al tocar: dano en area alrededor del punto de impacto
-    SDKHook(rock, SDKHook_StartTouch, Kolossos_RockTouch);
-
-    // watchdog: si no toco nada en 3s, muere sola
-    CreateTimer(KOL_ROCK_LIFETIME, Kolossos_T_RockKill, EntIndexToEntRef(rock));
+    g_iKolRockFlying[client] = EntIndexToEntRef(rock);
+    g_fKolRockDieAt[client]  = GetEngineTime() + KOL_ROCK_FLIGHT_MAX;
 
     Kolossos_Emit(client, g_bKolSndRumble, "om/kolossos/kol charge start ground rumble.wav",
                   "ambient/machines/thumper_hit.wav");
 }
 
-// impacto de la roca: dano en radio a lo que este cerca
-// (REGLA v3.77.85: SNAPSHOT primero, dano fuera de los bucles)
-public void Kolossos_RockTouch(int rock, int other)
+// el vuelo de la roca (cada tick en T_Kol_LayerThink): direccion fija,
+// hitbox = segmento recorrido (barrido, receta Blaze v2.8), pared = impacto
+void Kolossos_RockFlightThink(float now)
+{
+    for (int i = 1; i <= MaxClients; i++)
+    {
+        if (g_iKolRockFlying[i] == 0) continue;
+
+        int rock = EntRefToEntIndex(g_iKolRockFlying[i]);
+        if (rock <= 0 || !IsValidEntity(rock))
+        {
+            g_iKolRockFlying[i] = 0;
+            continue;
+        }
+
+        // tope de vuelo (cielo/mapa abierto): detona donde este
+        if (now >= g_fKolRockDieAt[i])
+        {
+            Kolossos_RockDetonate(i, rock);
+            continue;
+        }
+
+        float rp[3];
+        GetEntPropVector(rock, Prop_Data, "m_vecOrigin", rp);
+
+        // ---- pared delante? SOLO el segmento recorrido del tick ----
+        float segEnd[3], rockDir[3];
+        rockDir[0] = g_vKolRockDir[i][0];
+        rockDir[1] = g_vKolRockDir[i][1];
+        rockDir[2] = g_vKolRockDir[i][2];
+        segEnd[0] = rp[0] + rockDir[0] * 60.0;   // un paso de proyeccion
+        segEnd[1] = rp[1] + rockDir[1] * 60.0;
+        segEnd[2] = rp[2] + rockDir[2] * 60.0;
+
+        Handle tr = TR_TraceRayFilterEx(g_vKolRockPrev[i], segEnd, MASK_SOLID_BRUSHONLY,
+                                        RayType_EndPoint, Kolossos_RockTraceFilter, rock);
+        bool hitWorld = false;
+        if (TR_DidHit(tr)) hitWorld = true;   // el filtro solo deja pasar el mundo
+        delete tr;
+        if (hitWorld)
+        {
+            Kolossos_RockDetonate(i, rock);
+            continue;
+        }
+
+        // ---- caza en el segmento (barrido como el javelin) ----
+        int victim = Kolossos_RockScanPath(i, g_vKolRockPrev[i], rp);
+        g_vKolRockPrev[i][0] = rp[0];
+        g_vKolRockPrev[i][1] = rp[1];
+        g_vKolRockPrev[i][2] = rp[2];
+        if (victim > 0)
+        {
+            Kolossos_RockDetonate(i, rock);
+            continue;
+        }
+
+        // ---- sostener el vuelo: dir fija * velocidad (vphysics + belt) ----
+        float v[3];
+        v[0] = rockDir[0] * KOL_ROCK_SPEED;
+        v[1] = rockDir[1] * KOL_ROCK_SPEED;
+        v[2] = rockDir[2] * KOL_ROCK_SPEED;
+        float noSpin[3] = { 0.0, 0.0, 0.0 };
+        if (!Sonic_PhysSetVel(rock, v, noSpin))
+            TeleportEntity(rock, NULL_VECTOR, NULL_VECTOR, v);
+    }
+}
+
+// filtro del trace de pared: SOLO el mundo cuenta (la roca y las
+// entidades vivas no la frenan — estas se cazan por el barrido)
+public bool Kolossos_RockTraceFilter(int entity, int contentsMask, any data)
+{
+    if (entity == view_as<int>(data)) return false;
+    if (entity > 0 && entity <= MaxClients) return false;
+    char cls[20];
+    if (entity > MaxClients && IsValidEntity(entity))
+    {
+        GetEntityClassname(entity, cls, sizeof(cls));
+        if (StrContains(cls, "prop_") == 0 || StrContains(cls, "infected") == 0
+            || StrContains(cls, "witch") == 0) return false;
+    }
+    return true;   // el mundo (y lo demas solido) frena la roca
+}
+
+// el barrido del segmento (receta Blaze_ScanEnemyPath): muestreo del
+// tramo recorrido contra commons/especiales/witch
+int Kolossos_RockScanPath(int client, const float from[3], const float to[3])
+{
+    float seg[3];
+    SubtractVectors(to, from, seg);
+    float len = NormalizeVector(seg, seg);
+    float step = KOL_ROCK_CATCH_RADIUS * 0.66;
+    int steps = (len <= step) ? 1 : RoundToCeil(len / step);
+    if (steps > 10) steps = 10;
+    float c[3];
+    for (int s = 0; s < steps; s++)
+    {
+        float t = (steps > 1) ? float(s) / float(steps - 1) : 1.0;
+        c[0] = from[0] + seg[0] * len * t;
+        c[1] = from[1] + seg[1] * len * t;
+        c[2] = from[2] + seg[2] * len * t;
+
+        int victim = Kolossos_RockScanSphere(client, c);
+        if (victim > 0) return victim;
+    }
+    return 0;
+}
+
+// esfera de caza puntual: commons -> especiales -> witch
+int Kolossos_RockScanSphere(int client, const float c[3])
+{
+    int ent = -1;
+    while ((ent = FindEntityByClassname(ent, "infected")) != -1)
+    {
+        if (!IsValidEntity(ent)) continue;
+        if (GetEntProp(ent, Prop_Data, "m_iHealth") <= 0) continue;
+        float epos[3];
+        GetEntPropVector(ent, Prop_Data, "m_vecOrigin", epos);
+        if (GetVectorDistance(epos, c) <= KOL_ROCK_CATCH_RADIUS) return ent;
+    }
+    for (int t = 1; t <= MaxClients; t++)
+    {
+        if (t == client || !IsClientInGame(t) || !IsPlayerAlive(t)) continue;
+        if (GetClientTeam(t) != 3) continue;
+        float tpos[3];
+        GetClientAbsOrigin(t, tpos);
+        tpos[2] += 40.0;   // centro del cuerpo
+        if (GetVectorDistance(tpos, c) <= KOL_ROCK_CATCH_RADIUS) return t;
+    }
+    int w = -1;
+    while ((w = FindEntityByClassname(w, "witch")) != -1)
+    {
+        if (!IsValidEntity(w)) continue;
+        if (GetEntProp(w, Prop_Data, "m_iHealth") <= 0) continue;
+        float wpos[3];
+        GetEntPropVector(w, Prop_Data, "m_vecOrigin", wpos);
+        if (GetVectorDistance(wpos, c) <= KOL_ROCK_CATCH_RADIUS) return w;
+    }
+    return 0;
+}
+
+// v2.1: LA DETONACION — "esta roca producira el stun ragdoll al impactar
+// (tendra el mismo tiempo de stun que el original, que hace a melee)":
+// dano en radio (REGLA v3.77.85: SNAPSHOT primero, dano fuera de los
+// bucles) + los ESPECIALES que sobreviven salen en RAGDOLL stun con
+// KOL_CNT_STUN (el mismo del counter melee, 4.5s) volando en la
+// direccion del vuelo. Commons/witch: dano (ellos mueren solos).
+void Kolossos_RockDetonate(int client, int rock)
 {
     float pos[3];
     GetEntPropVector(rock, Prop_Data, "m_vecOrigin", pos);
-    float dmg = g_cvKolRockDmg.FloatValue;
 
-    // buscar al Kolossos dueno de la roca (por targetname es suya toda)
-    int owner = 0;
-    for (int i = 1; i <= MaxClients; i++)
-    {
-        if (Kolossos_PlayerIs(i)) { owner = i; break; }
-    }
+    // el estruendo del impacto ANTES de matarla (la roca del coloso
+    // revienta el suelo — el sonido necesita la entidad viva)
+    EmitSoundToAll("physics/concrete/concrete_break2.wav", rock, _, KOL_SND_LEVEL);
+
+    g_iKolRockFlying[client] = 0;
+    AcceptEntityInput(rock, "Kill");
+
+    Kolossos_RockBlast(client, pos);
+}
+
+// v2.2: el AREA DEL IMPACTO separada de la entidad — la misma detonacion
+// de la v2.1 (snapshot primero, dano fuera de los bucles) reutilizable
+// por el fallback sin modelo de SpawnCounterRock (la cadena vacia:
+// el counter a distancia cae DIRECTO sobre el atacante)
+void Kolossos_RockBlast(int client, const float pos[3])
+{
+    float dmg = g_cvKolRockDmg.FloatValue;
 
     int   snapEnts[64];
     bool  snapIsSI[64];
@@ -4392,7 +5444,7 @@ public void Kolossos_RockTouch(int rock, int other)
     while ((ent = FindEntityByClassname(ent, "infected")) != -1)
     {
         if (snapCount >= 64) break;
-        if (!IsValidEntity(ent) || ent == other) continue;
+        if (!IsValidEntity(ent)) continue;
         if (GetEntProp(ent, Prop_Data, "m_iHealth") <= 0) continue;
         float epos[3];
         GetEntPropVector(ent, Prop_Data, "m_vecOrigin", epos);
@@ -4405,7 +5457,7 @@ public void Kolossos_RockTouch(int rock, int other)
     // infectados especiales — snapshot
     for (int t = 1; t <= MaxClients && snapCount < 64; t++)
     {
-        if (t == owner || !IsClientInGame(t) || !IsPlayerAlive(t)) continue;
+        if (t == client || !IsClientInGame(t) || !IsPlayerAlive(t)) continue;
         if (GetClientTeam(t) != 3) continue;
         float tpos[3];
         GetClientAbsOrigin(t, tpos);
@@ -4431,6 +5483,11 @@ public void Kolossos_RockTouch(int rock, int other)
     }
 
     // EL DAÑO VA AQUI — fuera de los bucles, re-validando
+    float dir[3];
+    dir[0] = g_vKolRockDir[client][0];
+    dir[1] = g_vKolRockDir[client][1];
+    dir[2] = g_vKolRockDir[client][2];
+
     for (int k = 0; k < snapCount; k++)
     {
         int v = snapEnts[k];
@@ -4443,30 +5500,22 @@ public void Kolossos_RockTouch(int rock, int other)
         {
             if (GetEntProp(v, Prop_Data, "m_iHealth") <= 0) continue;
         }
-        SDKHooks_TakeDamage(v, owner, owner, dmg, DMG_CLUB);
+        SDKHooks_TakeDamage(v, client, client, dmg, DMG_CLUB);
 
-        // v1.9: el stagger del impacto — la roca del coloso ATURDE al
-        // area ("mucho mas fuerte que la del propio tank": mas dano +
-        // 1s de stun a los especiales que sobrevivan al golpe)
-        if (snapIsSI[k] && v <= MaxClients && IsClientInGame(v) && IsPlayerAlive(v)
-            && g_cvKolRockStun != null && g_cvKolRockStun.FloatValue > 0.0)
+        // v2.1: EL STUN RAGDOLL del impacto — el mismo tratamiento del
+        // counter melee (KOL_CNT_STUN de stun + doble volando con follow
+        // congruente); los que mueren con el golpe caen solos
+        if (snapIsSI[k] && v <= MaxClients && IsClientInGame(v) && IsPlayerAlive(v))
         {
-            OM_Stun(v, g_cvKolRockStun.FloatValue, owner, 0.0, DMG_OM_CLUB, false);
+            if (g_cvKolCntRag != null && g_cvKolCntRag.BoolValue)
+            {
+                if (OM_Stun(v, KOL_CNT_STUN, client, 0.0, DMG_OM_CLUB, true))
+                    Kolossos_VictRagFling(client, v, dir, KOL_CNT_FLING);
+            }
+            else if (g_cvKolRockStun != null && g_cvKolRockStun.FloatValue > 0.0)
+                OM_Stun(v, g_cvKolRockStun.FloatValue, client, 0.0, DMG_OM_CLUB, false);
         }
     }
-
-    AcceptEntityInput(rock, "Kill");
-}
-
-public Action Kolossos_T_RockKill(Handle timer, int ref)
-{
-    int rock = EntRefToEntIndex(ref);
-    if (rock > 0 && IsValidEntity(rock))
-    {
-        SDKUnhook(rock, SDKHook_StartTouch, Kolossos_RockTouch);
-        AcceptEntityInput(rock, "Kill");
-    }
-    return Plugin_Stop;
 }
 
 // =====================================================================
@@ -4584,6 +5633,17 @@ bool Kolossos_M1Gate(int client, int &buttons)
     return true;
 }
 
+// =====================================================================
+//  v2.1: EL BLOQUEO DETECTA EL ESTADO DEL ENEMIGO — las ramas Kolossos
+//  de los forwards reales (lengua del smoker / carry+slam del charger
+//  en Knuckles.inc; pounce del hunter y monta del jockey en sonic.inc;
+//  garra del tank en el L4D_TankClaw_OnPlayerHit_Pre del manager): con
+//  el bloqueo activo el control NUNCA empieza (Handled) y el atacante
+//  se come el counter completo. El estado PROPIO (un control que ya
+//  estaba agarrado al apretar B) lo rompe Kolossos_BlockStateThink
+//  cada frame (T_Kol_LayerThink).
+// =====================================================================
+
 // el M1 (GMod l.2541-2675, attack.mode 'trigger'): con victima
 // agarrada = el puo del combo; sin ella = el basico (esfera 65u al
 // frente, dano kolossos_m1_damage, CD 1.65 = AttackCooldown del Lua)
@@ -4603,16 +5663,20 @@ void Kolossos_M1(int client)
     if (g_fKolLungeUntil[client] > now) return;
     if (g_fKolBlockUntil[client] > now) return;
     if (g_fKolIndUntil[client] > now) return;
-    if (OM_IsStunned(client)) return;
+    // v2.2: el gate tambien cuenta el stun NATIVO (pounce/lengua/carry/
+    // pummel/jockey/stagger/knockdown) — un coloso ensartado no pega
+    if (Kolossos_AnyStun(client)) return;
     if (now < g_fKolM1CdUntil[client]) return;
     g_fKolM1CdUntil[client] = now + KOL_M1_CD;
 
     // sonido (kol m1 1-4 del killer, fallback nativo)
+    // v2.2: SOLO entre los que EXISTEN y ya estan precacheados (la lista
+    // compactada del OnMapStart) — antes elegia 1-4 a ciegas y solo el
+    // (1) se habia comprobado: de ahi el "not precached" del (2)/(3)/(4)
     if (g_bKolSndM1)
     {
-        char snd[56];
-        Format(snd, sizeof(snd), "om/kolossos/kol m1 (%d).wav", GetRandomInt(1, 4));
-        EmitSoundToAll(snd, client, _, KOL_SND_LEVEL);
+        EmitSoundToAll(g_sKolM1Wavs[GetRandomInt(0, g_iKolSndM1Count - 1)],
+                       client, _, KOL_SND_LEVEL);
     }
     else
         EmitSoundToAll("physics/flesh/flesh_impact_hard4.wav", client, _, KOL_SND_LEVEL);
@@ -4625,7 +5689,13 @@ void Kolossos_M1(int client)
     pos[1] += dir[1] * 40.0;
     pos[2] += 40.0;
 
-    float dmg = g_cvKolM1Dmg.FloatValue;
+    // v2.1: LA TIRADA 350-450 (pedido del owner: "los ataques basicos
+    // aumentaran su dano de 125 a 350-450") — cada swing sale entre
+    // kolossos_m1_damage y kolossos_m1_damage_max
+    float dmg = (g_cvKolM1Dmg != null) ? g_cvKolM1Dmg.FloatValue : 350.0;
+    float dmgMax = (g_cvKolM1DmgMax != null) ? g_cvKolM1DmgMax.FloatValue : 450.0;
+    if (dmgMax < dmg) dmgMax = dmg;
+    dmg = GetRandomFloat(dmg, dmgMax);
 
     // SNAPSHOT primero, dano despues (REGLA v3.77.85)
     int   m1Ents[32];
@@ -4771,7 +5841,9 @@ public Action T_KolossosThink(Handle timer)
         // ---- EL TICK DEL KIT ----
         if (esKolViva)
         {
-            if (OM_IsStunned(i))
+            // v2.2: el stun NATIVO tambien cancela el kit (el Lua
+            // l.935/l.1012: nada de habilidades con el stun puesto)
+            if (Kolossos_AnyStun(i))
             {
                 // aturdido: cancelar todo (no pelear contra el stun)
                 if (g_iKolChargeState[i] != KOL_CHG_IDLE) Kolossos_ChargeEnd(i, false);
@@ -4813,6 +5885,11 @@ public Action T_KolossosThink(Handle timer)
                 // block: expiracion natural
                 if (g_fKolBlockUntil[i] > 0.0 && now >= g_fKolBlockUntil[i])
                     Kolossos_BlockEnd(i);
+
+                // v2.2: el flanco del stun (nativo o suite) — el sonido
+                // de entrada "kol stun N" al EMPEZAR el stun (10 Hz,
+                // corre con o sin avatar: el kit entero lo escucha)
+                Kolossos_StunEdgeThink(i);
 
                 // indicator
                 if (g_fKolIndUntil[i] > now) indOwner = i;
@@ -4998,9 +6075,32 @@ public Action Kolossos_CmdDebug(int client, int args)
                    g_cvKolGrabRag != null ? g_cvKolGrabRag.IntValue : -1,
                    g_cvKolChgCarry != null ? g_cvKolChgCarry.IntValue : -1,
                    g_cvKolCntRag != null ? g_cvKolCntRag.IntValue : -1);
-    PrintToConsole(client, "M1: click izq %s (slots 0/1 pisados + ARMA CONGELADA m_flNextPrimaryAttack, granadas/botiquin intactos) | dano %.0f | CD %.2fs | anim: serie swing fusionada (fallback punch)",
+    // v2.1: el estado de la witch colgada + la puerta del combo + la roca
+    {
+        int nWitch = 0;
+        for (int w = 1; w <= MaxClients; w++)
+            if (g_iKolWitchRag[w] != 0) nWitch++;
+        PrintToConsole(client, "v2.1: witch colgada %d (doble pineado, JAMAS parentada) | puerta del combo %s (max %d punos, ritmo %.2fs) | punos %.0f + %.2f%% de la vida actual | roca: LANZA (vuelo recto %0.f u/s, stun-ragdoll %.1fs al impactar)",
+                       nWitch,
+                       (g_iKolGrabPunches[client] >= 0 && g_fKolGrabNextPunchAt[client] >= 0.0) ? "ACTIVA" : "ACTIVA",
+                       g_cvKolGrabPunches != null ? g_cvKolGrabPunches.IntValue : 3,
+                       KOL_PUNCH_GATE,
+                       g_cvKolGrabPunchDmg != null ? g_cvKolGrabPunchDmg.FloatValue : 550.0,
+                       g_cvKolGrabHpDmg != null ? g_cvKolGrabHpDmg.FloatValue : 0.0,
+                       KOL_ROCK_SPEED,
+                       KOL_CNT_STUN);
+    }
+    // v2.2: el modelo ACTIVO de la roca (la cadena) + el stun nativo +
+    // los wavs de cada uno (que nunca mas haya misterio de "no sale")
+    PrintToConsole(client, "v2.2: roca modelo %s (escala %.1f por m_flModelScale, colision solo-mundo) | stun NATIVO L4D2 (pounce/lengua/carry/pummel/jockey/stagger/knockdown) = anim stun + kol stun %d/4 wavs | M1: %d/4 wavs precacheados (cero not-precached)",
+                   g_bKolRockModel ? g_sKolRockModel : "CADENA VACIA (dano directo)",
+                   g_cvKolRockScale != null ? g_cvKolRockScale.FloatValue : 3.0,
+                   g_iKolSndStunCount,
+                   g_iKolSndM1Count);
+    PrintToConsole(client, "M1: click izq %s (slots 0/1 pisados + ARMA CONGELADA m_flNextPrimaryAttack, granadas/botiquin intactos) | dano %.0f-%.0f (tirada aleatoria v2.1) | CD %.2fs | anim: serie swing fusionada (fallback punch)",
                    (g_cvKolM1 != null && g_cvKolM1.BoolValue) ? "PUO basico" : "OFF (kolossos_m1 0)",
-                   g_cvKolM1Dmg != null ? g_cvKolM1Dmg.FloatValue : 35.0,
+                   g_cvKolM1Dmg != null ? g_cvKolM1Dmg.FloatValue : 350.0,
+                   g_cvKolM1DmgMax != null ? g_cvKolM1DmgMax.FloatValue : 450.0,
                    KOL_M1_CD);
     PrintToConsole(client, "Counter: especiales/habilidades SI (commons/witch NO cuentan) | melee <300u = ragdoll stun %.1fs | roca: dano %.0f + stun %.1fs",
                    KOL_CNT_STUN,

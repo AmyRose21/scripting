@@ -6849,6 +6849,15 @@ public Action L4D_OnPouncedOnSurvivor(int victim, int attacker)
     if (g_iPlayerCharIdx[victim] == METALSONIC_INDEX && Metal_ControlImmune(victim)) return Plugin_Handled;
     if (g_iPlayerCharIdx[victim] == AMY_INDEX && Amy_GrabCounter(victim, attacker)) return Plugin_Handled;
     if (Knuckles_CheckSpecialCounter(victim, attacker)) return Plugin_Handled;
+    // v2.1 Kolossos: el bloqueo detecta la pounce AL INSTANTE — el
+    // ensarte nunca engancha y el hunter sale contraado
+    if (Kolossos_PlayerIs(victim) && Kolossos_BlockActive(victim))
+    {
+        Kolossos_BlockEnd(victim);
+        Kolossos_BlockCounter(victim, attacker, attacker);
+        PrintCenterText(victim, "BLOQUEO! Pounce roto al instante");
+        return Plugin_Handled;
+    }
     // v3.77.46 (Rouge v10.1): counter pleno o EVA del pounce
     if (g_iPlayerCharIdx[victim] == ROUGE_INDEX)
     {
@@ -6872,6 +6881,15 @@ public Action L4D2_OnJockeyRide(int victim, int attacker)
     if (g_iPlayerCharIdx[victim] == METALSONIC_INDEX && Metal_ControlImmune(victim)) return Plugin_Handled;
     if (g_iPlayerCharIdx[victim] == AMY_INDEX && Amy_GrabCounter(victim, attacker)) return Plugin_Handled;
     if (Knuckles_CheckSpecialCounter(victim, attacker)) return Plugin_Handled;
+    // v2.1 Kolossos: el bloqueo detecta la monta AL INSTANTE — el jockey
+    // nunca se sube y sale contraado ("por si acaso")
+    if (Kolossos_PlayerIs(victim) && Kolossos_BlockActive(victim))
+    {
+        Kolossos_BlockEnd(victim);
+        Kolossos_BlockCounter(victim, attacker, attacker);
+        PrintCenterText(victim, "BLOQUEO! Jockey rechazado al instante");
+        return Plugin_Handled;
+    }
     // v3.77.46 (Rouge v10.1): counter pleno o EVA del agarre
     if (g_iPlayerCharIdx[victim] == ROUGE_INDEX)
     {
