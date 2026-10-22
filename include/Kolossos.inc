@@ -1,11 +1,56 @@
 /*
  * =====================================================================
- *  [MODULO] KOLOSSOS — El Coloso de OutComeMemories v2.2-OM
+ *  [MODULO] KOLOSSOS — El Coloso de OutComeMemories v2.3-OM
  *  PERSONAJE 14 DEL SUITE (KOLOSSOS_INDEX 13)
  *
  *  Port directo de "Lua de OM de Gmod/autorun/include/killer/
  *  noodles_om_pills_killer_kolossos.lua" (by noodles) — el killer
  *  colosal del pack OM pills, traido a L4D2 como personaje jugable.
+ *
+ *  v2.3 (manager 3.77.108) — LA RISA 1x + EL BLOQUEO QUE LIBERA DE
+ *  VERDAD + LOS HITS DEL BLOQUEO FUERTES. Reporte del owner con la
+ *  v2.2 en vivo: [R1] "arregla el sonido de la avalancha: cada que
+ *  impacta algo repite denuevo la risa como si la habilidad se
+ *  estuviera volviendo a realizar" (el kol charge laugh impale en
+ *  CADA empalada — debe sonar 1 sola vez, como el GMod); [R2] "si
+ *  bloqueo la habilidad estando en el stun del charger (osea
+ *  pummel) la musica sigue y kolossos queda atrapado literalmente
+ *  bug, no puede moverse de ninguna manera... quizas no limpias eso
+ *  y la musica pues no se detiene (esto no pasa con el hunter). El
+ *  bloque no funciona si estoy durante el agarre del hunter (con el
+ *  smoker y el jockey no pasa: el jockey se libera bien, con el
+ *  smoker no tanto)"; [R3] "kol block hit_melee debe oirse mas
+ *  fuerte, kol block hit_ranged tambien debe oirse mas fuerte y el
+ *  kolossoslaugh tambien".
+ *  FIXES: [R1] LA RISA ES 1x POR AVALANCHA: el Lua l.1831 la gateda
+ *  con la ventana Charging_kolossos (solo si ya expiro = la PRIMERA
+ *  empalada de la cadena) — la v2.2 la tiraba al 33% por CADA
+ *  victima nueva de la HitList (con una horda sonaba mil veces).
+ *  Ahora g_bKolChgLaughDone se resetea al arrancar la avalancha y la
+ *  risa suena UNA vez, en la primera empalada, determinista;
+ *  [R2] EL UNPIN POR EL CAMINO DEL MOTOR: la v2.1/v2.2 escribia -1
+ *  A MANO en las props de la victima (la receta VIEJA de Pin_Release
+ *  v1.x, ya documentada como rota en la suite): el charger quedaba
+ *  DENTRO de su pummel con el puntero de victima roto → Kolossos
+ *  atrapado + la musica del agarre colgada (el bug del "pumble"),
+ *  el hunter seguia encima (su m_pounceVictim vivo) y la lengua del
+ *  smoker seguia arrastrando (m_tongueOwner ni se tocaba). Ahora
+ *  Kolossos_BlockStateThink llama a PinRelease_Cleanse (el modulo
+ *  compartido de Amy/Sally/Cream): termina CADA agarre con las
+ *  nativas del MOTOR (L4D2_Charger_EndPummel/EndCarry,
+ *  L4D_Hunter_ReleaseVictim, L4D_Smoker_ReleaseVictim,
+ *  L4D2_Jockey_EndRide — ambos lados + anims + movimiento) + corta
+ *  las cues de musica de agarre colgadas (L4D_StopMusic con las 24
+ *  variantes) + stagger anti-regrab del atacante. El counter
+ *  completo llega despues igual; [R3] LOS HITS DEL BLOQUEO
+ *  FUERTES: KOL_SND_LOUD 140dB (cero atenuacion con distancia) +
+ *  EMIT EN 2 CANALES simultaneos (SNDCHAN_AUTO + SNDCHAN_BODY = dos
+ *  voces sumando) para el hit melee, el hit ranged y la risa del
+ *  Kill. Si el pack trae "kol block hit_melee.wav" / "kol block
+ *  hit_ranged.wav" se detectan per-archivo (variantes de case como
+ *  el laughing) y suenan en el counter melee / counter a distancia;
+ *  si no, siguen el punching / rumble de siempre (ahora fuertes).
+ *  sm_kolossos reporta si los 2 hits estan montados.
  *
  *  v2.2 (manager 3.77.107) — EL STUN NATIVO + LA ROCA QUE SALE + LOS
  *  M1 PRECACHEADOS. Reporte del owner con la v2.1 en vivo: [R1] la
@@ -505,12 +550,18 @@
  * =====================================================================
  */
 
-#define KOLOSSOS_INC_VERSION "2.2-OM"   // v2.2: stun nativo L4D2 + roca con cadena de modelo + M1 precacheados (2.1 nunca se anoto aqui: la macro quedo en 2.0)
+#define KOLOSSOS_INC_VERSION "2.3-OM"   // v2.3: risa 1x por avalancha + unpin por el camino del motor + hits del bloqueo fuertes
+
+// v2.3 [R2]: liberacion de agarres POR EL CAMINO DEL MOTOR — el modulo
+// compartido de Amy/Sally/Cream (Amy.inc lo trae ANTES en el manager;
+// re-incluirlo aqui es no-op por su guard y hace a Kolossos autosuficiente)
+#include <Pin_Release>
 
 // ------------------------- CONSTANTES KIT ---------------------------
 // (defaults = registro oficial GMod om_survivors_register_noodles_kolossos;
 //  velocidad L4D2 calibrada al Destructive Charge de Metal v5.0: 750)
 #define KOL_SND_LEVEL              87      // GMod: soundLevel 87 del killer
+#define KOL_SND_LOUD               140     // v2.3: los hits del bloqueo y la risa del Kill (140dB = cero atenuacion)
 #define KOL_CHG_WINDUP_T          0.8     // chargestart_Kolossos = +0.8s (duracion del windup)
 #define KOL_CHG_WINDUP_SIGH        0.15    // kol sigh i think.wav
 #define KOL_CHG_WINDUP_RUMBLE      0.35    // kol charge start ground rumble
@@ -885,6 +936,15 @@ int    g_iKolSndM1Count = 0;
 // ENTRAR en cualquier stun (nativo L4D2 o del suite), misma compactacion
 char   g_sKolStunWavs[4][56];
 int    g_iKolSndStunCount = 0;
+// v2.3 [R1]: la risa ya sono en ESTA avalancha (reset al arrancar la
+// habilidad; el Lua l.1831 la gateda con la ventana Charging_kolossos
+// = primera empalada de la cadena, nunca por cada victima)
+bool   g_bKolChgLaughDone[MAXPLAYERS + 1];
+// v2.3 [R3]: los hits del bloqueo del pack ("kol block hit_melee.wav"
+// / "kol block hit_ranged.wav", variantes de case como el laughing) —
+// vacio = no montado (el counter usa el punching/rumble de siempre)
+char   g_sKolBlkHitM[72];
+char   g_sKolBlkHitR[72];
 // v2.2 [R2]: la ventana del stun NATIVO (stagger/knockdown marcados por
 // los forwards del manager) + el flanco para el sonido de entrada
 float  g_fKolNativeStunUntil[MAXPLAYERS + 1];
@@ -937,6 +997,26 @@ void Kolossos_Emit(int client, bool has, const char[] real, const char[] fallbac
 {
     if (has) EmitSoundToAll(real, client, _, KOL_SND_LEVEL);
     else if (fallback[0] != '\0') EmitSoundToAll(fallback, client, _, KOL_SND_LEVEL);
+}
+
+// v2.3 [R3]: EL EMIT FUERTE — mismo contrato que Kolossos_Emit pero a
+// KOL_SND_LOUD (140dB: cero atenuacion con la distancia) y en DOS
+// canales simultaneos (SNDCHAN_AUTO + SNDCHAN_BODY: dos voces sumando
+// en el mix = el golpe SE SIENTE). Para los hits del bloqueo y la
+// risa de la ejecucion ("deben oirse mas fuerte": el 87 del GMod
+// queda apagado en el mix musical de L4D2)
+void Kolossos_EmitLoud(int client, bool has, const char[] real, const char[] fallback)
+{
+    if (has)
+    {
+        EmitSoundToAll(real, client, SNDCHAN_AUTO, KOL_SND_LOUD, _, 1.0);
+        EmitSoundToAll(real, client, SNDCHAN_BODY,  KOL_SND_LOUD, _, 1.0);
+    }
+    else if (fallback[0] != '\0')
+    {
+        EmitSoundToAll(fallback, client, SNDCHAN_AUTO, KOL_SND_LOUD, _, 1.0);
+        EmitSoundToAll(fallback, client, SNDCHAN_BODY,  KOL_SND_LOUD, _, 1.0);
+    }
 }
 
 // =====================================================================
@@ -1183,6 +1263,44 @@ public void Kolossos_OnMapStart()
         else
             strcopy(g_sKolLaughPath, PLATFORM_MAX_PATH, "om/kolossos/Kolossos laughing.wav");
     }
+    // v2.3 [R3]: LOS HITS DEL BLOQUEO DEL PACK — "kol block hit_melee"
+    // y "kol block hit_ranged" (el owner los pide FUERTES en el counter
+    // melee / a distancia): deteccion per-archivo con variantes de case
+    // y guion (misma receta del laughing), la primera que exista gana y
+    // se PRECACHEA. Sin archivo: el counter usa el punching/rumble de
+    // siempre (tambien fuertes ahora) — y sm_kolossos lo reporta para
+    // que nunca haya misterio de "no suena"
+    {
+        static const char sKolBlkMList[][] = {
+            "om/kolossos/kol block hit_melee.wav",
+            "om/kolossos/Kol block hit_melee.wav",
+            "om/kolossos/kol block hit melee.wav"
+        };
+        static const char sKolBlkRList[][] = {
+            "om/kolossos/kol block hit_ranged.wav",
+            "om/kolossos/Kol block hit_ranged.wav",
+            "om/kolossos/kol block hit ranged.wav"
+        };
+        char testP[80];
+        g_sKolBlkHitM[0] = '\0';
+        g_sKolBlkHitR[0] = '\0';
+        for (int v = 0; v < sizeof(sKolBlkMList); v++)
+        {
+            Format(testP, sizeof(testP), "sound/%s", sKolBlkMList[v]);
+            if (!FileExists(testP, true)) continue;
+            strcopy(g_sKolBlkHitM, sizeof(g_sKolBlkHitM), sKolBlkMList[v]);
+            PrecacheSound(sKolBlkMList[v], true);
+            break;
+        }
+        for (int v = 0; v < sizeof(sKolBlkRList); v++)
+        {
+            Format(testP, sizeof(testP), "sound/%s", sKolBlkRList[v]);
+            if (!FileExists(testP, true)) continue;
+            strcopy(g_sKolBlkHitR, sizeof(g_sKolBlkHitR), sKolBlkRList[v]);
+            PrecacheSound(sKolBlkRList[v], true);
+            break;
+        }
+    }
 
     if (g_bKolSndSigh)      PrecacheSound("om/kolossos/kol sigh i think.wav", true);
     if (g_bKolSndRumble)    PrecacheSound("om/kolossos/kol charge start ground rumble.wav", true);
@@ -1286,6 +1404,7 @@ public void Kolossos_OnMapEnd()
         g_fKolCounterSafeUntil[i] = 0.0; // v2.1: anti-empuje del counter
         g_fKolNativeStunUntil[i] = 0.0;  // v2.2: ventana del stun nativo
         g_bKolWasStunned[i]      = false;// v2.2: flanco del kol stun N
+        g_bKolChgLaughDone[i]    = false;// v2.3: risa disponible para la proxima avalancha
         g_fKolBlockUntil[i]     = 0.0;
         g_fKolBlockCdUntil[i]   = 0.0;
         g_bKolBlockCountered[i] = false;
@@ -1377,6 +1496,7 @@ void Kolossos_ResetState(int client)
 
     g_fKolLungeUntil[client]   = 0.0;
     g_fKolGrabCdUntil[client]  = 0.0;
+    g_bKolChgLaughDone[client] = false;   // v2.3: la risa renace con el jugador
     g_fKolBlockUntil[client]   = 0.0;
     g_fKolBlockCdUntil[client] = 0.0;
     g_bKolBlockCountered[client] = false;
@@ -3001,6 +3121,7 @@ void Kolossos_Ability1(int client)
     g_fKolWindupStart[client]  = now;
     g_fKolChargeEnd[client]    = now + KOL_CHG_WINDUP_T + g_cvKolChgDur.FloatValue;
     g_fKolStuckSince[client]   = 0.0;
+    g_bKolChgLaughDone[client] = false;   // v2.3: la risa es 1x POR avalancha
 
     if (g_hKolHitList[client] == null)
         g_hKolHitList[client] = new ArrayList();
@@ -3350,8 +3471,18 @@ void Kolossos_ChargeDashThink(int client, float now)
     {
         Kolossos_Emit(client, g_bKolSndImpacts, "om/kolossos/Kol impacts.wav",
                       "physics/flesh/flesh_impact_hard4.wav");
-        if (g_bKolSndLaugh && GetRandomInt(1, 3) == 1)
+        // v2.3 [R1]: LA RISA 1x POR AVALANCHA — el Lua l.1831 la gateda
+        // con la ventana Charging_kolossos (solo si ya expiro = la
+        // PRIMERA empalada de la cadena). La v2.2 la tiraba al 33% por
+        // CADA victima nueva de la HitList: con una horda sonaba y
+        // sonaba "como si la habilidad se estuviera volviendo a
+        // realizar" (reporte textual del owner). Ahora: determinista,
+        // UNA vez por activacion, en la primera empalada
+        if (g_bKolSndLaugh && !g_bKolChgLaughDone[client])
+        {
+            g_bKolChgLaughDone[client] = true;
             EmitSoundToAll("om/kolossos/Kol charge laugh impale.wav", client, _, KOL_SND_LEVEL);
+        }
 
         // extension por victima nueva (GMod ImapleChargeDuration 3.75)
         float newEnd = g_fKolChargeEnd[client] + g_cvKolChgAdd.FloatValue;
@@ -4517,7 +4648,7 @@ public Action Kolossos_T_KillLaugh(Handle timer, int userid)
     if (client < 1 || !IsClientInGame(client) || !IsPlayerAlive(client)) return Plugin_Stop;
     if (!Kolossos_PlayerIs(client)) return Plugin_Stop;
     if (g_sKolLaughPath[0] != '\0')
-        EmitSoundToAll(g_sKolLaughPath, client, _, KOL_SND_LEVEL);
+        Kolossos_EmitLoud(client, true, g_sKolLaughPath, "");   // v2.3: FUERTE
     return Plugin_Stop;
 }
 
@@ -5029,11 +5160,23 @@ void Kolossos_BlockStateThink(float now)
         if (!IsClientInGame(attacker) || !IsPlayerAlive(attacker)) continue;
         if (GetClientTeam(attacker) != 3) continue;
 
-        // romper TODOS los punteros de control (desvinculacion absoluta)
-        SetEntPropEnt(c, Prop_Send, "m_pounceAttacker", -1);
-        SetEntPropEnt(c, Prop_Send, "m_jockeyAttacker", -1);
-        SetEntPropEnt(c, Prop_Send, "m_carryAttacker", -1);
-        SetEntPropEnt(c, Prop_Send, "m_pummelAttacker", -1);
+        // v2.3 [R2]: LIBERAR POR EL CAMINO DEL MOTOR — la v2.1/v2.2
+        // escribia -1 A MANO en las props de la victima (la receta
+        // VIEJA de Pin_Release v1.x, documentada como rota en la
+        // suite): el charger quedaba DENTRO de su pummel con el
+        // puntero de victima roto → Kolossos atrapado + la musica del
+        // agarre colgada (el bug del "pumble"), el hunter seguia
+        // encima (su m_pounceVictim seguia vivo) y la lengua del
+        // smoker seguia arrastrando (m_tongueOwner ni se tocaba).
+        // PinRelease_Cleanse termina CADA agarre con las nativas del
+        // MOTOR (L4D2_Charger_EndPummel/EndCarry, L4D_Hunter_ReleaseVictim,
+        // L4D_Smoker_ReleaseVictim, L4D2_Jockey_EndRide: ambos lados +
+        // anims de recuperacion + movimiento de la victima) + corta
+        // las cues de musica de agarre colgadas (L4D_StopMusic) +
+        // stagger anti-regrab del atacante. Sin left4dhooks moderno
+        // el stagger ES el interrupt vanilla (el del puno del tank)
+        // y corta el agarre igual. Despues, el counter lo castiga.
+        PinRelease_Cleanse(c);
 
         // y el counter completo (consume el bloqueo + ventana anti-empuje)
         Kolossos_BlockEnd(c);
@@ -5120,6 +5263,13 @@ void Kolossos_BlockCounter(int client, int attacker, int inflictor)
 
     if (rockSource || !meleeRange)
     {
+        // v2.3 [R3]: EL HIT DEL BLOQUEO A DISTANCIA FUERTE — "kol block
+        // hit_ranged" del pack si esta montado; si no, el rumble del
+        // lanzamiento sigue sonando en SpawnCounterRock (uno u otro,
+        // nunca los dos)
+        if (g_sKolBlkHitR[0] != '\0')
+            Kolossos_EmitLoud(client, true, g_sKolBlkHitR, "");
+
         // LA ROCA DE TANK reforzada (GMod l.1448+: BlockProjectile + el
         // arco scripted — v1.9: 75 de dano + stun al area)
         Kolossos_AnimShot(client, KOL_ST_BLOCKPROJ, 1.0, KOL_SHOT_ACT);
@@ -5152,8 +5302,14 @@ void Kolossos_BlockCounter(int client, int attacker, int inflictor)
         TeleportEntity(attacker, NULL_VECTOR, NULL_VECTOR, push);
     }
 
-    Kolossos_Emit(client, g_bKolSndPunch, "om/kolossos/kolossos punching.wav",
-                  "physics/flesh/flesh_impact_hard3.wav");
+    // v2.3 [R3]: EL HIT DEL BLOQUEO MELEE FUERTE — "kol block hit_melee"
+    // del pack si esta montado (pedido del owner); si no, el punching de
+    // siempre — ambos por el emit FUERTE (dual canal + 140dB)
+    if (g_sKolBlkHitM[0] != '\0')
+        Kolossos_EmitLoud(client, true, g_sKolBlkHitM, "");
+    else
+        Kolossos_EmitLoud(client, g_bKolSndPunch, "om/kolossos/kolossos punching.wav",
+                          "physics/flesh/flesh_impact_hard3.wav");
 }
 
 // v2.1: LA ROCA ESTILO LANZA — "usara el mismo tipo de roca... siguiendo
@@ -5262,8 +5418,12 @@ void Kolossos_SpawnCounterRock(int client, const float targetPos[3])
     g_iKolRockFlying[client] = EntIndexToEntRef(rock);
     g_fKolRockDieAt[client]  = GetEngineTime() + KOL_ROCK_FLIGHT_MAX;
 
-    Kolossos_Emit(client, g_bKolSndRumble, "om/kolossos/kol charge start ground rumble.wav",
-                  "ambient/machines/thumper_hit.wav");
+    // v2.3 [R3]: el rumble del lanzamiento SOLO si el "kol block
+    // hit_ranged" del pack NO esta montado (el hit ya sono FUERTE en
+    // el counter — uno u otro, nunca los dos)
+    if (g_sKolBlkHitR[0] == '\0')
+        Kolossos_Emit(client, g_bKolSndRumble, "om/kolossos/kol charge start ground rumble.wav",
+                      "ambient/machines/thumper_hit.wav");
 }
 
 // el vuelo de la roca (cada tick en T_Kol_LayerThink): direccion fija,
@@ -6090,6 +6250,11 @@ public Action Kolossos_CmdDebug(int client, int args)
                        KOL_ROCK_SPEED,
                        KOL_CNT_STUN);
     }
+    // v2.3: lo nuevo de esta version (risa 1x + unpin del bloqueo +
+    // los hits del bloqueo montados — nunca mas misterio de "no suena")
+    PrintToConsole(client, "v2.3: risa de empale 1x POR avalancha | bloqueo rompe agarres POR EL CAMINO DEL MOTOR (PinRelease: EndPummel/EndCarry/ReleaseVictim/EndRide + musica del agarre cortada + stagger anti-regrab) | block hit melee: %s | block hit ranged: %s | risa del Kill: FUERTE (dual canal + 140dB)",
+                   g_sKolBlkHitM[0] != '\0' ? g_sKolBlkHitM : "no montado (usa kolossos punching FUERTE)",
+                   g_sKolBlkHitR[0] != '\0' ? g_sKolBlkHitR : "no montado (usa ground rumble)");
     // v2.2: el modelo ACTIVO de la roca (la cadena) + el stun nativo +
     // los wavs de cada uno (que nunca mas haya misterio de "no sale")
     PrintToConsole(client, "v2.2: roca modelo %s (escala %.1f por m_flModelScale, colision solo-mundo) | stun NATIVO L4D2 (pounce/lengua/carry/pummel/jockey/stagger/knockdown) = anim stun + kol stun %d/4 wavs | M1: %d/4 wavs precacheados (cero not-precached)",
