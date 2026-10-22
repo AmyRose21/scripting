@@ -1,0 +1,42 @@
+{
+  "fuente": {
+    "idle": 251,
+    "walk": 101,
+    "run": 46,
+    "swingsub": 23
+  },
+  "salidas": {
+    "idle_swing": 23,
+    "walk_swing": 23,
+    "run_swing": 23
+  },
+  "validacion": {
+    "idle_swing": {
+      "frames": 23,
+      "huecos": 0,
+      "desv_cuerpo": 0.0,
+      "desv_swing": 0.0,
+      "OK": true
+    },
+    "walk_swing": {
+      "frames": 23,
+      "huecos": 0,
+      "desv_cuerpo": 0.0,
+      "desv_swing": 0.0,
+      "OK": true
+    },
+    "run_swing": {
+      "frames": 23,
+      "huecos": 0,
+      "desv_cuerpo": 0.0,
+      "desv_swing": 0.0,
+      "OK": true
+    }
+  },
+  "notas": [
+    "rig: 26 huesos | swing-set: 18 | cuerpo: 8",
+    "anim SMD copiados del pack v1.5.2: 56"
+  ],
+  "qc_v153": "/home/z/my-project/work/kolossos_v20_modelo/modelo_v153_completo/kolossos.qc",
+  "TODO_OK": true
+}

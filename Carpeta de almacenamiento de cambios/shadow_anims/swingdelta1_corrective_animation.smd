@@ -1,0 +1,51 @@
+// Created by Crowbar 0.74
+version 1
+nodes
+  0 "Root" -1
+  1 "Torso" 0
+  2 "Head" 1
+  3 "RightEye" 2
+  4 "MiddleTopHeadQuil" 2
+  5 "MiddleBottomHeadQuil" 2
+  6 "RightBottomHeadQuill" 2
+  7 "RightTopHeadQuill" 2
+  8 "LeftEye" 2
+  9 "LeftBottomHeadQuill" 2
+  10 "LeftTopHeadQuill" 2
+  11 "Tail" 1
+  12 "RightUpperLeg" 1
+  13 "RightLowerLeg" 12
+  14 "RightFoot" 13
+  15 "RightToe" 14
+  16 "RightUpperArm" 1
+  17 "RightLowerArm" 16
+  18 "RightHand" 17
+  19 "RightMiddleFinger1" 18
+  20 "RightMiddleFinger2" 19
+  21 "RightPinkyFinger1" 18
+  22 "RightPinkyFinger2" 21
+  23 "RightPointyFinger1" 18
+  24 "RightPointyFinger2" 23
+  25 "RightThumb1" 18
+  26 "RightThumb2" 25
+  27 "LeftUpperLeg" 1
+  28 "LeftLowerLeg" 27
+  29 "LeftFoot" 28
+  30 "LeftToe" 29
+  31 "LeftUpperArm" 1
+  32 "LeftLowerArm" 31
+  33 "LeftHand" 32
+  34 "LeftMiddleFinger1" 33
+  35 "LeftMiddleFinger2" 34
+  36 "LeftPinkyFinger1" 33
+  37 "LeftPinkyFinger2" 36
+  38 "LeftPointyFinger1" 33
+  39 "LeftPointyFinger2" 38
+  40 "LeftThumb1" 33
+  41 "LeftThumb2" 40
+  42 "Gun" 18
+end
+skeleton
+  time 0
+    0 0.000000 0.000000 0.000000 0.000000 0.000000 -1.570796
+end
