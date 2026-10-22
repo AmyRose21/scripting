@@ -306,14 +306,19 @@ $sequence "SmokeBomb" {
 }
 
 // ---------------------------------------------------------------------------
-// v11 - GLIDE DE ROUGE: pose del glide de Knuckles retargeteada (torso
-// horizontal, brazos atras, piernas extendidas, mirada al frente) + el ciclo
-// de aleteo de sus alas (flap) como toque especial. 41 frames @ 30fps
-// (1.37s por aleteo - planeo majestuoso). Generado por retarget_glide_rouge.py
+// v15 - GLIDE DE ROUGE (pose de piernas de la imagen de referencia):
+// tijera asimetrica - rodilla adelantada recogida (~85 gr) bajo la panza
+// con la punta cayendo hacia el suelo, trasera enganchada (~42 gr) con
+// talon levantado, rodillas juntas, puntas de ballet con abertura y roll
+// alado (las botas del modelo son anchisimas: separamos bordes internos).
+// Brazos atras (v14), aleteo autentico (v12), dedos ripple (v13),
+// cabeza seno puro (v14). 41 frames @ 30fps, loop t40==t0.
+// Posiciones = bind (anti-desgarro v12).
+// Generado por scripts/glide_rouge_v15.py
 // ---------------------------------------------------------------------------
 
 $sequence "glide" {
-        "rouge_anims\glide.smd"
+        "rouge_anims\\glide.smd"
         fadein 0.7
         fadeout 0.7
         fps 30
