@@ -576,7 +576,7 @@
  * =====================================================================
  */
 
-#define KOLOSSOS_INC_VERSION "2.6-OM"   // v2.6: EL STUN SUENA DE VERDAD — el flanco Kolossos_StunEdgeThink era CODIGO MUERTO desde la v2.2 (llamado solo en la rama NO aturdida del tick): movido ARRIBA de la bifurcacion + flanco re-armado en la rama muerta (v2.5: EMBESTIDA/BLOQUEO INMUNES AL STUN + PUÑO DEL TANK ESTILO KNUCKLES + TODOS los sonidos GLOBALES)
+#define KOLOSSOS_INC_VERSION "2.7-OM"   // v2.7: LOS BASICOS DAÑAN A LAS WITCHES + LAS PAREDES CAEN BAJO EL COLOSOS (manager 3.77.113, pedido del owner 2026-10-23: "quiero que permitas que los ataques puedan derribar ese tipo de paredes de los infectados... no tendria sentido que los infectados pudieran derribar eso y Kolossos... no puedan romperlos ademas los basicos de kolosos no dañan a las witches") — [1] M1 WITCH FIX: el escaneo del puo basico (esfera 65u) solo recolectaba commons ("infected") y jugadores del equipo 3: la WITCH (classname "witch", entidad, no client) NUNCA entraba en la esfera — ahora tiene su propio pase de snapshot (la misma receta del barrido de la avalancha v2.1: dano puro por OM_AbilityDamage, sin stun ni ragdoll — la witch del M1 muere sola como en el RockBlast) ; [2] PAREDES ROMPIBLES: el M1 y la AVALANCHA revientan las paredes rompibles del juego (func_breakable / func_breakable_surf / physbox — las barricadas que comunes y tank atraviesan) via Sonic_SmashBreakables v6.39 (SNAPSHOT + TakeDamage por el camino del motor: gibs/sonido/OnBreak propios); el M1 las revienta en su esfera frontal con la MISMA tirada 350-450 del puo, y la avalancha las REVIENTA EN MARCHA (tick 10 Hz del dash: si la barricada cae, el watchdog de pared ya no la ve y el coloso SIGUE DE LARGO atravesandola — una pared debil se atraviesa rompiendola, una solida lo frena con el slaminwall de siempre)   // v2.6: EL STUN SUENA DE VERDAD — el flanco Kolossos_StunEdgeThink era CODIGO MUERTO desde la v2.2 (llamado solo en la rama NO aturdida del tick): movido ARRIBA de la bifurcacion + flanco re-armado en la rama muerta (v2.5: EMBESTIDA/BLOQUEO INMUNES AL STUN + PUÑO DEL TANK ESTILO KNUCKLES + TODOS los sonidos GLOBALES)
 
 // v2.3 [R2]: liberacion de agarres POR EL CAMINO DEL MOTOR — el modulo
 // compartido de Amy/Sally/Cream (Amy.inc lo trae ANTES en el manager;
@@ -3660,6 +3660,15 @@ void Kolossos_ChargeDashThink(int client, float now)
         g_fKolChargeEnd[client] = newEnd;
     }
 
+    // v2.7 [PAREDES]: LA AVALANCHA REVIENTA BARRICADAS EN MARCHA — el
+    // coloso daña las paredes rompibles de su esfera en CADA tick del
+    // dash (10 Hz): una barricada de tablas cae en 1-2 ticks y el
+    // watchdog de pared ya no la ve -> el coloso SIGUE DE LARGO
+    // atravesandola. Una pared solida (no rompible) lo frena con el
+    // slaminwall de siempre. (Sonic_SmashBreakables v6.39: SNAPSHOT +
+    // TakeDamage con gibs/sonido/OnBreak del propio mapa.)
+    Sonic_SmashBreakables(client, pos, radius, dmg);
+
     // ---- watchdog de atasco / tope de pared (receta Metal_StuckCheck) ----
     if (GetEntityFlags(client) & FL_ONGROUND)
     {
@@ -6431,6 +6440,24 @@ void Kolossos_M1(int client)
         m1Ents[m1Count] = t; m1IsSI[m1Count] = true; m1Count++;
     }
 
+    // v2.7 [WITCH FIX]: el tercer pase — la WITCH (classname "witch",
+    // entidad, no client) JAMAS entraba en la esfera del basico: solo se
+    // escaneaban commons y jugadores team 3. La misma receta del barrido
+    // de la avalancha (v2.1): snapshot de refs + dano puro en el bucle
+    // de abajo (OM_AbilityDamage por la rama de entidades — sin stun ni
+    // ragdoll, la witch del M1 muere sola como en el RockBlast).
+    int wt = -1;
+    while ((wt = FindEntityByClassname(wt, "witch")) != -1)
+    {
+        if (m1Count >= 32) break;
+        if (!IsValidEntity(wt)) continue;
+        if (GetEntProp(wt, Prop_Data, "m_iHealth") <= 0) continue;
+        float wpos[3];
+        GetEntPropVector(wt, Prop_Data, "m_vecOrigin", wpos);
+        if (GetVectorDistance(wpos, pos) > KOL_M1_RANGE) continue;
+        m1Ents[m1Count] = wt; m1IsSI[m1Count] = false; m1Count++;
+    }
+
     for (int k = 0; k < m1Count; k++)
     {
         int v = m1Ents[k];
@@ -6449,6 +6476,14 @@ void Kolossos_M1(int client)
     if (m1Count > 0)
         Kolossos_Emit(client, g_bKolSndImpacts, "om/kolossos/Kol impacts.wav",
                       "physics/flesh/flesh_impact_hard4.wav");
+
+    // v2.7 [PAREDES]: el puo del coloso REVIENTA las paredes rompibles
+    // de la esfera (func_breakable / surf / physbox — las barricadas que
+    // comunes y tank atraviesan). Con la MISMA tirada 350-450 del puo:
+    // un muro de tablas cae de un solo basico. (Sonic_SmashBreakables
+    // v6.39: SNAPSHOT + TakeDamage por el camino del motor = la pared
+    // se rompe con SUS gibs y SU sonido, como cuando la rompe el tank.)
+    Sonic_SmashBreakables(client, pos, KOL_M1_RANGE, dmg);
 
     // v2.0: EL SWING — el M1 basico del GMod es el gesture
     // ACT_MELEE_ATTACK_SWING_GESTURE (Lua l.2638), NO el GrabPunch: la

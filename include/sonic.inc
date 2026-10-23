@@ -821,7 +821,7 @@
 //   algo lo piso, se RE-DISPARA en el acto en R y L. La eva corre
 //   ENTERA y encima de cualquier estado (peelout incluido: al acabar
 //   la FSM devuelve la animación que toque).
-#define SONIC_OM_VERSION "v6.38-OM"   // v6.38: EL PIN GMod — Sonic_RagPhysPin + Sonic_RagPhysGet: SetPosition/GetPosition/SetVelocityInstantaneous del IPhysicsObject RAIZ por SDKCall_Raw (indices del mismo vphysics_interface.h l4d2: 46/48/51 win +shift lin), la receta literal del killer Lua de Kolossos para el agarre (el hueso ancla en la mano por tick con velocidad a CERO y el resto del cuerpo cuelga por fisica — JAMAS SetParent: el vphysics despierto contra un padre que se mueve acumula velocidad fantasma y el doble sale disparado).   // v6.37: LA BARRA AL CHAT — paleta colors.inc [AZUL survivor lleno/medio — su color / bajo {green}=AMARILLO aviso / SIN ANILLOS! {red}] vía g_iSBarChatColor + throttle sbar_chat_interval/_refresh (la captura del owner mató el rich text del hint: los <font> salen literales en L4D2) | v6.36: LA BARRA DE ANILLOS — pedido del owner 2026-10-15 ("ese mismo tipo de barra debería salir para sonic y todos aquellos que lo usan (silver para su vuelo sonic para su evasión)"): el Dodgemeter (los anillos, su EVA) vive en BARRA GRÁFICA con el motor común SBar del manager 3.77.81 (Sonic_PlayerIs + Sonic_BarState; el hint "Anillos: x/y" se RETIRA — la barra lo reemplaza en vivo)   // v6.35: AMPLIFICADOR + RAGDOLLS PARAMETRIZADOS — (1) Sonic_SpawnFlingRagdollEx(victim, dir, speed, liftMul, tumble): la velocidad del doble DEJA de venir fija de sonicom_ragblast — cada habilidad pone SU fuerza (contras de Amy/Rouge/Knuckles); la vanilla SpawnFlingRagdoll la envuelve con los números de siempre (CERO cambio en spindash); (2) Sonic_DeadFlingCopy(victim, dir, speed, becomeRag): la receta Rouge/Amy del CADaver VOLANDO generalizada al suite (copia prop_ragdoll + impulso por hueso + limpieza 3s — la usan los counters cuando MATAN); (3) el dano directo del suite (bola, embestida, poderes del supertank) pasa por OM_AbilityDamage = amplificador hibrido del OM_Stun v2.2 (x2 + % vs jefes, pedido del owner)   // v6.34: ENVOLTURA PUBLICA Sonic_PhysSetVel — el SDKCall SetVelocity(lineal, angular) del motor v6.33 abierto a PROPS físicos (no-ragdoll), con cache propio del m_pPhysicsObject de CBaseEntity y las mismas 4 sondas; lo usa el MARTILLO LANZADO de Amy v105 para su TUMBLE REAL en vuelo (el m_angVelocity del datamap lo mata el vphysics cada tick — misma lección del doble v6.9)   // v6.33: IMPULSO VPHYSICS DIRECTO POR HUESO (SetVelocity por SDKCall al IPhysicsObject de cada hueso leido del datamap — la receta GMod literal; la onda v6.11 queda de fallback) — fix del "doble que nace y cae en seco"   // v6.32: PATCH DE BALANCE (spin +35% en TODAS sus fases 121.5/141.75, peel cd -8s 17/37) + FIX DEL AGARRE del carry (salto heredado + hueco bloqueado)   // v6.31: ADOPCION EN EL MONTAJE + reemplazo limpio del avatar (manager 3.77.40: fin del barrido en caliente). v6.30: ESTATUA SI + TANK NO ATURDE A SONIC   // v6.19: TRAILS A MATERIAL NATIVO (default) — análisis del pack de materiales ORIGINALES del OM subido por el owner (2026-10-08): los .vmt del sonicball son legítimos (UnlitGeneric $translucent $vertexcolor/$vertexalpha, VTF 7.2 RGBA8888) pero diseniados para el renderer del SpriteTrail de GMod: bluetrail.vtf = barra vertical nucleo-blanco/halo-azul (perfil transversal), bluestartrail2.vtf = 98% TRANSPARENTE con destellos sueltos (la 'capa ancha' es casi aire), blue2/Sonicred = chips 2x2 shared_t/t2. En los TE beams del L4D2 la textura se mapea al reves (U a lo largo del beam) = look bugeado (reporte del owner); el laserbeam radial nativo es inmune a la orientación. NATIVO default con la geometria 3-capas GMod completa (halo 70->40 + nucleo 40->1 + magenta 40->1, aditivas como alla) y el peel gana los 2 pies ROJOS nativos. FIX descargas: Sonic_AddMatToDownloads ahora encola el $basetexture REAL (blue.vmt->bluetrail.vtf etc.; el v6.17 encolaba un blue.vtf INEXISTENTE = damero en clientes). sonicom_trails_mat default 0 (1 = auténtico opt-in). v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o auténtico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migración al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueño/demas (el beam del dueño sigue su copia L, el de los demas la R — lección del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: única forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseño de materiales v6.17 INTACTO: FileExists -> auténticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTÉNTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidió ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aquí offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximación documentada). Detección por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo).
+#define SONIC_OM_VERSION "v6.39-OM"   // v6.39: LAS PAREDES ROMPIBLES (manager 3.77.113, pedido del owner 2026-10-23: "sabes la pared de los infectados no?... quiero que permitas que los ataques puedan derribar ese tipo de paredes de los infectados, ya que no tendria sentido que los infectados pudieran derribar eso y Kolossos... o Amy... o Knuckles no puedan romperlos") — Sonic_SmashBreakables(attacker, center, radius, dmg): el dano de habilidades REVIENTA las paredes rompibles del juego (func_breakable / func_breakable_surf / func_physbox / func_physbox_multiplayer — las barricadas, tablas y cristales que los comunes/tank atraviesan) con la REGLA v3.77.85 (SNAPSHOT de refs primero, SDKHooks_TakeDamage FUERA del FindEntityByClassname: la entidad rota libera su edicto al instante), validacion m_takedamage>=2 + m_iHealth>0 (nunca decorativas ni ya rotas) + Sonic_IsBreakableWall(classname) para clasificar. Lo llaman: Kolossos M1 + avalancha (v2.7), Amy barrido del martillo + martillo lanzado OM, Knuckles dash + GroundSmash. Los PROPS con fisica NO se tocan (Amy los lanza, Knuckles los empuja: ese gameplay queda intacto).   // v6.38: EL PIN GMod — Sonic_RagPhysPin + Sonic_RagPhysGet: SetPosition/GetPosition/SetVelocityInstantaneous del IPhysicsObject RAIZ por SDKCall_Raw (indices del mismo vphysics_interface.h l4d2: 46/48/51 win +shift lin), la receta literal del killer Lua de Kolossos para el agarre (el hueso ancla en la mano por tick con velocidad a CERO y el resto del cuerpo cuelga por fisica — JAMAS SetParent: el vphysics despierto contra un padre que se mueve acumula velocidad fantasma y el doble sale disparado).   // v6.37: LA BARRA AL CHAT — paleta colors.inc [AZUL survivor lleno/medio — su color / bajo {green}=AMARILLO aviso / SIN ANILLOS! {red}] vía g_iSBarChatColor + throttle sbar_chat_interval/_refresh (la captura del owner mató el rich text del hint: los <font> salen literales en L4D2) | v6.36: LA BARRA DE ANILLOS — pedido del owner 2026-10-15 ("ese mismo tipo de barra debería salir para sonic y todos aquellos que lo usan (silver para su vuelo sonic para su evasión)"): el Dodgemeter (los anillos, su EVA) vive en BARRA GRÁFICA con el motor común SBar del manager 3.77.81 (Sonic_PlayerIs + Sonic_BarState; el hint "Anillos: x/y" se RETIRA — la barra lo reemplaza en vivo)   // v6.35: AMPLIFICADOR + RAGDOLLS PARAMETRIZADOS — (1) Sonic_SpawnFlingRagdollEx(victim, dir, speed, liftMul, tumble): la velocidad del doble DEJA de venir fija de sonicom_ragblast — cada habilidad pone SU fuerza (contras de Amy/Rouge/Knuckles); la vanilla SpawnFlingRagdoll la envuelve con los números de siempre (CERO cambio en spindash); (2) Sonic_DeadFlingCopy(victim, dir, speed, becomeRag): la receta Rouge/Amy del CADaver VOLANDO generalizada al suite (copia prop_ragdoll + impulso por hueso + limpieza 3s — la usan los counters cuando MATAN); (3) el dano directo del suite (bola, embestida, poderes del supertank) pasa por OM_AbilityDamage = amplificador hibrido del OM_Stun v2.2 (x2 + % vs jefes, pedido del owner)   // v6.34: ENVOLTURA PUBLICA Sonic_PhysSetVel — el SDKCall SetVelocity(lineal, angular) del motor v6.33 abierto a PROPS físicos (no-ragdoll), con cache propio del m_pPhysicsObject de CBaseEntity y las mismas 4 sondas; lo usa el MARTILLO LANZADO de Amy v105 para su TUMBLE REAL en vuelo (el m_angVelocity del datamap lo mata el vphysics cada tick — misma lección del doble v6.9)   // v6.33: IMPULSO VPHYSICS DIRECTO POR HUESO (SetVelocity por SDKCall al IPhysicsObject de cada hueso leido del datamap — la receta GMod literal; la onda v6.11 queda de fallback) — fix del "doble que nace y cae en seco"   // v6.32: PATCH DE BALANCE (spin +35% en TODAS sus fases 121.5/141.75, peel cd -8s 17/37) + FIX DEL AGARRE del carry (salto heredado + hueco bloqueado)   // v6.31: ADOPCION EN EL MONTAJE + reemplazo limpio del avatar (manager 3.77.40: fin del barrido en caliente). v6.30: ESTATUA SI + TANK NO ATURDE A SONIC   // v6.19: TRAILS A MATERIAL NATIVO (default) — análisis del pack de materiales ORIGINALES del OM subido por el owner (2026-10-08): los .vmt del sonicball son legítimos (UnlitGeneric $translucent $vertexcolor/$vertexalpha, VTF 7.2 RGBA8888) pero diseniados para el renderer del SpriteTrail de GMod: bluetrail.vtf = barra vertical nucleo-blanco/halo-azul (perfil transversal), bluestartrail2.vtf = 98% TRANSPARENTE con destellos sueltos (la 'capa ancha' es casi aire), blue2/Sonicred = chips 2x2 shared_t/t2. En los TE beams del L4D2 la textura se mapea al reves (U a lo largo del beam) = look bugeado (reporte del owner); el laserbeam radial nativo es inmune a la orientación. NATIVO default con la geometria 3-capas GMod completa (halo 70->40 + nucleo 40->1 + magenta 40->1, aditivas como alla) y el peel gana los 2 pies ROJOS nativos. FIX descargas: Sonic_AddMatToDownloads ahora encola el $basetexture REAL (blue.vmt->bluetrail.vtf etc.; el v6.17 encolaba un blue.vtf INEXISTENTE = damero en clientes). sonicom_trails_mat default 0 (1 = auténtico opt-in). v6.18: FIX DE VISIBILIDAD REAL DE LOS TRAILS — reporte del owner: "ni el nativo ni ese parecen ser visibles". Diagnostico: el env_spritetrail NO renderiza en L4D2 (entidad de la familia HL2/TF2: el cliente de L4D2 no dibuja su estela — invisible con CUALQUIER material, nativo o auténtico; y el parent YA estaba bien puesto: los trails de la bola iban a la BOLA, no al cuerpo invisible — no era eso). Migración al mecanismo que este MISMO server ya demuestra a diario: los TE del motor — TE_SetupBeamFollow (el del trail de colores del speed, Speed_sonic) y TE_SetupBeamPoints (el del laser de Tails). Motor de slots con UN latido global de 0.2s: re-envia cada BeamFollow a life*0.8 (estela continua sin apilar brillo aditivo) y estira las polylineas encadenadas de los pies. BOLA: las 3 capas del GMod en BeamFollow (Width=cabecera EndWidth=cola: blue_2ndlayer 70->40 blanca + blue 40->1 blanca + blue 40->1 MAGENTA). PEEL: blue2 16->1 sobre el AVATAR con split dueño/demas (el beam del dueño sigue su copia L, el de los demas la R — lección del speed v5.20: un beam sobre el survivor RENDER_NONE "sale del aire") + las 2 Sonicred de los pies como encadenadas con offset lateral +-8u (el BeamFollow no tiene offset: única forma de tener DOS estelas de pies). MARTILLO DE AMY (v100-OM): su trail pasa al mismo motor (mismo look 25->2 / 0.3s / blanco). TODO el diseño de materiales v6.17 INTACTO: FileExists -> auténticos, fallback laserbeam nativo, palancas sonicom_trails / sonicom_trails_mat. v6.17: TRAILS CON MATERIALES AUTÉNTICOS DEL GMOD (pedido del owner: verifico que tiene los .vmt del sonicball y pidió ver si los usabamos — NO los usabamos: el v6.6 tradujo el look a laserbeam.vmt nativo). Ahora el spindash usa las TRES capas EXACTAS del fadeeiie del sonic.lua (L1921-1964): blue_2ndlayer.vmt ancha 70->40 blanca + blue.vmt 40->0 blanca + blue.vmt 40->0 con tinte MAGENTA (255,0,255); el peel usa blue2.vmt 16->1 en el cuerpo + los DOS trails de pies ROJOS Sonicred.vmt 6->1 (alla en attachments 2/3 del puppet L1232-1258; aquí offsets fijos +-8u al tobillo, el env_spritetrail no sigue huesos — aproximación documentada). Detección por FileExists al estilo star_stun del OM_Stun (ve los VPK montados): sin los archivos TODO cae al laserbeam nativo del v6.6, CERO dependencia. Palanca: sonicom_trails_mat 1 (0 = forzar nativo).
 
 // =======================
 // RECURSOS (VPK de recursos del owner; mismas rutas que GMod OM)
@@ -7894,4 +7894,90 @@ public Action Command_SonicCd(int client, int args)
     if (cdS > 0.0)  ReplyToCommand(client, "  spindash listo en %.0fs", cdS);
     if (cdP > 0.0)  ReplyToCommand(client, "  peel out listo en %.0fs", cdP);
     return Plugin_Handled;
+}
+
+// ============================================================
+//  v6.39: LAS PAREDES ROMPIBLES — pedido del owner 2026-10-23
+//  "quiero que permitas que los ataques puedan derribar ese tipo
+//  de paredes de los infectados... no tendria sentido que los
+//  infectados pudieran derribar eso y Kolossos o Amy o Knuckles
+//  no puedan romperlos"
+//
+//  Las barricadas/tablas/cristales que los COMUNES y el TANK
+//  revientan son func_breakable / func_breakable_surf (y sus
+//  primos physbox). El dano de las habilidades del suite les
+//  pasa por el camino REAL del motor (SDKHooks_TakeDamage):
+//  la pared se rompe con SUS gibs, SU sonido y SUS outputs
+//  del mapa (OnBreak) — exactamente como cuando la rompe el
+//  tank. Los PROPS con fisica NO entran aqui (Amy los lanza,
+//  Knuckles los empuja: ese gameplay queda intacto).
+// ============================================================
+
+// clasificador: es una pared/objeto rompible del juego?
+bool Sonic_IsBreakableWall(const char[] classname)
+{
+    if (StrEqual(classname, "func_breakable"))        return true;   // barricadas, tablas, cajas
+    if (StrEqual(classname, "func_breakable_surf"))   return true;   // cristales/ventanas
+    if (StrEqual(classname, "func_physbox"))          return true;   // cajas fisicas rompibles
+    if (StrEqual(classname, "func_physbox_multiplayer")) return true;
+    return false;
+}
+
+// REVIENTA las paredes rompibles en la esfera del golpe.
+// Devuelve cuantas recibieron dano. REGLA v3.77.85: SNAPSHOT
+// de refs primero, dano DESPUES y FUERA del FindEntityByClassname
+// (la pared rota libera su edicto AL INSTANTE — damage-last).
+int Sonic_SmashBreakables(int attacker, const float center[3], float radius, float dmg)
+{
+    if (radius <= 0.0 || dmg <= 0.0) return 0;
+
+    static const char sWallClasses[][] =
+    {
+        "func_breakable", "func_breakable_surf",
+        "func_physbox",   "func_physbox_multiplayer"
+    };
+
+    // ---- 1) SNAPSHOT: recolectar refs vivas, cero dano aqui ----
+    int   walls[16];
+    float wdmg[16];
+    int   nWalls = 0;
+
+    for (int c = 0; c < sizeof(sWallClasses) && nWalls < 16; c++)
+    {
+        int ent = -1;
+        while ((ent = FindEntityByClassname(ent, sWallClasses[c])) != -1)
+        {
+            if (nWalls >= 16) break;
+            if (ent <= MaxClients || !IsValidEntity(ent)) continue;
+
+            // solo las que de VERDAD reciben dano y siguen enteras
+            if (GetEntProp(ent, Prop_Data, "m_takedamage") < 2) continue;
+            if (GetEntProp(ent, Prop_Data, "m_iHealth") <= 0)   continue;
+
+            float epos[3];
+            GetEntPropVector(ent, Prop_Data, "m_vecOrigin", epos);
+            if (GetVectorDistance(epos, center) > radius) continue;
+
+            walls[nWalls] = ent;
+            wdmg[nWalls]  = dmg;
+            nWalls++;
+        }
+    }
+
+    if (nWalls == 0) return 0;
+
+    // ---- 2) DANO: fuera de los bucles, re-validando cada ref ----
+    int hits = 0;
+    for (int k = 0; k < nWalls; k++)
+    {
+        int w = walls[k];
+        if (w <= MaxClients || !IsValidEntity(w)) continue;
+        if (GetEntProp(w, Prop_Data, "m_takedamage") < 2) continue;
+        if (GetEntProp(w, Prop_Data, "m_iHealth") <= 0)   continue;
+
+        // el camino del motor: break con gibs/sonido/outputs propios
+        SDKHooks_TakeDamage(w, attacker, attacker, wdmg[k], DMG_CLUB);
+        hits++;
+    }
+    return hits;
 }

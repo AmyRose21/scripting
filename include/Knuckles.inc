@@ -378,7 +378,7 @@
 #define _Knuckles_included
 
 // v63: sonda de versión (sm_sjsver del manager)
-#define KNUCKLES_INC_VERSION "v77-OM"  // v77: EL UPPERCUT VUELA (pedido del owner 2026-10-13: "hay que aplicar el stun ragdoll a knuckles pues su counter es un uppercut hacia arriba") — su CONTRA ahora aplica STUN + RAGDOLL VOLADOR mayormente HACIA ARRIBA (Sonic_SpawnFlingRagdollEx del sonic v6.35): dano amplificado PRIMERO (OM_AbilityDamage hibrido x2 + % vs jefes del OM_Stun v2.2), letal = cadaver volando (copia Rouge generalizada), sobrevive = OM_Stun + doble vertical. Convars knu_counter_ragdoll (3.0s) / knu_counter_fling (700 u/s). Tank: uppercut también (con su desarme de 5s intacto). + TODO el dano de sus habilidades (puño/slam/meteoro/counter) amplificado. v76: PATCH DE BALANCE — enfriamientos -4s (puño 11 / counter 16 / meteoro 16) (manager 3.77.50); v75: LA POSTURA LLAMA AL VSCRIPT DIRECTO (patron supertank SetAmyMode): Knux_ParryNotifyNut por RunScriptCode a la entrada ChCh_KnxNotify del chch_parrying.nut v2.8 — fuera el puente de consola knxparry_state (manager 3.77.44)
+#define KNUCKLES_INC_VERSION "v78-OM"  // v78: LOS PUÑOS REVIENTAN PAREDES (manager 3.77.113, pedido del owner 2026-10-23: "quiero que permitas que los ataques puedan derribar ese tipo de paredes de los infectados... no tendria sentido que los infectados pudieran derribar eso y... Knuckles no puedan romperlos") — el DASH y el GROUND SLASH REVIENTAN las paredes rompibles del juego (func_breakable / func_breakable_surf / physbox — las barricadas y tablas que comunes y tank atraviesan) via Sonic_SmashBreakables v6.39: el dash las daña en su esfera de 160u con el dano del puño (1000 x el multiplicador de nivel de carga) y el GroundSmash en el radio del slam con su dano de area — la pared cae con SUS gibs/sonido/OnBreak del mapa, igual que cuando la rompe el tank. Los PROPS con fisica siguen SIENDO EMPUJADOS (Knux_PushMapProp: ese gameplay intacto)   // v77: EL UPPERCUT VUELA (pedido del owner 2026-10-13: "hay que aplicar el stun ragdoll a knuckles pues su counter es un uppercut hacia arriba") — su CONTRA ahora aplica STUN + RAGDOLL VOLADOR mayormente HACIA ARRIBA (Sonic_SpawnFlingRagdollEx del sonic v6.35): dano amplificado PRIMERO (OM_AbilityDamage hibrido x2 + % vs jefes del OM_Stun v2.2), letal = cadaver volando (copia Rouge generalizada), sobrevive = OM_Stun + doble vertical. Convars knu_counter_ragdoll (3.0s) / knu_counter_fling (700 u/s). Tank: uppercut también (con su desarme de 5s intacto). + TODO el dano de sus habilidades (puño/slam/meteoro/counter) amplificado. v76: PATCH DE BALANCE — enfriamientos -4s (puño 11 / counter 16 / meteoro 16) (manager 3.77.50); v75: LA POSTURA LLAMA AL VSCRIPT DIRECTO (patron supertank SetAmyMode): Knux_ParryNotifyNut por RunScriptCode a la entrada ChCh_KnxNotify del chch_parrying.nut v2.8 — fuera el puente de consola knxparry_state (manager 3.77.44)
 
 #if !defined _sourcemod_included
     #include <sourcemod>
@@ -1424,6 +1424,20 @@ public Action T_KnuxSweep(Handle timer, DataPack pack)
             }
         }
     }
+
+    // v78 [PAREDES]: el dash REVIENTA las paredes rompibles del radio
+    // (func_breakable / surf / physbox — las barricadas que comunes y
+    // tank atraviesan) con el dano del puño al nivel de carga actual
+    // (1000 x1/x1.15/x1.30, el mismo dano que reciben commons/witch).
+    // La barricada cae en el primer tick que la toca; los props con
+    // fisica siguen siendo EMPUJADOS por el bloque de arriba.
+    {
+        int pwr = g_iKnuxPunchPower[client];
+        if (pwr < 1) pwr = 1;
+        if (pwr > 3) pwr = 3;
+        float wallMult = (pwr == 3) ? 1.30 : (pwr == 2) ? 1.15 : 1.0;
+        Sonic_SmashBreakables(client, pos, radius, 1000.0 * wallMult);
+    }
     
     return Plugin_Continue;
 }
@@ -1626,6 +1640,14 @@ void Knux_PerformGroundSlam(int client)
             Knux_PushMapProp(client, props[k], dir, g_cvKnuxPropForce.FloatValue * 1.2, 0.6);
         }
     }
+
+    // v78 [PAREDES]: el GROUND SMASH REVIENTA las paredes rompibles del
+    // radio del slam (func_breakable / surf / physbox — las barricadas
+    // que comunes y tank atraviesan) con el MISMO dano de area del
+    // slam. Los props con fisica siguen siendo EMPUJADOS (bloque de
+    // arriba, ese gameplay intacto).
+    Sonic_SmashBreakables(client, pos, radius, damage);
+
     // v66-OM: el poder ya fue consumido por el slam (higiene: un Meteoro
     // posterior no hereda un nivel viejo)
     g_iKnuxPunchPower[client] = 0;
